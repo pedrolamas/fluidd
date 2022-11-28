@@ -29,17 +29,6 @@
         <v-icon>{{ autoZoom ? '$magnifyMinus' : '$magnifyPlus' }}</v-icon>
       </app-btn>
 
-      <app-btn
-        color=""
-        fab
-        x-small
-        text
-        :disabled="!klippyReady || !(printerPrinting || printerPaused) || !parts.length"
-        @click="excludeObjectDialog = true"
-      >
-        <v-icon>$cancelled</v-icon>
-      </app-btn>
-
       <app-btn-collapse-group
         :collapsed="true"
         menu-icon="$cog"
@@ -63,13 +52,6 @@
         @cancel="abortParser"
       />
 
-      <ExcludeObjectsDialog
-        v-if="excludeObjectDialog"
-        :value="excludeObjectDialog"
-        @close="excludeObjectDialog = false"
-        @cancelObject="cancelObject($event)"
-      />
-
       <v-row>
         <v-col
           cols="12"
@@ -79,7 +61,7 @@
             <v-col>
               <app-slider
                 :label="$t('app.gcode.label.layer')"
-                :value="currentLayer + 1"
+                :value="(!fileLoaded) ? 0 : currentLayer + 1"
                 :min="(!fileLoaded) ? 0 : 1"
                 :max="layerCount"
                 :disabled="!fileLoaded"
@@ -171,16 +153,13 @@ import { AppFile } from '@/store/files/types'
 import GcodePreviewParserProgressDialog from '@/components/widgets/gcode-preview/GcodePreviewParserProgressDialog.vue'
 import { MinMax } from '@/store/gcodePreview/types'
 import AppBtnCollapseGroup from '@/components/ui/AppBtnCollapseGroup.vue'
-import { AxiosResponse } from 'axios'
-import ExcludeObjectsDialog from '@/components/widgets/exclude-objects/ExcludeObjectsDialog.vue'
 
 @Component({
   components: {
     AppBtnCollapseGroup,
     GcodePreviewParserProgressDialog,
     GcodePreview,
-    GcodePreviewControls,
-    ExcludeObjectsDialog
+    GcodePreviewControls
   }
 })
 export default class GcodePreviewCard extends Mixins(StateMixin, FilesMixin) {
@@ -195,7 +174,6 @@ export default class GcodePreviewCard extends Mixins(StateMixin, FilesMixin) {
 
   currentLayer = 0
   moveProgress = 0
-  excludeObjectDialog = false
 
   @Watch('layerCount')
   onLayerCountChanged () {
@@ -358,7 +336,7 @@ export default class GcodePreviewCard extends Mixins(StateMixin, FilesMixin) {
     const file = this.printerFile as AppFile
     this.getGcode(file)
       .then(response => response?.data)
-      .then((gcode: AxiosResponse) => {
+      .then(gcode => {
         this.$store.dispatch('gcodePreview/loadGcode', {
           file,
           gcode
@@ -396,14 +374,14 @@ export default class GcodePreviewCard extends Mixins(StateMixin, FilesMixin) {
   }
 
   async cancelObject (id: string) {
-    const reqId = id.toUpperCase().replace(/\s/g, '_')
-
     const res = await this.$confirm(
       this.$tc('app.general.simple_form.msg.confirm_exclude_object'),
       { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
 
     if (res) {
+      const reqId = id.toUpperCase().replace(/\s/g, '_')
+
       this.sendGcode(`EXCLUDE_OBJECT NAME=${reqId}`)
     }
   }
