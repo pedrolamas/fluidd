@@ -39,9 +39,6 @@ const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | Instanc
           consola.debug('API Config from Local Storage', config)
           return config
         }
-        else {
-          console.log("oops")
-        }
       }
     }
   }
