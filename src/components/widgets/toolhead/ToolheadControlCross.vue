@@ -10,8 +10,8 @@
         class="ml-12 mr-12"
       >
         <app-btn-toolhead-move
-          :color="axisButtonColor(yHomed)"
-          :disabled="axisButtonDisabled(yHomed, yHasMultipleSteppers)"
+          :color="yHomed ? 'primary' : undefined"
+          :disabled="!klippyReady || !yHomed"
           icon="$up"
           @click="moveAxisBy('Y', toolheadMoveLength)"
         />
@@ -21,8 +21,8 @@
         class="ml-2"
       >
         <app-btn-toolhead-move
-          :color="axisButtonColor(zHomed)"
-          :disabled="axisButtonDisabled(zHomed, zHasMultipleSteppers)"
+          :color="zHomed ? 'primary' : undefined"
+          :disabled="!klippyReady || !zHomed"
           icon="$up"
           @click="moveAxisBy('Z', toolheadMoveLength)"
         />
@@ -54,8 +54,8 @@
         }"
       >
         <app-btn-toolhead-move
-          :color="axisButtonColor(xHomed)"
-          :disabled="axisButtonDisabled(xHomed, xHasMultipleSteppers)"
+          :color="xHomed ? 'primary' : undefined"
+          :disabled="!klippyReady || !xHomed"
           icon="$left"
           @click="moveAxisBy('X', toolheadMoveLength, true)"
         />
@@ -80,8 +80,8 @@
         justify="end"
       >
         <app-btn-toolhead-move
-          :color="axisButtonColor(xHomed)"
-          :disabled="axisButtonDisabled(xHomed, xHasMultipleSteppers)"
+          :color="xHomed ? 'primary' : undefined"
+          :disabled="!klippyReady || !xHomed"
           icon="$right"
           @click="moveAxisBy('X', toolheadMoveLength)"
         />
@@ -126,8 +126,8 @@
         class="ml-12 mr-7"
       >
         <app-btn-toolhead-move
-          :color="axisButtonColor(yHomed)"
-          :disabled="axisButtonDisabled(yHomed, yHasMultipleSteppers)"
+          :color="yHomed ? 'primary' : undefined"
+          :disabled="!klippyReady || !yHomed"
           icon="$down"
           @click="moveAxisBy('Y', toolheadMoveLength, true)"
         />
@@ -137,8 +137,8 @@
         class="ml-7"
       >
         <app-btn-toolhead-move
-          :color="axisButtonColor(zHomed)"
-          :disabled="axisButtonDisabled(zHomed, zHasMultipleSteppers)"
+          :color="zHomed ? 'primary' : undefined"
+          :disabled="!klippyReady || !zHomed"
           icon="$down"
           @click="moveAxisBy('Z', toolheadMoveLength, true)"
         />
@@ -198,10 +198,6 @@ type Axis = 'X' | 'Y' | 'Z'
 export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMixin) {
   moveLength: number | null = null
 
-  get forceMove (): boolean {
-    return this.$store.state.config.uiSettings.toolhead.forceMove as boolean
-  }
-
   get hasRoundBed (): boolean {
     return this.$store.getters['printer/getHasRoundBed'] as boolean
   }
@@ -230,16 +226,6 @@ export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMix
     this.moveLength = val
   }
 
-  axisButtonColor (axisHomed: boolean): string | undefined {
-    if (this.forceMove) return 'error'
-
-    return axisHomed ? 'primary' : undefined
-  }
-
-  axisButtonDisabled (axisHomed: boolean, axisMultipleSteppers: boolean): boolean {
-    return !this.klippyReady || (!axisHomed && !(this.forceMove && !axisMultipleSteppers))
-  }
-
   /**
    * Send a move gcode script.
    */
@@ -252,14 +238,7 @@ export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMix
       ? -distance
       : distance
 
-    if (this.forceMove) {
-      const accel = axis === 'Z'
-        ? this.$store.getters['printer/getPrinterSettings']('printer.max_z_accel')
-        : this.$store.state.printer.printer.toolhead.max_accel
-      this.sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${distance} VELOCITY=${rate} ACCEL=${accel}`)
-    } else {
-      this.sendMoveGcode(`${axis}${distance}`, rate)
-    }
+    this.sendMoveGcode(`${axis}${distance}`, rate)
   }
 }
 </script>

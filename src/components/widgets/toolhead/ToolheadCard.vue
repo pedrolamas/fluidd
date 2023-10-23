@@ -51,17 +51,6 @@
         </app-btn>
 
         <app-btn
-          v-if="printerSupportsForceMove"
-          :disabled="!klippyReady || printerPrinting"
-          small
-          class="ms-1 my-1"
-          :color="forceMove ? 'error' : undefined"
-          @click="toggleForceMove"
-        >
-          FORCE_MOVE
-        </app-btn>
-
-        <app-btn
           v-if="hasSteppersEnabled"
           :disabled="!klippyReady || printerPrinting"
           small
@@ -368,13 +357,6 @@ export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
     return tools
   }
 
-  get printerSupportsForceMove () {
-    return (
-      (this.printerSettings.force_move?.enable_force_move ?? false) &&
-      !this.hasRoundBed
-    )
-  }
-
   get hasSteppersEnabled (): boolean {
     return this.$store.getters['printer/getHasSteppersEnabled'] as boolean
   }
@@ -393,10 +375,6 @@ export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
 
   get showScrewsTiltAdjustDialogAutomatically () {
     return this.$store.state.config.uiSettings.general.showScrewsTiltAdjustDialogAutomatically
-  }
-
-  get forceMove () {
-    return this.$store.state.config.uiSettings.toolhead.forceMove
   }
 
   @Watch('isManualProbeActive')
@@ -431,25 +409,6 @@ export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
       this.klippyReady &&
       !this.printerPrinting
     )
-  }
-
-  async toggleForceMove () {
-    const result = (
-      this.forceMove ||
-      !this.$store.state.config.uiSettings.general.forceMoveToggleWarning ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_forcemove_toggle'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
-      )
-    )
-
-    if (result) {
-      this.$store.dispatch('config/saveByPath', {
-        path: 'uiSettings.toolhead.forceMove',
-        value: !this.forceMove,
-        server: false
-      })
-    }
   }
 }
 </script>

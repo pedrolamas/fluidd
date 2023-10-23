@@ -23,6 +23,7 @@
         v-if="supportsRunoutSensors"
         fullscreen
       />
+      <steppers-card :full-screen="true" />
     </v-col>
   </v-row>
 </template>
@@ -35,13 +36,15 @@ import BedMeshCard from '@/components/widgets/bedmesh/BedMeshCard.vue'
 import BedMeshControls from '@/components/widgets/bedmesh/BedMeshControls.vue'
 import EndStopsCard from '@/components/widgets/endstops/EndStopsCard.vue'
 import RunoutSensorsCard from '@/components/widgets/runout-sensors/RunoutSensorsCard.vue'
+import SteppersCard from '@/components/widgets/steppers/SteppersCard.vue'
 
 @Component({
   components: {
     BedMeshCard,
     BedMeshControls,
     EndStopsCard,
-    RunoutSensorsCard
+    RunoutSensorsCard,
+    SteppersCard
   }
 })
 export default class Tune extends Mixins(StateMixin) {
