@@ -57,6 +57,7 @@ import PrinterLimitsCard from '@/components/widgets/limits/PrinterLimitsCard.vue
 import RetractCard from '@/components/widgets/retract/RetractCard.vue'
 import type { LayoutConfig } from '@/store/layout/types'
 import BedMeshCard from '@/components/widgets/bedmesh/BedMeshCard.vue'
+import SteppersCard from '@/components/widgets/steppers/SteppersCard.vue'
 import GcodePreviewCard from '@/components/widgets/gcode-preview/GcodePreviewCard.vue'
 import JobQueueCard from '@/components/widgets/job-queue/JobQueueCard.vue'
 import SpoolmanCard from '@/components/widgets/spoolman/SpoolmanCard.vue'
@@ -76,6 +77,7 @@ import RunoutSensorsCard from '@/components/widgets/runout-sensors/RunoutSensors
     ConsoleCard,
     OutputsCard,
     BedMeshCard,
+    SteppersCard,
     GcodePreviewCard,
     JobQueueCard,
     SpoolmanCard,
