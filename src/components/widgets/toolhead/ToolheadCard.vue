@@ -51,17 +51,6 @@
         </app-btn>
 
         <app-btn
-          v-if="printerSupportsForceMove"
-          :disabled="!klippyReady || printerPrinting"
-          small
-          class="me-1 my-1"
-          :color="forceMoveEnabled ? 'error' : undefined"
-          @click="toggleForceMove"
-        >
-          FORCE_MOVE
-        </app-btn>
-
-        <app-btn
           v-if="hasSteppersEnabled"
           :disabled="!klippyReady || printerPrinting"
           small
@@ -352,34 +341,12 @@ export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
     return tools
   }
 
-  get printerSupportsForceMove () {
-    return (
-      (this.printerSettings.force_move?.enable_force_move ?? false) &&
-      !this.hasRoundBed
-    )
-  }
-
   get hasSteppersEnabled (): boolean {
     return this.$store.getters['printer/getHasSteppersEnabled'] as boolean
   }
 
   get hasRoundBed (): boolean {
     return this.$store.getters['printer/getHasRoundBed'] as boolean
-  }
-
-  async toggleForceMove () {
-    const result = (
-      this.forceMoveEnabled ||
-      !this.$store.state.config.uiSettings.general.forceMoveToggleWarning ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_forcemove_toggle'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
-      )
-    )
-
-    if (result) {
-      this.$store.dispatch('printer/forceMoveEnabled', !this.forceMoveEnabled)
-    }
   }
 }
 </script>

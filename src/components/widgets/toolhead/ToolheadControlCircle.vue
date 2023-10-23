@@ -731,18 +731,11 @@ export default class ToolheadControlCircle extends Mixins(StateMixin, ToolheadMi
       ? -distance
       : distance
 
-    if (this.forceMoveEnabled) {
-      const accel = axis === 'Z'
-        ? this.$store.getters['printer/getPrinterSettings']('printer.max_z_accel')
-        : this.$store.state.printer.printer.toolhead.max_accel
-      this.sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${distance} VELOCITY=${rate} ACCEL=${accel}`)
-    } else {
-      this.sendMoveGcode(
-        {
-          [axis]: distance
-        },
-        rate)
-    }
+    this.sendMoveGcode(
+      {
+        [axis]: distance
+      },
+      rate)
   }
 
   get bedSize (): BedSize {

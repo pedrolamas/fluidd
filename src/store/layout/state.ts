@@ -32,7 +32,8 @@ export const defaultState = (): LayoutState => {
           { id: 'job-queue-card', enabled: false, collapsed: false },
           { id: 'gcode-preview-card', enabled: true, collapsed: false },
           { id: 'bed-mesh-card', enabled: false, collapsed: false },
-          { id: 'beacon-card', enabled: false, collapsed: false }
+          { id: 'beacon-card', enabled: false, collapsed: false },
+          { id: 'steppers-card', enabled: false, collapsed: false }
         ]
       },
       diagnostics: {

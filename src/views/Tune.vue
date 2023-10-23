@@ -27,6 +27,7 @@
         v-if="supportsBeacon"
         fullscreen
       />
+      <steppers-card :full-screen="true" />
     </v-col>
   </v-row>
 </template>
@@ -40,6 +41,7 @@ import BedMeshControls from '@/components/widgets/bedmesh/BedMeshControls.vue'
 import EndStopsCard from '@/components/widgets/endstops/EndStopsCard.vue'
 import RunoutSensorsCard from '@/components/widgets/runout-sensors/RunoutSensorsCard.vue'
 import BeaconCard from '@/components/widgets/beacon/BeaconCard.vue'
+import SteppersCard from '@/components/widgets/steppers/SteppersCard.vue'
 
 @Component({
   components: {
@@ -47,7 +49,8 @@ import BeaconCard from '@/components/widgets/beacon/BeaconCard.vue'
     BedMeshControls,
     EndStopsCard,
     RunoutSensorsCard,
-    BeaconCard
+    BeaconCard,
+    SteppersCard
   }
 })
 export default class Tune extends Mixins(StateMixin) {

@@ -10,7 +10,6 @@
         class="pr-1"
       >
         <app-text-field
-          :color="forceMoveEnabled ? 'error' : 'primary'"
           :label="`X [ ${livePosition[0].toFixed(2)} ]`"
           :rules="[
             $rules.required,
@@ -22,7 +21,7 @@
           dense
           small
           type="number"
-          :disabled="!klippyReady || (!xHomed && !xForceMove)"
+          :disabled="!klippyReady || !xHomed"
           :readonly="printerPrinting"
           :value="(useGcodeCoords) ? gcodePosition[0].toFixed(2) : toolheadPosition[0].toFixed(2)"
           @submit="moveAxisTo('X', +$event)"
@@ -33,7 +32,6 @@
         class="pr-1 pl-1"
       >
         <app-text-field
-          :color="forceMoveEnabled ? 'error' : 'primary'"
           :label="`Y [ ${livePosition[1].toFixed(2)} ]`"
           :rules="[
             $rules.required,
@@ -45,7 +43,7 @@
           dense
           small
           type="number"
-          :disabled="!klippyReady || (!yHomed && !yForceMove)"
+          :disabled="!klippyReady || !yHomed"
           :readonly="printerPrinting"
           :value="(useGcodeCoords) ? gcodePosition[1].toFixed(2) : toolheadPosition[1].toFixed(2)"
           @submit="moveAxisTo('Y', +$event)"
@@ -56,7 +54,6 @@
         class="pr-1 pl-1"
       >
         <app-text-field
-          :color="forceMoveEnabled ? 'error' : 'primary'"
           :label="`Z [ ${livePosition[2].toFixed(3)} ]`"
           :rules="[
             $rules.required,
@@ -68,10 +65,10 @@
           dense
           small
           type="number"
-          :disabled="!klippyReady || (!zHomed && !zForceMove)"
+          :disabled="!klippyReady || !zHomed"
           :readonly="printerPrinting"
-          :value="(useGcodeCoords) ? gcodePosition[2].toFixed(3) : toolheadPosition[2].toFixed(3)"
-          @submit="moveAxisTo('Z', +$event)"
+          :value="(useGcodeCoords) ? gcodePosition[2].toFixed(2) : toolheadPosition[2].toFixed(3)"
+          @change="moveAxisTo('Z', $event)"
         />
       </v-col>
       <v-col
@@ -151,18 +148,6 @@ export default class ToolheadPosition extends Mixins(StateMixin, ToolheadMixin) 
     return this.$store.state.config.uiSettings.general.useGcodeCoords
   }
 
-  get xForceMove () {
-    return this.forceMoveEnabled && !this.xHasMultipleSteppers
-  }
-
-  get yForceMove () {
-    return this.forceMoveEnabled && !this.yHasMultipleSteppers
-  }
-
-  get zForceMove () {
-    return this.forceMoveEnabled && !this.zHasMultipleSteppers
-  }
-
   get usesAbsolutePositioning () {
     return this.$store.state.printer.printer.gcode_move.absolute_coordinates
   }
@@ -186,19 +171,12 @@ export default class ToolheadPosition extends Mixins(StateMixin, ToolheadMixin) 
         ? this.$store.state.config.uiSettings.general.defaultToolheadZSpeed
         : this.$store.state.config.uiSettings.general.defaultToolheadXYSpeed
 
-      if (this.forceMoveEnabled) {
-        const accel = axis === 'Z'
-          ? this.$store.getters['printer/getPrinterSettings']('printer.max_z_accel')
-          : this.$store.state.printer.printer.toolhead.max_accel
-        this.sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${pos} VELOCITY=${rate} ACCEL=${accel}`)
-      } else {
-        this.sendMoveGcode(
-          {
-            [axis]: pos
-          },
-          rate,
-          true)
-      }
+      this.sendMoveGcode(
+        {
+          [axis]: pos
+        },
+        rate,
+        true)
     }
   }
 }
