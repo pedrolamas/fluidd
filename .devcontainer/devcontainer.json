@@ -8,7 +8,7 @@
   "forwardPorts": [5000, 8080, 7125, 8110],
   "features": {
   },
-  "postCreateCommand": "npm ci && npm run bootstrap",
+  "postCreateCommand": "pnpm i --frozen-lockfile && pnpm run bootstrap",
   "customizations": {
     "vscode": {
       "extensions": [

@@ -58,13 +58,13 @@ $ npm --version
 
 ```bash
 $ cd .../path/to/fluidd
-$ npm install
+$ pnpm install --frozen-lockfile
 ```
 
 ### Run a local development server
 
 ```bash
-$ npm run-script serve
+$ pnpm run serve
 ```
 
 Browse to [http://localhost:8080/](http://localhost:8080/) and type in the URL
@@ -73,5 +73,5 @@ of your Moonraker instance, e.g. `http://192.168.0.101:7125`.
 ### Run unit tests
 
 ```bash
-$ npm run test:unit
+$ pnpm run test:unit
 ```
