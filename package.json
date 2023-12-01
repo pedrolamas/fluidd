@@ -37,6 +37,7 @@
     "@ctrl/tinycolor": "^4.0.2",
     "@fontsource/raleway": "^5.0.15",
     "@fontsource/roboto": "^5.0.8",
+    "@irojs/iro-core": "^1.2.1",
     "@jaames/iro": "^5.5.2",
     "axios": "^1.6.2",
     "consola": "^3.2.3",
@@ -71,7 +72,11 @@
     "vue-virtual-scroller": "^1.1.2",
     "vuetify": "^2.7.1",
     "vuetify-confirm": "^2.0.6",
-    "vuex": "^3.6.2"
+    "vuex": "^3.6.2",
+    "workbox-precaching": "^7.0.0",
+    "workbox-routing": "^7.0.0",
+    "workbox-strategies": "^7.0.0",
+    "workbox-window": "^7.0.0"
   },
   "devDependencies": {
     "@mdi/js": "^7.3.67",
