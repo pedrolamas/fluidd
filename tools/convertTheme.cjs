@@ -17,7 +17,7 @@
  * this further in the future.
  *
  * You can invoke this script using npm;
- * npm run theme.convert
+ * pnpm run theme.convert
  *
  * which will write the appropriate theme files in their intended location.
  */

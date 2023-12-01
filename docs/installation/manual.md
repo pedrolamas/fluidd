@@ -17,8 +17,8 @@ Every Fluidd release has a pre-built package available in the [GitHub Releases](
 To manually build Fluidd, make sure you have NodeJS (v16.x) and Git installed. You can follow these steps to build the Fluidd repository:
 1. Clone the [Fluidd source code](https://github.com/fluidd-core/fluidd): `git clone https://github.com/fluidd-core/fluidd.git`
 2. Navigate to the Fluidd source code directory: `cd fluidd`
-3. Install the dependencies: `npm ci`
-4. Build and bundle Fluidd: `npm run build`
+3. Install the dependencies: `pnpm i --frozen-lockfile`
+4. Build and bundle Fluidd: `pnpm run build`
 
 The built files will be written to the `dist` directory.
 You can serve these with your preferred HTTP server, for example [NGINX](https://www.nginx.com/).
@@ -28,4 +28,4 @@ If you'd like to serve your Fluidd installation from a Raspberry Pi, please buil
 * [KIAUH](/installation/kiauh)
 * [FluiddPi](/installation/fluiddpi)
 
-To build Fluidd for development purposes, run `npm run serve` instead of `npm run build` to enable hot-reloads.
+To build Fluidd for development purposes, run `pnpm run serve` instead of `pnpm run build` to enable hot-reloads.

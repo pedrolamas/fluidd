@@ -29,7 +29,7 @@ Fluidd ships with [vue-i18n-extract](https://github.com/kazupon/vue-i18n-extensi
 pre-defined.
 
 ```bash
-npm run i18n-extract
+pnpm run i18n-extract
 ```
 
 Running the above will output a list of missing translations, and un-used keys
