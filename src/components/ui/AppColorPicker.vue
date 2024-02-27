@@ -270,10 +270,12 @@ export default class AppColorPicker extends Vue {
 
   handleSubmitPrimary () {
     this.inputPrimaryColor = this.currentPrimaryColor.hexString
+    this.$emit('update:primary', this.currentPrimaryColor)
   }
 
   handleSubmitWhite () {
     this.inputWhiteValue = this.currentWhiteColor.red
+    this.$emit('update:white', this.currentWhite)
   }
 
   handleReset () {

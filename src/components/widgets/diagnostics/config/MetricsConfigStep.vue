@@ -78,7 +78,7 @@
                   :value="metric.style.lineColor"
                   :title="metric.name"
                   dot
-                  @change="handleColorChange('lineColor', metric, $event)"
+                  @update:primary="handleColorChange('lineColor', metric, $event)"
                 />
               </app-setting>
 
@@ -102,7 +102,7 @@
                   :value="metric.style.fillColor ?? metric.style.lineColor"
                   :title="metric.name"
                   dot
-                  @change="handleColorChange('fillColor', metric, $event)"
+                  @update:primary="handleColorChange('fillColor', metric, $event)"
                 />
               </app-setting>
 
@@ -181,7 +181,7 @@ export default class MetricsConfigStep extends Vue {
   ]
 
   handleColorChange (prop: 'lineColor' | 'fillColor', metric: Metric, event: any) {
-    metric.style[prop] = event.color.hexString
+    metric.style = { ...metric.style, [prop]: event.hexString }
   }
 
   addMetric (axis: number) {
