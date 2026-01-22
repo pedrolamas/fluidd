@@ -79,16 +79,10 @@ export class WebSocketClient {
     this.clearRequests()
 
     try {
-      // For WebSocket-first authentication, we need to pass a token if available.
-      // Check if we have a stored JWT token to use for the connection.
-      const tokenString = this.store.state.auth.tokenString
-      
+      // Connect WebSocket directly without token in URL.
+      // Authentication will be handled via server.connection.identify call.
       this.store.dispatch('socket/onSocketConnecting', true)
-      
-      // If we have a token, pass it in the WebSocket URL for authentication
-      // Otherwise, connect without a token (trusted client or will authenticate later)
-      const wsUrl = tokenString ? `${this.url}?token=${tokenString}` : this.url
-      this.connection = new WebSocket(wsUrl)
+      this.connection = new WebSocket(this.url)
 
       this.connection.onopen = () => {
         if (this.reconnectEnabled) {

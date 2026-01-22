@@ -8,6 +8,7 @@ import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import { upperFirst, camelCase } from 'lodash-es'
 import isKeyOf from '@/util/is-key-of'
+import router from '@/router'
 
 let retryTimeout: number
 
@@ -38,6 +39,8 @@ export const actions = {
       const tokenString = rootState.auth.tokenString
       const apiKey = rootState.auth.apiKey
       
+      // Identify the connection with credentials if available
+      // This is how we authenticate via WebSocket instead of passing token in URL
       SocketActions.serverConnectionIdentify({
         client_name: Globals.APP_NAME,
         version: `${import.meta.env.VERSION || '0.0.0'}-${import.meta.env.HASH || 'unknown'}`.trim(),
@@ -47,23 +50,20 @@ export const actions = {
         ...(apiKey && { api_key: apiKey })
       })
       
-      // Only load authenticated resources if we have credentials
-      // For trusted clients or authenticated clients, these will work
-      // For unauthenticated clients, they'll fail - that's OK, user needs to login first
-      if (tokenString || apiKey || rootState.auth.authenticated) {
-        // Load Moonraker database configuration via WebSocket
-        for (const { NAMESPACE, ROOTS } of Object.values(Globals.MOONRAKER_DB)) {
-          if (Object.keys(ROOTS).length === 0) {
-            continue
-          }
-
-          // Request database items via WebSocket
-          // The response will be dispatched via onServerRead
-          SocketActions.serverDatabaseGetItem(undefined, NAMESPACE)
+      // Load Moonraker database configuration via WebSocket
+      // These calls will fail with "Unauthorized" if not authenticated,
+      // which will trigger a redirect to /login
+      for (const { NAMESPACE, ROOTS } of Object.values(Globals.MOONRAKER_DB)) {
+        if (Object.keys(ROOTS).length === 0) {
+          continue
         }
-        
-        SocketActions.serverFilesList('config')
+
+        // Request database items via WebSocket
+        // The response will be dispatched via onServerRead
+        SocketActions.serverDatabaseGetItem(undefined, NAMESPACE)
       }
+      
+      SocketActions.serverFilesList('config')
     }
   },
 
@@ -120,7 +120,15 @@ export const actions = {
    * for these cases.
    * Another case might be during a klippy shutdown.
    */
-  async onSocketError ({ commit }, payload) {
+  async onSocketError ({ commit, dispatch }, payload) {
+    // Handle unauthorized errors (code -32602)
+    if (payload.code === -32602 || payload.message === 'Unauthorized') {
+      consola.debug('Unauthorized WebSocket call, redirecting to login')
+      // User is not authenticated, redirect to login page
+      await dispatch('auth/logout', {}, { root: true })
+      return
+    }
+    
     if (payload.code >= 400 && payload.code < 500) {
       // If our message contains json, we should try to parse it.
       // This is pretty bad, should get moonraker to fix this response.
