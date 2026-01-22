@@ -45,6 +45,18 @@ export const actions = {
         ...(tokenString && { access_token: tokenString }),
         ...(apiKey && { api_key: apiKey })
       })
+      
+      // Load Moonraker database configuration via WebSocket
+      for (const { NAMESPACE, ROOTS } of Object.values(Globals.MOONRAKER_DB)) {
+        if (Object.keys(ROOTS).length === 0) {
+          continue
+        }
+
+        // Request database items via WebSocket
+        // The response will be dispatched via onServerRead
+        SocketActions.serverDatabaseGetItem(undefined, NAMESPACE)
+      }
+      
       SocketActions.serverFilesList('config')
     }
   },
