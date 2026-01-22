@@ -129,13 +129,22 @@ export const actions = {
 
       // Re-identify on the WebSocket with the new access token
       if (Vue.$socket) {
-        SocketActions.serverConnectionIdentify({
+        await SocketActions.serverConnectionIdentify({
           client_name: Globals.APP_NAME,
           version: `${import.meta.env.VERSION || '0.0.0'}-${import.meta.env.HASH || 'unknown'}`.trim(),
           type: 'web',
           url: Globals.GITHUB_REPO,
           access_token: user.token
         })
+        
+        // After successful login, load database and files
+        for (const { NAMESPACE, ROOTS } of Object.values(Globals.MOONRAKER_DB)) {
+          if (Object.keys(ROOTS).length === 0) {
+            continue
+          }
+          SocketActions.serverDatabaseGetItem(undefined, NAMESPACE)
+        }
+        SocketActions.serverFilesList('config')
       }
 
       return user

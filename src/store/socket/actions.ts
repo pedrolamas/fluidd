@@ -31,6 +31,7 @@ export const actions = {
   async onSocketOpen ({ commit, rootState }, payload) {
     commit('setSocketOpen', payload)
     if (payload === true) {
+      // server.info does not require authentication
       SocketActions.serverInfo()
       
       // Get the JWT token from auth state if available
@@ -46,18 +47,23 @@ export const actions = {
         ...(apiKey && { api_key: apiKey })
       })
       
-      // Load Moonraker database configuration via WebSocket
-      for (const { NAMESPACE, ROOTS } of Object.values(Globals.MOONRAKER_DB)) {
-        if (Object.keys(ROOTS).length === 0) {
-          continue
-        }
+      // Only load authenticated resources if we have credentials
+      // For trusted clients or authenticated clients, these will work
+      // For unauthenticated clients, they'll fail - that's OK, user needs to login first
+      if (tokenString || apiKey || rootState.auth.authenticated) {
+        // Load Moonraker database configuration via WebSocket
+        for (const { NAMESPACE, ROOTS } of Object.values(Globals.MOONRAKER_DB)) {
+          if (Object.keys(ROOTS).length === 0) {
+            continue
+          }
 
-        // Request database items via WebSocket
-        // The response will be dispatched via onServerRead
-        SocketActions.serverDatabaseGetItem(undefined, NAMESPACE)
+          // Request database items via WebSocket
+          // The response will be dispatched via onServerRead
+          SocketActions.serverDatabaseGetItem(undefined, NAMESPACE)
+        }
+        
+        SocketActions.serverFilesList('config')
       }
-      
-      SocketActions.serverFilesList('config')
     }
   },
 
