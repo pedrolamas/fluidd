@@ -6,10 +6,8 @@ import type _Vue from 'vue'
 import { Globals } from '@/globals'
 import { consola } from 'consola'
 import { camelCase, mergeWith } from 'lodash-es'
-import { httpClientActions } from '@/api/httpClientActions'
 import type { Store } from 'vuex'
 import type { RootState } from '@/store/types'
-import axios from 'axios'
 
 const fastNotifyStatusUpdateKeys = [
   'motion_report'
@@ -81,13 +79,10 @@ export class WebSocketClient {
     this.clearRequests()
 
     try {
-      const response = await httpClientActions.accessOneshotTokenGet()
-
-      const token = response.data.result
-
-      // Good. Move on with setting up the socket.
+      // Connect WebSocket directly without HTTP oneshot token.
+      // Authentication will be handled via WebSocket identify call.
       this.store.dispatch('socket/onSocketConnecting', true)
-      this.connection = new WebSocket(`${this.url}?token=${token}`)
+      this.connection = new WebSocket(this.url)
 
       this.connection.onopen = () => {
         if (this.reconnectEnabled) {
@@ -219,13 +214,9 @@ export class WebSocketClient {
         }
       }
     } catch (error: unknown) {
-      // Bad. If this is a 401, then don't retry. Otherwise do.
-      if (
-        !axios.isAxiosError(error) ||
-        error.response?.status !== 401
-      ) {
-        this.reconnect()
-      }
+      // Connection error - retry
+      consola.error(`${this.logPrefix} Connection error:`, error)
+      this.reconnect()
     }
   }
 

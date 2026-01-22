@@ -2,7 +2,6 @@ import Vue from 'vue'
 import type { ActionTree } from 'vuex'
 import type { AuthState } from './types'
 import type { RootState } from '../types'
-import { httpClientActions } from '@/api/httpClientActions'
 import router from '@/router'
 import { consola } from 'consola'
 import { SocketActions } from '@/api/socketActions'
@@ -51,14 +50,10 @@ export const actions = {
     const refreshToken = localStorage.getItem(keys['refresh-token'])
     const token = localStorage.getItem(keys['user-token'])
     if (token && refreshToken) {
-      // We have tokens, commit to them to memory and setup the axios auth
-      // header.
+      // We have tokens, commit them to memory.
+      // No need to set HTTP auth header anymore.
       commit('setToken', token)
       commit('setRefreshToken', refreshToken)
-      httpClientActions.defaults.headers.common.Authorization = `Bearer ${token}`
-    } else {
-      // No tokens, delete auth header.
-      delete httpClientActions.defaults.headers.common.Authorization
     }
   },
 
@@ -90,11 +85,9 @@ export const actions = {
     try {
       const response = await SocketActions.accessRefreshJwt(refresh_token || '')
 
-      // We've successfully retrieved a token. Set the new header and
-      // store data, and move on.
+      // We've successfully retrieved a token. Store it and move on.
       localStorage.setItem(keys['user-token'], response.token)
       commit('setToken', response.token)
-      httpClientActions.defaults.headers.common.Authorization = `Bearer ${response.token}`
       return response.token
     } catch {
       // Error on refresh, we resolve and move on because our request will
@@ -104,11 +97,11 @@ export const actions = {
 
   async getAuthInfo () {
     try {
-      const response = await httpClientActions.accessInfoGet({ withAuth: false })
+      const response = await SocketActions.accessInfo()
 
       return {
-        defaultSource: response.data.result.default_source,
-        availableSources: response.data.result.available_sources
+        defaultSource: response.default_source,
+        availableSources: response.available_sources
       }
     } catch {
       // external authentication sources not supported
@@ -120,18 +113,11 @@ export const actions = {
     const keys = rootGetters['config/getTokenKeys']
 
     try {
-      const response = await httpClientActions.accessLoginPost(username, password, source, {
-        headers: {
-          Authorization: undefined
-        }
-      })
-
-      const user = response.data.result
+      const user = await SocketActions.accessLogin(username, password, source)
 
       // Successful login. Set the tokens and auth status and move on.
       localStorage.setItem(keys['user-token'], user.token)
       localStorage.setItem(keys['refresh-token'], user.refresh_token)
-      httpClientActions.defaults.headers.common.Authorization = `Bearer ${user.token}`
       commit('setAuthenticated', true)
       commit('setCurrentUser', {
         username: user.username,
@@ -145,7 +131,6 @@ export const actions = {
       // Unsuccessful login. Remove any existing keys, set auth and move on.
       localStorage.removeItem(keys['user-token'])
       localStorage.removeItem(keys['refresh-token'])
-      delete httpClientActions.defaults.headers.common.Authorization
       throw error
     }
   },
@@ -164,14 +149,11 @@ export const actions = {
     const keys = rootGetters['config/getTokenKeys']
 
     // Do we want to invalidate all sessions?
-    if (opts.invalidate) await httpClientActions.accessLogoutPost()
+    if (opts.invalidate) await SocketActions.accessLogout()
 
     // Remove the tokens from local storage..
     localStorage.removeItem(keys['user-token'])
     localStorage.removeItem(keys['refresh-token'])
-
-    // Remove the authentication header.
-    delete httpClientActions.defaults.headers.common.Authorization
 
     // Clear the in memory store.
     commit('setCurrentUser', null)
@@ -195,21 +177,11 @@ export const actions = {
    * and / or trust check, in that if the user is not trusted - then we log
    * them out which bumps them to the login page.
    */
-  async checkTrust ({ dispatch, commit, rootGetters }) {
-    const keys = rootGetters['config/getTokenKeys']
-    const token = localStorage.getItem(keys['user-token'])
-
-    // Clear the token.
-    delete httpClientActions.defaults.headers.common.Authorization
-
+  async checkTrust ({ dispatch, commit }) {
     try {
-      // Make the request.
-      const response = await httpClientActions.accessCurrentUserGet({ withAuth: false })
-
-      const user = response.data.result
-
-      // Re-apply the token.
-      httpClientActions.defaults.headers.common.Authorization = `Bearer ${token}`
+      // Make the request via WebSocket without credentials.
+      // If the user is trusted, this will succeed.
+      const user = await SocketActions.accessGetUser()
 
       // no error, so must be trusted. partial logout.
       dispatch('logout', { partial: true })

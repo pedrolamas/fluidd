@@ -28,15 +28,22 @@ export const actions = {
   /**
     * Fired when the socket opens.
     */
-  async onSocketOpen ({ commit }, payload) {
+  async onSocketOpen ({ commit, rootState }, payload) {
     commit('setSocketOpen', payload)
     if (payload === true) {
       SocketActions.serverInfo()
+      
+      // Get the JWT token from auth state if available
+      const tokenString = rootState.auth.tokenString
+      const apiKey = rootState.auth.apiKey
+      
       SocketActions.serverConnectionIdentify({
         client_name: Globals.APP_NAME,
         version: `${import.meta.env.VERSION || '0.0.0'}-${import.meta.env.HASH || 'unknown'}`.trim(),
         type: 'web',
-        url: Globals.GITHUB_REPO
+        url: Globals.GITHUB_REPO,
+        ...(tokenString && { access_token: tokenString }),
+        ...(apiKey && { api_key: apiKey })
       })
       SocketActions.serverFilesList('config')
     }

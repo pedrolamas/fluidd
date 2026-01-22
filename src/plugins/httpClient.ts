@@ -17,61 +17,27 @@ const createHttpClient = (store: Store<RootState>) => {
 
   // For these paths, we force remove the withAuth flag.
   const unauthenticatedPaths = [
-    '/access/login',
-    '/access/refresh_token'
+    // All paths are now unauthenticated via HTTP
+    // File operations use oneshot tokens
   ]
 
   // For these paths, we don't emit an error because we handle them
   // downstream.
   const handledErrorRequests = {
-    400: [
-      '/access/login'
-    ],
     502: [
-      '/access/oneshot_token',
-      '/access/user'
+      '/server/files'
     ]
   }
 
   const requestInterceptor = async (config: InternalAxiosRequestConfig) => {
-    // Check our auth token.
-    // If the token is about to expire...
-    // Attempt to refresh the token.
-    // This would only run if we have tokens defined. Otherwise it's
-    // assumed we're trusted by moonraker.
-    // Don't check for the refresh token path
-    if (config.url !== '/access/refresh_jwt') {
-      const isExpiring = await store.dispatch('auth/checkToken')
-      if (isExpiring) {
-        const token = await store.dispatch('auth/refreshTokens')
-        if (token) config.headers.Authorization = `Bearer ${token}`
-      }
-    }
-
-    // If this is a request for an api path known to not be authenticated, then
-    // remove the withAuth flag.
-    const path = config.url || ''
-    if (unauthenticatedPaths.includes(path)) config.withAuth = false
-
+    // With WebSocket-first approach, HTTP is only used for file operations.
+    // No need to manage auth tokens here.
     return config
   }
 
   const responseInterceptor = (response: AxiosResponse) => {
-    switch (response.status) {
-      case 200:
-      // We can reasonably assume that successfull moonraker responses
-      // determine a user is trusted or authenticated in some way.
-        if (
-          store.state.config.apiUrl &&
-          response.config.baseURL === store.state.config.apiUrl &&
-          response.config.withAuth
-        ) {
-        // Set authenticated to true.
-          store.commit('auth/setAuthenticated', true)
-        }
-        break
-      default:
-    }
+    // With WebSocket-first approach, authentication is handled via WebSocket.
+    // HTTP responses don't determine auth status.
     return response
   }
 
@@ -100,17 +66,15 @@ const createHttpClient = (store: Store<RootState>) => {
         EventBus.$emit(message || 'Server error', { type: 'error' })
         break
       case 502:
-      case 400:
         consola.debug(error.response.status, error.message, message)
         if (!handledErrorRequests[error.response.status].includes(url)) {
           EventBus.$emit(message || 'Server error', { type: 'error' })
         }
         break
       case 401:
-        if (error.config?.withAuth) {
-        // logout.
-          await store.dispatch('auth/logout')
-        }
+        // 401 errors during HTTP requests indicate authentication issues.
+        // Since auth is handled via WebSocket, we just log this.
+        consola.debug('HTTP 401 error:', url, message)
         break
       case 404:
         consola.debug(error.response.status, error.message, message)
