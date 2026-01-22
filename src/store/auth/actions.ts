@@ -5,6 +5,7 @@ import type { RootState } from '../types'
 import router from '@/router'
 import { consola } from 'consola'
 import { SocketActions } from '@/api/socketActions'
+import { Globals } from '@/globals'
 
 export const actions = {
   /**
@@ -125,6 +126,17 @@ export const actions = {
       })
       commit('setToken', user.token)
       commit('setRefreshToken', user.refresh_token)
+
+      // Re-identify on the WebSocket with the new access token
+      if (Vue.$socket) {
+        SocketActions.serverConnectionIdentify({
+          client_name: Globals.APP_NAME,
+          version: `${import.meta.env.VERSION || '0.0.0'}-${import.meta.env.HASH || 'unknown'}`.trim(),
+          type: 'web',
+          url: Globals.GITHUB_REPO,
+          access_token: user.token
+        })
+      }
 
       return user
     } catch (error: unknown) {

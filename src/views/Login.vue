@@ -100,9 +100,6 @@
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { appInit } from '@/init'
-import { consola } from 'consola'
-import type { InstanceConfig } from '@/store/config/types'
 
 @Component({})
 export default class Login extends Vue {
@@ -114,9 +111,14 @@ export default class Login extends Vue {
   availableSources = [this.source]
 
   async mounted () {
-    const authInfo = await this.$typedDispatch('auth/getAuthInfo')
-    this.source = authInfo.defaultSource ?? this.source
-    this.availableSources = authInfo.availableSources ?? this.availableSources
+    try {
+      const authInfo = await this.$typedDispatch('auth/getAuthInfo')
+      this.source = authInfo.defaultSource ?? this.source
+      this.availableSources = authInfo.availableSources ?? this.availableSources
+    } catch (e) {
+      // If we can't get auth info (e.g., socket not ready), use defaults
+      console.debug('Could not get auth info:', e)
+    }
   }
 
   async handleLogin () {
@@ -124,23 +126,16 @@ export default class Login extends Vue {
     this.loading = true
     try {
       await this.$typedDispatch('auth/login', { username: this.username, password: this.password, source: this.source })
+      
+      // On successful login, navigate to home
+      // The auth action already re-identifies on the WebSocket with the new token
+      if (this.$route.name !== 'home') {
+        this.$router.push({ name: 'home' })
+      }
     } catch {
       this.error = true
     }
     this.loading = false
-
-    // Re-init the app.
-    if (!this.error) {
-      const instance: InstanceConfig | undefined = this.$typedGetters['config/getCurrentInstance']
-
-      const config = await appInit(instance, this.$typedState.config.hostConfig)
-
-      // Reconnect the socket with the new instance url.
-      if (config.apiConnected && config.apiAuthenticated) {
-        consola.debug('Activating socket with config', config)
-        this.$socket.connect(config.apiConfig.socketUrl)
-      }
-    }
   }
 }
 </script>
