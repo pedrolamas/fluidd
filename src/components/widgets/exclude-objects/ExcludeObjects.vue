@@ -38,46 +38,31 @@
   </g>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { Icons } from '@/globals'
 import type { ExcludeObjectPart } from '@/store/printer/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class ExcludeObjects extends Mixins(StateMixin) {
-  @Prop({ type: String })
-  readonly shapeRendering?: string
+const { typedGetters } = useStore()
 
-  get parts (): ExcludeObjectPart[] {
-    return this.$typedGetters['printer/getExcludeObjectParts']
-  }
+defineProps<{ shapeRendering?: string }>()
 
-  iconClasses (part: ExcludeObjectPart) {
-    if (part.isExcluded) {
-      return 'partExcluded'
-    } else if (part.isCurrent) {
-      return 'partCurrent'
-    } else {
-      return 'partIncluded'
-    }
-  }
+defineEmits<{ (e: 'cancel', name: string): void }>()
 
-  partSVG (part: ExcludeObjectPart) {
-    const polygonAsString = part.polygon!
-      .map(point => `${point[0]},${point[1]}`)
-      .join('L')
+const parts = computed<ExcludeObjectPart[]>(() => typedGetters['printer/getExcludeObjectParts'])
+const iconCancelled = Icons.cancelled
+const iconCircle = Icons.circle
 
-    return `M${polygonAsString}z`
-  }
+function iconClasses (part: ExcludeObjectPart) {
+  if (part.isExcluded) return 'partExcluded'
+  if (part.isCurrent) return 'partCurrent'
+  return 'partIncluded'
+}
 
-  get iconCancelled () {
-    return Icons.cancelled
-  }
-
-  get iconCircle () {
-    return Icons.circle
-  }
+function partSVG (part: ExcludeObjectPart) {
+  const polygonAsString = part.polygon!.map(point => `${point[0]},${point[1]}`).join('L')
+  return `M${polygonAsString}z`
 }
 </script>
 

@@ -51,36 +51,30 @@
   </v-container>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, getCurrentInstance } from 'vue'
 import { appInit } from '@/init'
-import StateMixin from '@/mixins/state'
 import type { InstanceConfig } from '@/store/config/types'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({
-  components: {}
-})
-export default class SocketDisconnected extends Mixins(StateMixin) {
-  reload () {
-    window.location.reload()
-  }
+const { typedState, typedGetters } = useStore()
+const { socketConnecting, appReady } = useStateMixin()
+const vm = getCurrentInstance()
 
-  get activeInstance (): InstanceConfig | undefined {
-    return this.$typedGetters['config/getCurrentInstance']
-  }
+const activeInstance = computed<InstanceConfig | undefined>(
+  () => typedGetters['config/getCurrentInstance']
+)
+const apiUrl = computed(() => typedState.config.apiUrl)
 
-  get apiUrl (): string {
-    return this.$typedState.config.apiUrl
-  }
+function reload () {
+  window.location.reload()
+}
 
-  async reconnect () {
-    // Re-init the app.
-    const config = await appInit(this.activeInstance, this.$typedState.config.hostConfig)
-
-    // Reconnect the socket with the instance url.
-    if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
-      this.$socket.connect(config.apiConfig.socketUrl)
-    }
+async function reconnect () {
+  const config = await appInit(activeInstance.value, typedState.config.hostConfig)
+  if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
+    vm?.proxy?.$socket.connect(config.apiConfig.socketUrl)
   }
 }
 </script>

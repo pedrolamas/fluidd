@@ -42,32 +42,38 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 import type { ExcludeObjectPart } from '@/store/printer/types'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class ExcludeObjectDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const { typedGetters } = useStore()
+const { sendGcode } = useStateMixin()
+const confirm = useConfirm()
+const { tc } = useI18n()
 
-  get parts (): ExcludeObjectPart[] {
-    return this.$typedGetters['printer/getExcludeObjectParts']
-  }
+const props = defineProps<{ value?: boolean }>()
+const emit = defineEmits<{ (e: 'input', v: boolean | undefined): void }>()
 
-  async cancelObject (name: string) {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_exclude_object'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-    if (result) {
-      const reqId = name.toUpperCase().replace(/\s/g, '_')
+const parts = computed<ExcludeObjectPart[]>(() => typedGetters['printer/getExcludeObjectParts'])
 
-      this.sendGcode(`EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(reqId)}`)
-    }
+async function cancelObject (name: string) {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_exclude_object'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+  if (result) {
+    const reqId = name.toUpperCase().replace(/\s/g, '_')
+    sendGcode(`EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(reqId)}`)
   }
 }
 </script>

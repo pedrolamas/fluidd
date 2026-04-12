@@ -24,9 +24,9 @@ export default defineConfigWithVueTs(
   neostandard(),
   vueTsConfigs.recommended,
   {
-    // Views are page-level components not used as child components, so
-    // single-word names pose no conflict risk with HTML element names.
-    files: ['src/views/**/*.vue'],
+    // Views and many internal widget/settings components use single-word names
+    // (matching their class name convention) with no risk of HTML element conflicts.
+    files: ['src/views/**/*.vue', 'src/components/**/*.vue'],
     rules: {
       'vue/multi-word-component-names': 'off'
     }

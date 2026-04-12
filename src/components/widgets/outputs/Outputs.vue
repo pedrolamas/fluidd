@@ -43,38 +43,33 @@
   </v-card-text>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import OutputItem from '@/components/widgets/outputs/OutputItem.vue'
-import StateMixin from '@/mixins/state'
+import { useStore } from '@/composables/useStore'
 import type { Fan, Led, OutputPin } from '@/store/printer/types'
 
-@Component({
-  components: {
-    OutputItem
+const { typedGetters } = useStore()
+
+const all = computed(() => {
+  const fans: Fan[] = typedGetters['printer/getAllFans']
+  const pins: OutputPin[] = typedGetters['printer/getAllPins']
+  const leds: Led[] = typedGetters['printer/getAllLeds']
+
+  const items: Array<Fan | Led | OutputPin> = [
+    ...fans,
+    ...pins
+      .sort((a, b) => (+a.pwm - +b.pwm) || a.name.localeCompare(b.name)),
+    ...leds
+  ]
+
+  const [col1, col2] = items.length > 1
+    ? [items.splice(0, Math.ceil(items.length / 2)), items]
+    : [items, []]
+
+  return {
+    col1,
+    col2
   }
 })
-export default class Outputs extends Mixins(StateMixin) {
-  get all () {
-    const fans: Fan[] = this.$typedGetters['printer/getAllFans']
-    const pins: OutputPin[] = this.$typedGetters['printer/getAllPins']
-    const leds: Led[] = this.$typedGetters['printer/getAllLeds']
-
-    const items: Array<Fan | Led | OutputPin> = [
-      ...fans,
-      ...pins
-        .sort((a, b) => (+a.pwm - +b.pwm) || a.name.localeCompare(b.name)),
-      ...leds
-    ]
-
-    const [col1, col2] = items.length > 1
-      ? [items.splice(0, Math.ceil(items.length / 2)), items]
-      : [items, []]
-
-    return {
-      col1,
-      col2
-    }
-  }
-}
 </script>

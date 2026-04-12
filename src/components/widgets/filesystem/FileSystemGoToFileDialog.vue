@@ -41,11 +41,13 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import { SocketActions } from '@/api/socketActions'
 import getFilePaths from '@/util/get-file-paths'
-import StateMixin from '@/mixins/state'
 import { escapeRegExp } from 'lodash-es'
 
 type File = Moonraker.Files.RootFile & {
@@ -54,65 +56,71 @@ type File = Moonraker.Files.RootFile & {
   rootPath: string
 }
 
-@Component({})
-export default class FileSystemGoToFileDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  root: string
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly root!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'path-change', path: string): void
+}>()
 
-  search = ''
-  loaded = false
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v ?? false)
+})
 
-  get rootFiles (): Moonraker.Files.RootFile[] | undefined {
-    return this.$typedGetters['files/getRootFiles'](this.root)
+const { hasWait } = useStateMixin()
+const { typedGetters } = useStore()
+
+const search = ref('')
+const loaded = ref(false)
+
+const rootFiles = computed((): Moonraker.Files.RootFile[] | undefined =>
+  typedGetters['files/getRootFiles'](props.root)
+)
+
+const matchedFiles = computed((): File[] => {
+  if (!loaded.value || !rootFiles.value) {
+    return []
   }
 
-  get matchedFiles (): File[] {
-    if (!this.loaded || !this.rootFiles) {
-      return []
-    }
+  const searchPattern = search.value
+    .split('')
+    .map(x => escapeRegExp(x))
+    .join('.*?')
+  const searchRegExp = new RegExp(searchPattern, 'i')
 
-    const search = this.search
-      .split('')
-      .map(x => escapeRegExp(x))
-      .join('.*?')
-    const searchRegExp = new RegExp(search, 'i')
+  return rootFiles.value
+    .filter(rootFile => searchRegExp.exec(rootFile.path))
+    .map(rootFile => {
+      const { filename, rootPath, path: filepath } = getFilePaths(rootFile.path, props.root)
 
-    return this.rootFiles
-      .filter(rootFile => searchRegExp.exec(rootFile.path))
-      .map(rootFile => {
-        const { filename, rootPath, path: filepath } = getFilePaths(rootFile.path, this.root)
+      return {
+        ...rootFile,
+        filename,
+        filepath,
+        rootPath
+      }
+    })
+})
 
-        const file: File = ({
-          ...rootFile,
-          filename,
-          filepath,
-          rootPath
-        })
+const loading = computed((): boolean =>
+  hasWait(`${Waits.onFileSystem}/${props.root}/`)
+)
 
-        return file
-      })
-  }
+watch(loading, (value) => {
+  loaded.value = !value
+})
 
-  get loading (): boolean {
-    return this.hasWait(`${this.$waits.onFileSystem}/${this.root}/`)
-  }
-
-  @Watch('loading')
-  onLoading (value: boolean) {
-    this.loaded = !value
-  }
-
-  handleFileClick (file: File) {
-    this.$emit('path-change', file.rootPath)
-    this.open = false
-  }
-
-  mounted () {
-    this.loaded = false
-    SocketActions.serverFilesList(this.root)
-  }
+function handleFileClick (file: File) {
+  emit('path-change', file.rootPath)
+  open.value = false
 }
+
+onMounted(() => {
+  loaded.value = false
+  SocketActions.serverFilesList(props.root)
+})
 </script>

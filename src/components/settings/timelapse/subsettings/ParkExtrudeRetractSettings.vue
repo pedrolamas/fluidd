@@ -8,9 +8,9 @@
       <app-text-field
         :value="parkRetractDistance"
         :rules="[
-          $rules.required,
-          $rules.numberValid,
-          $rules.numberGreaterThanOrEqual(0)
+          Rules.required,
+          Rules.numberValid,
+          Rules.numberGreaterThanOrEqual(0)
         ]"
         :disabled="parkRetractDistanceBlocked"
         hide-details="auto"
@@ -31,9 +31,9 @@
       <app-text-field
         :value="parkRetractSpeed"
         :rules="[
-          $rules.required,
-          $rules.numberValid,
-          $rules.numberGreaterThan(0)
+          Rules.required,
+          Rules.numberValid,
+          Rules.numberGreaterThan(0)
         ]"
         :disabled="parkRetractSpeedBlocked"
         hide-details="auto"
@@ -54,9 +54,9 @@
       <app-text-field
         :value="parkExtrudeDistance"
         :rules="[
-          $rules.required,
-          $rules.numberValid,
-          $rules.numberGreaterThanOrEqual(0)
+          Rules.required,
+          Rules.numberValid,
+          Rules.numberGreaterThanOrEqual(0)
         ]"
         :disabled="parkExtrudeDistanceBlocked"
         hide-details="auto"
@@ -77,9 +77,9 @@
       <app-text-field
         :value="parkExtrudeSpeed"
         :rules="[
-          $rules.required,
-          $rules.numberValid,
-          $rules.numberGreaterThan(0)
+          Rules.required,
+          Rules.numberValid,
+          Rules.numberGreaterThan(0)
         ]"
         :disabled="parkExtrudeSpeedBlocked"
         hide-details="auto"
@@ -94,68 +94,62 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { Rules } from '@/plugins/filters'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import { defaultWritableSettings } from '@/store/timelapse/state'
 
-@Component({})
-export default class ParkExtrudeRetractSettings extends Mixins(StateMixin) {
-  get parkRetractDistanceBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('park_retract_distance')
-  }
+const { typedState, typedGetters } = useStore()
+const { tc } = useI18n()
 
-  get parkRetractDistance (): number {
-    return this.settings.park_retract_distance
-  }
+const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
+  typedState.timelapse.settings ?? defaultWritableSettings
+)
 
-  setParkRetractDistance (value: number) {
-    SocketActions.machineTimelapsePostSettings({ park_retract_distance: value })
-  }
+const parkRetractDistanceBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('park_retract_distance')
+)
 
-  get parkRetractSpeedBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('park_retract_speed')
-  }
+const parkRetractDistance = computed((): number => settings.value.park_retract_distance)
 
-  get parkRetractSpeed (): number {
-    return this.settings.park_retract_speed
-  }
+function setParkRetractDistance (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ park_retract_distance: Number(value) })
+}
 
-  setParkRetractSpeed (value: number) {
-    SocketActions.machineTimelapsePostSettings({ park_retract_speed: value })
-  }
+const parkRetractSpeedBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('park_retract_speed')
+)
 
-  get parkExtrudeDistanceBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('park_extrude_distance')
-  }
+const parkRetractSpeed = computed((): number => settings.value.park_retract_speed)
 
-  get parkExtrudeDistance (): number {
-    return this.settings.park_extrude_distance
-  }
+function setParkRetractSpeed (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ park_retract_speed: Number(value) })
+}
 
-  setParkExtrudeDistance (value: number) {
-    SocketActions.machineTimelapsePostSettings({ park_extrude_distance: value })
-  }
+const parkExtrudeDistanceBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('park_extrude_distance')
+)
 
-  get parkExtrudeSpeedBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('park_extrude_speed')
-  }
+const parkExtrudeDistance = computed((): number => settings.value.park_extrude_distance)
 
-  get parkExtrudeSpeed (): number {
-    return this.settings.park_extrude_speed
-  }
+function setParkExtrudeDistance (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ park_extrude_distance: Number(value) })
+}
 
-  setParkExtrudeSpeed (value: number) {
-    SocketActions.machineTimelapsePostSettings({ park_extrude_speed: value })
-  }
+const parkExtrudeSpeedBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('park_extrude_speed')
+)
 
-  get settings (): Moonraker.Timelapse.WriteableSettings {
-    return this.$typedState.timelapse.settings ?? defaultWritableSettings
-  }
+const parkExtrudeSpeed = computed((): number => settings.value.park_extrude_speed)
 
-  subtitleIfBlocked (blocked: boolean): string {
-    return blocked ? this.$tc('app.general.tooltip.managed_by_moonraker') : ''
-  }
+function setParkExtrudeSpeed (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ park_extrude_speed: Number(value) })
+}
+
+function subtitleIfBlocked (blocked: boolean): string {
+  return blocked ? tc('app.general.tooltip.managed_by_moonraker') : ''
 }
 </script>

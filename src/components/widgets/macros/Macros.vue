@@ -65,40 +65,30 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter } from 'vue-router/composables'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 import MacroBtn from './MacroBtn.vue'
 
-@Component({
-  components: {
-    MacroBtn
-  }
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { sendGcode, hasWait } = useStateMixin()
+const router = useRouter()
+
+const macros = computed(() => typedGetters['macros/getVisibleMacros'])
+
+const expanded = computed({
+  get: () => {
+    let exp: number[] = typedState.macros.expanded
+    exp = exp.filter(i => i <= macros.value.length)
+    return exp
+  },
+  set: (val: number[]) => typedDispatch('macros/saveExpanded', val)
 })
-export default class Macros extends Mixins(StateMixin) {
-  get macros () {
-    return this.$typedGetters['macros/getVisibleMacros']
-  }
 
-  get expanded () {
-    let expanded: number[] = this.$typedState.macros.expanded
-    // Remove any indexes that may no longer exist.
-    expanded = expanded.filter(i => i <= this.macros.length)
-    return expanded
-  }
-
-  set expanded (val: number[]) {
-    this.$typedDispatch('macros/saveExpanded', val)
-  }
-
-  handleEditCategory (categoryId: string) {
-    this.$router.push({
-      name: 'macro_category_settings',
-      params: {
-        categoryId
-      }
-    })
-  }
+function handleEditCategory (categoryId: string) {
+  router.push({ name: 'macro_category_settings', params: { categoryId } })
 }
 </script>
 

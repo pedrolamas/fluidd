@@ -18,43 +18,39 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
 import type { Stepper } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class ToolheadControlBarsStepper extends Mixins(StateMixin) {
-  @Prop({ type: Object })
-  readonly stepper!: Stepper
+const props = defineProps<{
+  stepper: Stepper
+}>()
 
-  get values (): number[] {
-    return [1, 10, 50]
-  }
+const { sendGcode } = useStateMixin()
+const { typedState, typedGetters } = useStore()
 
-  get rate (): number {
-    return this.isStepperZ
-      ? this.$typedState.config.uiSettings.general.defaultToolheadZSpeed
-      : this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
-  }
+const values: number[] = [1, 10, 50]
 
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
-  }
+const isStepperZ = computed((): boolean => props.stepper.key.startsWith('stepper_z'))
 
-  get accel (): number {
-    return this.isStepperZ
-      ? this.printerSettings.printer?.max_z_accel ?? 100
-      : this.$typedState.printer.printer.toolhead.max_accel
-  }
+const printerSettings = computed((): Klipper.SettingsState => typedGetters['printer/getPrinterSettings'])
 
-  get isStepperZ (): boolean {
-    return this.stepper.key.startsWith('stepper_z')
-  }
+const rate = computed((): number =>
+  isStepperZ.value
+    ? typedState.config.uiSettings.general.defaultToolheadZSpeed
+    : typedState.config.uiSettings.general.defaultToolheadXYSpeed
+)
 
-  sendForceMoveGcode (distance: number) {
-    this.sendGcode(`FORCE_MOVE STEPPER=${encodeGcodeParamValue(this.stepper.key)} DISTANCE=${distance} VELOCITY=${this.rate} ACCEL=${this.accel}`)
-  }
+const accel = computed((): number =>
+  isStepperZ.value
+    ? printerSettings.value.printer?.max_z_accel ?? 100
+    : typedState.printer.printer.toolhead.max_accel
+)
+
+function sendForceMoveGcode (distance: number) {
+  sendGcode(`FORCE_MOVE STEPPER=${encodeGcodeParamValue(props.stepper.key)} DISTANCE=${distance} VELOCITY=${rate.value} ACCEL=${accel.value}`)
 }
 </script>

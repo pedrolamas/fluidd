@@ -3,8 +3,8 @@
     <app-btn-collapse-group>
       <app-btn
         v-if="printerPrinting || printerPaused"
-        :loading="hasWait($waits.onPrintCancel)"
-        :disabled="hasWait([$waits.onPrintCancel, $waits.onPrintResume, $waits.onPrintPause])"
+        :loading="hasWait(Waits.onPrintCancel)"
+        :disabled="hasWait([Waits.onPrintCancel, Waits.onPrintResume, Waits.onPrintPause])"
         small
         class="me-1 my-1"
         @click="cancelPrint"
@@ -88,40 +88,29 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import JobHistoryItemStatus from '@/components/widgets/history/JobHistoryItemStatus.vue'
-import ExcludeObjectsDialog from '@/components/widgets/exclude-objects/ExcludeObjectsDialog.vue'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import PauseResumeBtn from './PauseResumeBtn.vue'
 import PauseAtLayerDialog from './PauseAtLayerDialog.vue'
 
-@Component({
-  components: {
-    PauseResumeBtn,
-    PauseAtLayerDialog,
-    JobHistoryItemStatus,
-    ExcludeObjectsDialog
-  }
-})
-export default class StatusControls extends Mixins(StateMixin) {
-  showExcludeObjectDialog = false
-  showPauseAtLayerDialog = false
+defineEmits<{
+  (e: 'print', filename: string): void
+}>()
 
-  get filename (): string {
-    return this.$typedState.printer.printer.print_stats?.filename ?? ''
-  }
+const { printerPrinting, printerPaused, hasWait, cancelPrint, pausePrint, resumePrint, sendGcode } = useStateMixin()
+const { typedState, typedGetters } = useStore()
 
-  get supportsHistoryComponent (): boolean {
-    return this.$typedGetters['server/componentSupport']('history')
-  }
+const showExcludeObjectDialog = ref(false)
+const showPauseAtLayerDialog = ref(false)
 
-  get hasExcludeObjectParts (): boolean {
-    return this.$typedGetters['printer/getHasExcludeObjectParts']
-  }
+const filename = computed(() => typedState.printer.printer.print_stats?.filename ?? '')
+const supportsHistoryComponent = computed(() => typedGetters['server/componentSupport']('history'))
+const hasExcludeObjectParts = computed(() => typedGetters['printer/getHasExcludeObjectParts'])
 
-  resetFile () {
-    this.sendGcode('SDCARD_RESET_FILE')
-  }
+function resetFile () {
+  sendGcode('SDCARD_RESET_FILE')
 }
 </script>

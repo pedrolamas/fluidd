@@ -14,24 +14,23 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 import type { KnownExtruder } from '@/store/printer/types'
 
-@Component({})
-export default class ExtruderSelection extends Mixins(StateMixin) {
-  get extruders (): KnownExtruder[] {
-    return this.$typedGetters['printer/getExtruders']
-  }
+const { klippyReady, printerPrinting, sendGcode } = useStateMixin()
+const { typedState, typedGetters } = useStore()
 
-  get extruder (): string {
-    return this.$typedState.printer.printer.toolhead.extruder
-  }
+const extruders = computed((): KnownExtruder[] => typedGetters['printer/getExtruders'])
 
-  set extruder (extruder: string) {
-    this.sendGcode(`ACTIVATE_EXTRUDER EXTRUDER=${encodeGcodeParamValue(extruder)}`, this.$waits.onExtruderChange)
+const extruder = computed({
+  get: (): string => typedState.printer.printer.toolhead.extruder,
+  set: (value: string) => {
+    sendGcode(`ACTIVATE_EXTRUDER EXTRUDER=${encodeGcodeParamValue(value)}`, Waits.onExtruderChange)
   }
-}
+})
 </script>

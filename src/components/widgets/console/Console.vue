@@ -53,138 +53,136 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, Watch, Ref, PropSync } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { SocketActions } from '@/api/socketActions'
 import ConsoleCommand from './ConsoleCommand.vue'
 import ConsoleItem from './ConsoleItem.vue'
-import { SocketActions } from '@/api/socketActions'
 import type { DinamicScroller } from 'vue-virtual-scroller'
 import type { ConsoleEntry } from '@/store/console/types'
 import type { UpdateResponse } from '@/store/version/types'
 
-@Component({
-  components: {
-    ConsoleCommand,
-    ConsoleItem
+const props = defineProps<{
+  items: ConsoleEntry[] | UpdateResponse[]
+  fullscreen?: boolean
+  readonly?: boolean
+  scrollingPaused?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:scrollingPaused', value: boolean): void
+}>()
+
+const { typedState, typedCommit } = useStore()
+const { klippyConnected, sendGcode } = useStateMixin()
+
+const scroller = ref<DinamicScroller>()
+const _pauseScroll = ref(false)
+
+const currentCommand = computed({
+  get: (): string => typedState.console.consoleCommand,
+  set: (val: string) => {
+    typedCommit('console/setConsoleCommand', val)
   }
 })
-export default class Console extends Mixins(StateMixin) {
-  @Prop({ type: [Array<ConsoleEntry>, Array<UpdateResponse>], default: () => [] })
-  readonly items!: ConsoleEntry[] | UpdateResponse[]
 
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+const flipLayout = computed((): boolean =>
+  typedState.config.uiSettings.general.flipConsoleLayout
+)
 
-  @Prop({ type: Boolean })
-  readonly readonly?: boolean
+watch(flipLayout, () => {
+  scrollToLatest(true)
+})
 
-  @PropSync('scrollingPaused', { type: Boolean })
-  scrollingPausedModel?: boolean
-
-  @Ref('scroller')
-  readonly dynamicScroller!: DinamicScroller
-
-  _pauseScroll = false
-
-  get currentCommand (): string {
-    return this.$typedState.console.consoleCommand
+onMounted(() => {
+  if (scroller.value) {
+    scroller.value.$el.addEventListener('scroll', onScroll)
   }
+})
 
-  set currentCommand (val: string) {
-    this.$typedCommit('console/setConsoleCommand', val)
+onBeforeUnmount(() => {
+  if (scroller.value) {
+    scroller.value.$el.removeEventListener('scroll', onScroll)
   }
+})
 
-  get flipLayout (): boolean {
-    return this.$typedState.config.uiSettings.general.flipConsoleLayout
+watch(() => props.items, (_, oldItems) => {
+  if (scroller.value) {
+    const el = scroller.value.$el
+
+    if (flipLayout.value && (_pauseScroll.value || !typedState.console.autoScroll)) {
+      const { scrollHeight, clientHeight } = el
+
+      if (scrollHeight > clientHeight) {
+        nextTick(() => {
+          el.scrollTop += el.scrollHeight - scrollHeight
+        })
+      }
+    } else {
+      scrollToLatest(oldItems?.length === 0)
+    }
   }
+}, { immediate: true })
 
-  set flipLayout (_) {
-    this.scrollToLatest(true)
-  }
+function updateScrollingPaused () {
+  nextTick(() => {
+    if (!scroller.value) return
+    const { scrollTop, scrollHeight, clientHeight } = scroller.value.$el
 
-  mounted () {
-    this.dynamicScroller.$el.addEventListener('scroll', this.onScroll)
-  }
+    const pauseScroll = flipLayout.value ? scrollTop > 1 : scrollHeight - scrollTop - clientHeight > 1
 
-  beforeDestroy () {
-    this.dynamicScroller.$el.removeEventListener('scroll', this.onScroll)
-  }
+    if (_pauseScroll.value !== pauseScroll) {
+      _pauseScroll.value = pauseScroll
+      emit('update:scrollingPaused', pauseScroll)
+    }
+  })
+}
 
-  @Watch('items', { immediate: true })
-  onItemsChange (_: unknown, oldItems: unknown[]) {
-    if (this.dynamicScroller) {
-      const el = this.dynamicScroller.$el
+function onScroll () {
+  updateScrollingPaused()
+}
 
-      if (this.flipLayout && (this._pauseScroll || !this.$typedState.console.autoScroll)) {
-        const { scrollHeight, clientHeight } = el
+function scrollToLatest (force?: boolean) {
+  if (_pauseScroll.value && !force) return
 
-        if (scrollHeight > clientHeight) {
-          this.$nextTick(() => {
-            el.scrollTop += el.scrollHeight - scrollHeight
-          })
-        }
+  if (scroller.value) {
+    if (
+      typedState.console.autoScroll ||
+      props.readonly ||
+      force
+    ) {
+      if (flipLayout.value) {
+        scroller.value.scrollToItem(0)
       } else {
-        this.scrollToLatest(oldItems?.length === 0)
+        scroller.value.scrollToBottom()
       }
     }
-  }
 
-  updateScrollingPaused () {
-    this.$nextTick(() => {
-      const { scrollTop, scrollHeight, clientHeight } = this.dynamicScroller.$el
-
-      const pauseScroll = this.flipLayout ? scrollTop > 1 : scrollHeight - scrollTop - clientHeight > 1
-
-      if (this._pauseScroll !== pauseScroll) {
-        this._pauseScroll = pauseScroll
-        this.scrollingPausedModel = pauseScroll
-      }
-    })
-  }
-
-  onScroll () {
-    this.updateScrollingPaused()
-  }
-
-  scrollToLatest (force?: boolean) {
-    if (this._pauseScroll && !force) return
-
-    if (this.dynamicScroller) {
-      if (
-        this.$typedState.console.autoScroll ||
-        this.readonly ||
-        force
-      ) {
-        if (this.flipLayout) {
-          this.dynamicScroller.scrollToItem(0)
-        } else {
-          this.dynamicScroller.scrollToBottom()
-        }
-      }
-
-      if (force) {
-        // The fixed/floating nature of the console may only change if the scroll is forced.
-        this.updateScrollingPaused()
-      }
+    if (force) {
+      // The fixed/floating nature of the console may only change if the scroll is forced.
+      updateScrollingPaused()
     }
-  }
-
-  sendCommand (command?: string) {
-    if (command && command.length) {
-      // If clients detect M112 input from the console, we should invoke the emergency_stop endpoint
-      if (command.trim().toLowerCase() === 'm112') {
-        SocketActions.printerEmergencyStop()
-      }
-      this.sendGcode(command)
-      this.currentCommand = ''
-    }
-  }
-
-  handleEntryClick (command: string) {
-    this.currentCommand = command
   }
 }
+
+function sendCommand (command?: string) {
+  if (command && command.length) {
+    // If clients detect M112 input from the console, we should invoke the emergency_stop endpoint
+    if (command.trim().toLowerCase() === 'm112') {
+      SocketActions.printerEmergencyStop()
+    }
+    sendGcode(command)
+    currentCommand.value = ''
+  }
+}
+
+function handleEntryClick (command: string) {
+  currentCommand.value = command
+}
+
+defineExpose({ scrollToLatest, flipLayout })
 </script>
 
 <style lang="scss" scoped>

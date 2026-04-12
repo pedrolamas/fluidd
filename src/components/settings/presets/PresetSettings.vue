@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-subheader id="presets">
-      {{ $t('app.setting.title.thermal_presets') }}
+      {{ t('app.setting.title.thermal_presets') }}
     </v-subheader>
     <v-card
       :elevation="5"
@@ -21,7 +21,7 @@
           >
             $plus
           </v-icon>
-          {{ $t('app.setting.btn.add_thermal_preset') }}
+          {{ t('app.setting.btn.add_thermal_preset') }}
         </app-btn>
       </app-setting>
 
@@ -79,74 +79,63 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, reactive } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
 import PresetDialog from './PresetDialog.vue'
 import type { TemperaturePreset } from '@/store/config/types'
 import type { Fan, Heater } from '@/store/printer/types'
-import StateMixin from '@/mixins/state'
 
-@Component({
-  components: {
-    PresetDialog
-  }
+const { store, typedGetters, typedDispatch } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+
+const dialogState = reactive<{ active: boolean; preset: TemperaturePreset | null }>({
+  active: false,
+  preset: null
 })
-export default class TemperaturePresetSettings extends Mixins(StateMixin) {
-  get heaters (): Heater[] {
-    return this.$typedGetters['printer/getHeaters']
+
+const heaters = computed((): Heater[] => typedGetters['printer/getHeaters'])
+
+const fans = computed((): Fan[] => store.getters['printer/getOutputs'](['temperature_fan']))
+
+const presets = computed((): TemperaturePreset[] => typedGetters['config/getTempPresets'])
+
+function openEditDialog (preset: TemperaturePreset) {
+  dialogState.active = true
+  dialogState.preset = preset
+}
+
+function openAddDialog () {
+  const preset: any = {
+    id: -1,
+    name: '',
+    values: {}
   }
-
-  get fans (): Fan[] {
-    return this.$store.getters['printer/getOutputs'](['temperature_fan'])
+  for (const item of heaters.value) {
+    preset.values[item.name] = { value: 0, type: 'heater', active: true }
   }
-
-  get presets (): TemperaturePreset[] {
-    return this.$typedGetters['config/getTempPresets']
+  for (const item of fans.value) {
+    preset.values[item.name] = { value: 0, type: 'fan', active: true }
   }
+  dialogState.active = true
+  dialogState.preset = preset
+}
 
-  dialogState: any = {
-    active: false,
-    preset: null
-  }
+function handleSavePreset (preset: TemperaturePreset) {
+  typedDispatch('config/updatePreset', preset)
+}
 
-  openEditDialog (preset: TemperaturePreset) {
-    this.dialogState = {
-      active: true,
-      preset
-    }
-  }
+async function handleRemovePreset (preset: TemperaturePreset) {
+  const result = await confirm(
+    t('app.general.simple_form.msg.confirm_remove_thermal_preset', { name: preset.name }),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
 
-  openAddDialog () {
-    const preset: any = {
-      id: -1,
-      name: '',
-      values: {}
-    }
-    for (const item of this.heaters) {
-      preset.values[item.name] = { value: 0, type: 'heater', active: true }
-    }
-    for (const item of this.fans) {
-      preset.values[item.name] = { value: 0, type: 'fan', active: true }
-    }
-    this.dialogState = {
-      active: true,
-      preset
-    }
-  }
-
-  handleSavePreset (preset: TemperaturePreset) {
-    this.$typedDispatch('config/updatePreset', preset)
-  }
-
-  async handleRemovePreset (preset: TemperaturePreset) {
-    const result = await this.$confirm(
-      this.$t('app.general.simple_form.msg.confirm_remove_thermal_preset', { name: preset.name }).toString(),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$typedDispatch('config/removePreset', preset)
-    }
+  if (result) {
+    typedDispatch('config/removePreset', preset)
   }
 }
 </script>

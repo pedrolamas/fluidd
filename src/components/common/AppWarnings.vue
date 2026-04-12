@@ -67,56 +67,25 @@
   </v-alert>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { Globals } from '@/globals'
 import linkExternalUrls from '@/util/link-external-urls'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({
-  components: {}
-})
-export default class AppWarnings extends Mixins(StateMixin) {
-  get docsUrl () {
-    return Globals.DOCS_REQUIRED_CONFIGURATION
-  }
+const { typedGetters } = useStore()
+const { t } = useI18n()
 
-  get moonrakerDocsUrl () {
-    return Globals.DOCS_MOONRAKER_COMPONENTS
-  }
+const appName = Globals.APP_NAME
+const docsUrl = Globals.DOCS_REQUIRED_CONFIGURATION
+const moonrakerDocsUrl = Globals.DOCS_MOONRAKER_COMPONENTS
 
-  get printerWarningsTxt () {
-    return this.$t('app.general.error.app_setup_link', {
-      url: this.docsUrl
-    })
-  }
+const printerWarningsTxt = computed(() => t('app.general.error.app_setup_link', { url: docsUrl }))
+const moonrakerFailedComponentsTxt = computed(() => t('app.general.error.components_config', { url: moonrakerDocsUrl }))
 
-  get moonrakerFailedComponentsTxt () {
-    return this.$t('app.general.error.components_config', {
-      url: this.moonrakerDocsUrl
-    })
-  }
-
-  get appName () {
-    return Globals.APP_NAME
-  }
-
-  get printerWarnings (): string[] {
-    return this.$typedGetters['printer/getPrinterWarnings']
-  }
-
-  get klipperWarnings (): Klipper.ConfigFileWarningState[] {
-    return this.$typedGetters['printer/getKlipperWarnings']
-  }
-
-  get moonrakerFailedComponents (): string[] {
-    return this.$typedGetters['printer/getMoonrakerFailedComponents']
-  }
-
-  get moonrakerWarnings (): string[] {
-    return this.$typedGetters['printer/getMoonrakerWarnings']
-  }
-
-  linkExternalUrls = linkExternalUrls
-}
+const printerWarnings = computed<string[]>(() => typedGetters['printer/getPrinterWarnings'])
+const klipperWarnings = computed<Klipper.ConfigFileWarningState[]>(() => typedGetters['printer/getKlipperWarnings'])
+const moonrakerFailedComponents = computed<string[]>(() => typedGetters['printer/getMoonrakerFailedComponents'])
+const moonrakerWarnings = computed<string[]>(() => typedGetters['printer/getMoonrakerWarnings'])
 </script>

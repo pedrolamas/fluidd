@@ -12,7 +12,7 @@
           ...availableExtruders
         ]"
         :disabled="!klippyReady || printerPrinting"
-        :loading="hasWait(`${$waits.onSyncExtruder}${extruderStepper.name}`)"
+        :loading="hasWait(`${Waits.onSyncExtruder}${extruderStepper.name}`)"
         :reset-value="extruderStepper.config?.extruder"
         item-value="key"
         item-text="name"
@@ -27,34 +27,35 @@
         :value="extruderStepper.enabled"
         :label="$t('app.general.label.stepper_enabled')"
         :disabled="!klippyReady || printerPrinting || extruderStepper.disconnected"
-        :loading="hasWait(`${$waits.onStepperEnable}${extruderStepper.name}`)"
+        :loading="hasWait(`${Waits.onStepperEnable}${extruderStepper.name}`)"
         @change="sendSetStepperEnable"
       />
     </v-col>
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import type { KnownExtruder, ExtruderStepper } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class ExtruderStepperSync extends Mixins(StateMixin) {
-  @Prop({ type: Object, required: true })
-  readonly extruderStepper!: ExtruderStepper
+const props = defineProps<{
+  extruderStepper: ExtruderStepper
+}>()
 
-  get availableExtruders (): KnownExtruder[] {
-    return this.$typedGetters['printer/getExtruders']
-  }
+const { klippyReady, printerPrinting, hasWait, sendGcode } = useStateMixin()
+const { typedGetters } = useStore()
 
-  sendSyncExtruderMotion (value: string | null) {
-    this.sendGcode(`SYNC_EXTRUDER_MOTION EXTRUDER=${encodeGcodeParamValue(this.extruderStepper.name)} MOTION_QUEUE=${value ?? ''}`, `${this.$waits.onSyncExtruder}${this.extruderStepper.name}`)
-  }
+const availableExtruders = computed((): KnownExtruder[] => typedGetters['printer/getExtruders'])
 
-  sendSetStepperEnable (value: boolean) {
-    this.sendGcode(`SET_STEPPER_ENABLE STEPPER=${encodeGcodeParamValue(this.extruderStepper.key)} ENABLE=${+value}`, `${this.$waits.onStepperEnable}${this.extruderStepper.name}`)
-  }
+function sendSyncExtruderMotion (value: string | null) {
+  sendGcode(`SYNC_EXTRUDER_MOTION EXTRUDER=${encodeGcodeParamValue(props.extruderStepper.name)} MOTION_QUEUE=${value ?? ''}`, `${Waits.onSyncExtruder}${props.extruderStepper.name}`)
+}
+
+function sendSetStepperEnable (value: boolean) {
+  sendGcode(`SET_STEPPER_ENABLE STEPPER=${encodeGcodeParamValue(props.extruderStepper.key)} ENABLE=${+value}`, `${Waits.onStepperEnable}${props.extruderStepper.name}`)
 }
 </script>

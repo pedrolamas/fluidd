@@ -8,36 +8,25 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import JsonViewer from 'vue-json-viewer'
+import { useStore } from '@/composables/useStore'
 
-@Component({
-  components: { JsonViewer }
-})
-export default class StateExplorer extends Mixins(StateMixin) {
-  get state () {
-    return {
-      printer: this.$typedState.printer.printer
-    }
-  }
+const { typedState } = useStore()
 
-  /*
-   * the path vue-json-viewer puts out is completely butchered,
-   * we try our best to fix them.
-   * e.g. ("printer.tmc2209 extruder" -> "printer['tmc2209 extruder']")
-   */
-  handleClick (path: string) {
-    const sanitizedPath = path
-      .replace('$.', '')
-      .replace(/\.(\w*\s+\w*)/g, (_, match) => {
-        if (isNaN(match)) return `['${match}']`
-        return `[${match}]`
-      })
+const emit = defineEmits<{ (e: 'input', path: string): void }>()
 
-    this.$emit('input', sanitizedPath)
-  }
+const state = computed(() => ({ printer: typedState.printer.printer }))
+
+function handleClick (path: string) {
+  const sanitizedPath = path
+    .replace('$.', '')
+    .replace(/\.(\w*\s+\w*)/g, (_, match) => {
+      if (isNaN(match)) return `['${match}']`
+      return `[${match}]`
+    })
+  emit('input', sanitizedPath)
 }
 </script>
 

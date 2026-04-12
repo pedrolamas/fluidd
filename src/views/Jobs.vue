@@ -16,25 +16,17 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import JobsCard from '@/components/widgets/jobs/JobsCard.vue'
 import JobQueueCard from '@/components/widgets/job-queue/JobQueueCard.vue'
+import { useStore } from '@/composables/useStore'
 
-@Component({
-  components: {
-    JobsCard,
-    JobQueueCard
-  }
-})
-export default class Configuration extends Mixins(StateMixin) {
-  get supportsJobQueue (): boolean {
-    return this.$typedGetters['server/componentSupport']('job_queue')
-  }
+const { typedState, typedGetters } = useStore()
 
-  get hasQueuedJobs () {
-    return this.supportsJobQueue && this.$typedState.jobQueue.queuedJobs.length > 0
-  }
-}
+const supportsJobQueue = computed<boolean>(() => typedGetters['server/componentSupport']('job_queue'))
+
+const hasQueuedJobs = computed(() =>
+  supportsJobQueue.value && typedState.jobQueue.queuedJobs.length > 0
+)
 </script>

@@ -50,33 +50,34 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class CamerasMenu extends Mixins(StateMixin) {
-  get activeCamera () {
-    const activeWebcam: string = this.$typedState.webcams.activeWebcam
-    const camera: Moonraker.Webcam.Entry | undefined = this.$typedGetters['webcams/getWebcamById'](activeWebcam)
+const { typedState, typedGetters } = useStore()
+const { t } = useI18n()
 
-    return !camera
-      ? this.$t('app.general.btn.all').toString()
-      : camera.name
-  }
+defineEmits<{
+  (e: 'select', uid: string): void
+}>()
 
-  get enabledWebcams (): Moonraker.Webcam.Entry[] {
-    return this.$typedGetters['webcams/getEnabledWebcams']
-  }
+const activeCamera = computed(() => {
+  const activeWebcam: string = typedState.webcams.activeWebcam
+  const camera: Moonraker.Webcam.Entry | undefined = typedGetters['webcams/getWebcamById'](activeWebcam)
 
-  get availableCameras (): Pick<Moonraker.Webcam.Entry, 'uid' | 'name'>[] {
-    return [
-      {
-        uid: 'all',
-        name: this.$t('app.general.btn.all').toString()
-      },
-      ...this.enabledWebcams
-    ]
-  }
-}
+  return !camera
+    ? t('app.general.btn.all')
+    : camera.name
+})
+
+const enabledWebcams = computed((): Moonraker.Webcam.Entry[] => typedGetters['webcams/getEnabledWebcams'])
+
+const availableCameras = computed((): Pick<Moonraker.Webcam.Entry, 'uid' | 'name'>[] => [
+  {
+    uid: 'all',
+    name: t('app.general.btn.all')
+  },
+  ...enabledWebcams.value
+])
 </script>

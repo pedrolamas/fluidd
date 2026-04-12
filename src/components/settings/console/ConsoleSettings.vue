@@ -1,14 +1,14 @@
 <template>
   <div>
     <v-subheader id="console">
-      {{ $t('app.setting.title.console') }}
+      {{ t('app.setting.title.console') }}
     </v-subheader>
     <v-card
       :elevation="5"
       dense
       class="mb-4"
     >
-      <app-setting :title="$tc('app.setting.label.filter', 2)">
+      <app-setting :title="tc('app.setting.label.filter', 2)">
         <app-btn
           outlined
           small
@@ -21,7 +21,7 @@
           >
             $plus
           </v-icon>
-          {{ $t('app.setting.btn.add_filter') }}
+          {{ t('app.setting.btn.add_filter') }}
         </app-btn>
       </app-setting>
 
@@ -66,57 +66,52 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed, reactive } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
 import type { ConsoleFilter } from '@/store/console/types'
 import ConsoleFilterDialog from './ConsoleFilterDialog.vue'
 
-@Component({
-  components: {
-    ConsoleFilterDialog
-  }
+const { typedState, typedDispatch } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+
+const dialogState = reactive<{ open: boolean; filter: ConsoleFilter | null }>({
+  open: false,
+  filter: null
 })
-export default class ConsoleSettings extends Mixins(StateMixin) {
-  dialogState: any = {
-    open: false,
-    filter: null
+
+const filters = computed((): ConsoleFilter[] => typedState.console.consoleFilters)
+
+function handleEditFilterDialog (filter: ConsoleFilter | null) {
+  const filterCopy: ConsoleFilter = filter
+    ? { ...filter }
+    : {
+        id: '',
+        enabled: true,
+        name: '',
+        type: 'contains',
+        value: ''
+      }
+
+  dialogState.open = true
+  dialogState.filter = filterCopy
+}
+
+async function handleRemoveFilter (filter: ConsoleFilter) {
+  const result = await confirm(
+    t('app.general.simple_form.msg.confirm_remove_console_filter', { name: filter.name }),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    typedDispatch('console/onRemoveFilter', filter)
   }
+}
 
-  get filters (): ConsoleFilter[] {
-    return this.$typedState.console.consoleFilters
-  }
-
-  handleEditFilterDialog (filter: ConsoleFilter | null) {
-    const filterCopy: ConsoleFilter = filter
-      ? { ...filter }
-      : {
-          id: '',
-          enabled: true,
-          name: '',
-          type: 'contains',
-          value: ''
-        }
-
-    this.dialogState = {
-      open: true,
-      filter: filterCopy
-    }
-  }
-
-  async handleRemoveFilter (filter: ConsoleFilter) {
-    const result = await this.$confirm(
-      this.$t('app.general.simple_form.msg.confirm_remove_console_filter', { name: filter.name }).toString(),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$typedDispatch('console/onRemoveFilter', filter)
-    }
-  }
-
-  handleSaveFilter (filter: ConsoleFilter) {
-    this.$typedDispatch('console/onSaveFilter', filter)
-  }
+function handleSaveFilter (filter: ConsoleFilter) {
+  typedDispatch('console/onSaveFilter', filter)
 }
 </script>

@@ -50,10 +50,10 @@
               v-model="pauseAtLayer.layer"
               type="number"
               :rules="[
-                $rules.required,
-                $rules.numberValid,
-                $rules.numberGreaterThan(currentLayer),
-                $rules.numberLessThanOrEqual(totalLayers)
+                Rules.required,
+                Rules.numberValid,
+                Rules.numberGreaterThan(currentLayer),
+                Rules.numberLessThanOrEqual(totalLayers)
               ]"
               hide-details="auto"
               filled
@@ -78,11 +78,13 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { reactive, computed, onMounted } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Rules } from '@/plugins/filters'
 import type { Macro } from '@/store/macros/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
-import { Component, VModel, Mixins } from 'vue-property-decorator'
 
 type PauseNextLayer = {
   enable: boolean,
@@ -98,83 +100,86 @@ type PrintStatsMacroVariables = {
   pause_at_layer?: PauseAtLayer,
 }
 
-@Component({})
-export default class PauseAtLayerDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value: boolean
+}>()
 
-  pauseNextLayer: PauseNextLayer = {
-    enable: false,
-    call: 'PAUSE'
-  }
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  pauseAtLayer: PauseAtLayer = {
-    enable: false,
-    call: 'PAUSE',
-    layer: 0
-  }
+const open = computed({
+  get: () => props.value,
+  set: (value) => emit('input', value)
+})
 
-  get setPauseNextLayerMacro () : Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName']('SET_PAUSE_NEXT_LAYER')
-  }
+const { sendGcode } = useStateMixin()
+const { typedState, typedGetters } = useStore()
 
-  get setPauseAtLayerMacro () : Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName']('SET_PAUSE_AT_LAYER')
-  }
+const pauseNextLayer = reactive<PauseNextLayer>({
+  enable: false,
+  call: 'PAUSE'
+})
 
-  get setPrintStatsInfoMacro () : Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName']('SET_PRINT_STATS_INFO')
-  }
+const pauseAtLayer = reactive<PauseAtLayer>({
+  enable: false,
+  call: 'PAUSE',
+  layer: 0
+})
 
-  get printStatsMacroVariables () {
-    const variables: PrintStatsMacroVariables = this.setPrintStatsInfoMacro?.variables ?? {}
+const setPauseNextLayerMacro = computed((): Macro | undefined =>
+  typedGetters['macros/getMacroByName']('SET_PAUSE_NEXT_LAYER')
+)
 
-    return variables
-  }
+const setPauseAtLayerMacro = computed((): Macro | undefined =>
+  typedGetters['macros/getMacroByName']('SET_PAUSE_AT_LAYER')
+)
 
-  get currentLayer (): number {
-    return this.$typedState.printer.printer.print_stats?.info?.current_layer ?? 0
-  }
+const setPrintStatsInfoMacro = computed((): Macro | undefined =>
+  typedGetters['macros/getMacroByName']('SET_PRINT_STATS_INFO')
+)
 
-  get totalLayers (): number {
-    return this.$typedState.printer.printer.print_stats?.info?.total_layer ?? 0
-  }
+const printStatsMacroVariables = computed(() => {
+  const variables: PrintStatsMacroVariables = setPrintStatsInfoMacro.value?.variables ?? {}
+  return variables
+})
 
-  sendAccept () {
-    const gcodes: string[] = []
+const currentLayer = computed((): number =>
+  typedState.printer.printer.print_stats?.info?.current_layer ?? 0
+)
 
-    if (this.setPauseNextLayerMacro) {
-      if (this.pauseNextLayer.enable) {
-        gcodes.push(`SET_PAUSE_NEXT_LAYER ENABLE=1 MACRO=${encodeGcodeParamValue(this.pauseNextLayer.call)}`)
-      } else {
-        gcodes.push('SET_PAUSE_NEXT_LAYER ENABLE=0')
-      }
-    }
+const totalLayers = computed((): number =>
+  typedState.printer.printer.print_stats?.info?.total_layer ?? 0
+)
 
-    if (this.setPauseAtLayerMacro) {
-      if (this.pauseAtLayer.enable) {
-        gcodes.push(`SET_PAUSE_AT_LAYER ENABLE=1 LAYER=${this.pauseAtLayer.layer} MACRO=${encodeGcodeParamValue(this.pauseAtLayer.call)}`)
-      } else {
-        gcodes.push('SET_PAUSE_AT_LAYER ENABLE=0')
-      }
-    }
+function sendAccept () {
+  const gcodes: string[] = []
 
-    this.sendGcode(gcodes.join('\n'))
-
-    this.open = false
-  }
-
-  mounted () {
-    const { pause_at_layer, pause_next_layer } = this.printStatsMacroVariables
-
-    this.pauseNextLayer = {
-      ...this.pauseNextLayer,
-      ...pause_next_layer
-    }
-    this.pauseAtLayer = {
-      ...this.pauseAtLayer,
-      ...pause_at_layer
+  if (setPauseNextLayerMacro.value) {
+    if (pauseNextLayer.enable) {
+      gcodes.push(`SET_PAUSE_NEXT_LAYER ENABLE=1 MACRO=${encodeGcodeParamValue(pauseNextLayer.call)}`)
+    } else {
+      gcodes.push('SET_PAUSE_NEXT_LAYER ENABLE=0')
     }
   }
+
+  if (setPauseAtLayerMacro.value) {
+    if (pauseAtLayer.enable) {
+      gcodes.push(`SET_PAUSE_AT_LAYER ENABLE=1 LAYER=${pauseAtLayer.layer} MACRO=${encodeGcodeParamValue(pauseAtLayer.call)}`)
+    } else {
+      gcodes.push('SET_PAUSE_AT_LAYER ENABLE=0')
+    }
+  }
+
+  sendGcode(gcodes.join('\n'))
+
+  open.value = false
 }
+
+onMounted(() => {
+  const { pause_at_layer, pause_next_layer } = printStatsMacroVariables.value
+
+  Object.assign(pauseNextLayer, pause_next_layer)
+  Object.assign(pauseAtLayer, pause_at_layer)
+})
 </script>

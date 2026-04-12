@@ -51,23 +51,23 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 import type { RunoutSensor } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class RunoutSensorsCard extends Mixins(StateMixin) {
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+defineProps<{
+  fullscreen?: boolean
+}>()
 
-  get sensors (): RunoutSensor[] {
-    return this.$typedGetters['printer/getRunoutSensors']
-  }
+const { typedGetters } = useStore()
+const { sendGcode } = useStateMixin()
 
-  changeSensor (item: RunoutSensor, value: boolean) {
-    this.sendGcode(`SET_FILAMENT_SENSOR SENSOR=${encodeGcodeParamValue(item.name)} ENABLE=${+value}`)
-  }
+const sensors = computed((): RunoutSensor[] => typedGetters['printer/getRunoutSensors'])
+
+function changeSensor (item: RunoutSensor, value: boolean) {
+  sendGcode(`SET_FILAMENT_SENSOR SENSOR=${encodeGcodeParamValue(item.name)} ENABLE=${+value}`)
 }
 </script>

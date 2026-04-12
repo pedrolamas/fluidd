@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-subheader id="theme">
-      {{ $t('app.setting.title.theme') }}
+      {{ t('app.setting.title.theme') }}
     </v-subheader>
     <v-card
       :elevation="5"
@@ -10,15 +10,15 @@
     >
       <app-setting>
         <template #title>
-          <span>{{ $t('app.setting.label.theme_preset') }}</span>
+          <span>{{ t('app.setting.label.theme_preset') }}</span>
           <app-inline-help
             bottom
             small
-            :tooltip="$t('app.setting.tooltip.theme_disclaimer')"
+            :tooltip="t('app.setting.tooltip.theme_disclaimer')"
           />
         </template>
         <v-select
-          v-model="themePreset"
+          :value="themePreset"
           filled
           dense
           single-line
@@ -27,12 +27,13 @@
           item-value="icon.src"
           item-text="name"
           return-object
+          @change="applyThemePreset"
         />
       </app-setting>
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.primary_color')">
+      <app-setting :title="t('app.setting.label.primary_color')">
         <app-btn
           outlined
           small
@@ -40,19 +41,19 @@
           class="mr-2"
           @click="handleReset"
         >
-          {{ $t('app.setting.btn.reset') }}
+          {{ t('app.setting.btn.reset') }}
         </app-btn>
 
         <app-color-picker
           v-if="theme"
           v-model="themeColor"
-          :title="$t('app.setting.btn.select_theme')"
+          :title="t('app.setting.btn.select_theme')"
         />
       </app-setting>
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.dark_mode')">
+      <app-setting :title="t('app.setting.label.dark_mode')">
         <v-switch
           v-model="isDark"
           hide-details
@@ -62,7 +63,7 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.show_logo_on_background')">
+      <app-setting :title="t('app.setting.label.show_logo_on_background')">
         <v-switch
           v-model="backgroundLogo"
           hide-details
@@ -73,83 +74,59 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import type { ThemePreset, ThemeConfig } from '@/store/config/types'
-import ThemePicker from '../ui/AppColorPicker.vue'
 
-@Component({
-  components: {
-    ThemePicker
+const { typedState, typedDispatch } = useStore()
+const { t } = useI18n()
+
+const theme = computed((): ThemeConfig => typedState.config.uiSettings.theme)
+
+const themePresets = computed((): ThemePreset[] => typedState.config.hostConfig.themePresets)
+
+const themePreset = computed((): ThemePreset | undefined =>
+  themePresets.value.find(p => p.logo.src === theme.value.logo.src)
+)
+
+function applyThemePreset (value: ThemePreset) {
+  const { color, isDark, logo } = value
+  updateTheme({ color, isDark, logo })
+}
+
+const themeColor = computed({
+  get: () => theme.value.color,
+  set: (value: string) => {
+    if (theme.value.color.toLowerCase() !== value.toLowerCase()) {
+      updateTheme({ color: value })
+    }
   }
 })
-export default class ThemeSettings extends Mixins(StateMixin) {
-  get theme (): ThemeConfig {
-    return this.$typedState.config.uiSettings.theme
+
+const isDark = computed({
+  get: () => theme.value.isDark,
+  set: (value: boolean) => {
+    updateTheme({ isDark: value })
   }
+})
 
-  get themePresets (): ThemePreset[] {
-    return this.$typedState.config.hostConfig.themePresets
+const backgroundLogo = computed({
+  get: () => theme.value.backgroundLogo,
+  set: (value: boolean) => {
+    updateTheme({ backgroundLogo: value })
   }
+})
 
-  get themePreset (): ThemePreset | undefined {
-    return this.themePresets
-      .find(themePreset => themePreset.logo.src === this.theme.logo.src)
-  }
+function updateTheme (updatedTheme: Partial<ThemeConfig>) {
+  typedDispatch('config/updateTheme', updatedTheme)
+}
 
-  set themePreset (value: ThemePreset) {
-    const { color, isDark, logo } = value
-
-    this.updateTheme({
-      color,
-      isDark,
-      logo
-    })
-  }
-
-  get themeColor () {
-    return this.theme.color
-  }
-
-  set themeColor (value: string) {
-    if (this.theme.color.toLowerCase() !== value.toLowerCase()) {
-      this.updateTheme({
-        color: value
-      })
-    }
-  }
-
-  get isDark () {
-    return this.theme.isDark
-  }
-
-  set isDark (value: boolean) {
-    this.updateTheme({
-      isDark: value
-    })
-  }
-
-  get backgroundLogo () {
-    return this.theme.backgroundLogo
-  }
-
-  set backgroundLogo (value: boolean) {
-    this.updateTheme({
-      backgroundLogo: value
-    })
-  }
-
-  updateTheme (updatedTheme: Partial<ThemeConfig>) {
-    this.$typedDispatch('config/updateTheme', updatedTheme)
-  }
-
-  handleReset () {
-    const themePreset = this.themePreset
-
-    if (themePreset) {
-      this.themePreset = themePreset
-    }
+function handleReset () {
+  const preset = themePreset.value
+  if (preset) {
+    updateTheme({ color: preset.color, isDark: preset.isDark, logo: preset.logo })
   }
 }
 </script>

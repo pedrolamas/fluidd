@@ -49,62 +49,54 @@
   </v-list>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, getCurrentInstance } from 'vue'
 import type { InstanceConfig } from '@/store/config/types'
-import StateMixin from '@/mixins/state'
 import { appInit } from '@/init'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class SystemPrinters extends Mixins(StateMixin) {
-  instanceDialogOpen = false
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { appReady } = useStateMixin()
+const confirm = useConfirm()
+const { t, tc } = useI18n()
+const vm = getCurrentInstance()
 
-  get instanceName (): string {
-    return this.$typedState.config.uiSettings.general.instanceName
+const emit = defineEmits<{ (e: 'click'): void }>()
+
+const instanceDialogOpen = ref(false)
+
+const instances = computed<InstanceConfig[]>(() => typedGetters['config/getInstances'])
+
+watch(appReady, (value) => {
+  if (value && typedState.config.apiUrl === '') {
+    instanceDialogOpen.value = true
   }
+})
 
-  get instances (): InstanceConfig[] {
-    return this.$typedGetters['config/getInstances']
+async function removeInstance (instance: InstanceConfig) {
+  const result = await confirm(
+    t('app.general.simple_form.msg.confirm_remove_printer', { name: instance.name }).toString(),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+  if (result) {
+    typedDispatch('config/removeInstance', instance)
   }
+}
 
-  @Watch('appReady')
-  onAppReady (value: boolean) {
-    if (value) {
-      if (this.$typedState.config.apiUrl === '') {
-        this.instanceDialogOpen = true
-      }
-    }
-  }
+function addInstanceDialog () {
+  instanceDialogOpen.value = true
+}
 
-  async removeInstance (instance: InstanceConfig) {
-    const result = await this.$confirm(
-      this.$t('app.general.simple_form.msg.confirm_remove_printer', { name: instance.name }).toString(),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$typedDispatch('config/removeInstance', instance)
-    }
-  }
-
-  addInstanceDialog () {
-    this.instanceDialogOpen = true
-  }
-
-  async activateInstance (instance: InstanceConfig) {
-    // Close the drawer
-    this.$emit('click')
-    if (!instance.active) {
-      // Close the socket.
-      this.$socket.close()
-
-      // Re-init the app.
-      const config = await appInit(instance, this.$typedState.config.hostConfig)
-
-      // Reconnect the socket with the new instance url.
-      if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
-        this.$socket.connect(config.apiConfig.socketUrl)
-      }
+async function activateInstance (instance: InstanceConfig) {
+  emit('click')
+  if (!instance.active) {
+    vm?.proxy?.$socket.close()
+    const config = await appInit(instance, typedState.config.hostConfig)
+    if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
+      vm?.proxy?.$socket.connect(config.apiConfig.socketUrl)
     }
   }
 }

@@ -68,98 +68,86 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import { SocketActions } from '@/api/socketActions'
-import StateMixin from '@/mixins/state'
 import StatusControls from './StatusControls.vue'
 import StatusTab from './StatusTab.vue'
 import ReprintTab from './ReprintTab.vue'
 import type { TimeEstimates } from '@/store/printer/types'
 import getFilePaths from '@/util/get-file-paths'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({
-  components: {
-    StatusControls,
-    StatusTab,
-    ReprintTab
+const { typedState, typedGetters, typedCommit } = useStore()
+const { printerPrinting, printerPaused, printerState } = useStateMixin()
+
+const tab = ref(0)
+
+// If the user has no history plugin, and there's no print running..
+// then hide the collapse control.
+const supportsHistoryComponent = computed<boolean>(() =>
+  typedGetters['server/componentSupport']('history')
+)
+
+const filename = computed<string>(() =>
+  typedState.printer.printer.print_stats?.filename ?? ''
+)
+
+const estimates = computed<TimeEstimates>(() => typedGetters['printer/getTimeEstimates'])
+
+const collapsable = computed(() =>
+  printerPrinting.value ||
+  supportsHistoryComponent.value ||
+  filename.value !== ''
+)
+
+function init (name: string) {
+  if (name !== '') {
+    tab.value = 0
+  } else {
+    tab.value = 1
   }
+}
+
+watch(filename, (val: string) => {
+  init(val)
 })
-export default class PrinterStatusCard extends Mixins(StateMixin) {
-  tab = 0
 
-  // If the user has no history plugin, and there's no print running..
-  // then hide the collapse control.
-  get supportsHistoryComponent (): boolean {
-    return this.$typedGetters['server/componentSupport']('history')
-  }
+init(filename.value)
 
-  get collapsable () {
-    return (
-      this.printerPrinting ||
-      this.supportsHistoryComponent ||
-      this.filename !== ''
-    )
-  }
+function handlePrint (name: string) {
+  if (typedState.printer.printer.mmu?.enabled === true) {
+    const { rootPath, filename: filenameOnly } = getFilePaths(name, 'gcodes')
+    const fileWithMeta = typedGetters['files/getFile'](rootPath, filenameOnly)
 
-  get filename (): string {
-    return this.$typedState.printer.printer.print_stats?.filename ?? ''
-  }
+    if (fileWithMeta != null && 'referenced_tools' in fileWithMeta) {
+      const mmuPrint = (fileWithMeta.referenced_tools?.length ?? 1) > 1 || typedState.printer.printer.mmu.gate !== -2
 
-  get estimates (): TimeEstimates {
-    return this.$typedGetters['printer/getTimeEstimates']
-  }
+      if (mmuPrint) {
+        typedCommit('mmu/setDialogState', {
+          show: true,
+          filename: name
+        })
 
-  @Watch('filename')
-  onPrinterPrinting (val: string) {
-    this.init(val)
-  }
-
-  created () {
-    this.init(this.filename)
-  }
-
-  init (filename: string) {
-    if (filename !== '') {
-      this.tab = 0
-    } else {
-      this.tab = 1
-    }
-  }
-
-  handlePrint (filename: string) {
-    if (this.$typedState.printer.printer.mmu?.enabled === true) {
-      const { rootPath, filename: filenameOnly } = getFilePaths(filename, 'gcodes')
-      const fileWithMeta = this.$typedGetters['files/getFile'](rootPath, filenameOnly)
-
-      if (fileWithMeta != null && 'referenced_tools' in fileWithMeta) {
-        const mmuPrint = (fileWithMeta.referenced_tools?.length ?? 1) > 1 || this.$typedState.printer.printer.mmu.gate !== -2
-
-        if (mmuPrint) {
-          this.$typedCommit('mmu/setDialogState', {
-            show: true,
-            filename
-          })
-
-          return
-        }
+        return
       }
     }
-
-    const spoolmanSupported: boolean = this.$typedGetters['spoolman/getAvailable']
-    const autoSpoolSelectionDialog: boolean = this.$typedState.config.uiSettings.spoolman.autoSpoolSelectionDialog
-
-    if (spoolmanSupported && autoSpoolSelectionDialog) {
-      this.$typedCommit('spoolman/setDialogState', {
-        show: true,
-        filename
-      })
-
-      return
-    }
-
-    SocketActions.printerPrintStart(filename)
   }
+
+  const spoolmanSupported: boolean = typedGetters['spoolman/getAvailable']
+  const autoSpoolSelectionDialog: boolean = typedState.config.uiSettings.spoolman.autoSpoolSelectionDialog
+
+  if (spoolmanSupported && autoSpoolSelectionDialog) {
+    typedCommit('spoolman/setDialogState', {
+      show: true,
+      filename: name
+    })
+
+    return
+  }
+
+  SocketActions.printerPrintStart(name)
 }
 </script>
 

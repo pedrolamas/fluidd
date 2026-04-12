@@ -74,102 +74,95 @@
   </app-btn-group>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed, onMounted, useListeners, set } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
 import type { Macro } from '@/store/macros/types'
 import gcodeMacroParams from '@/util/gcode-macro-params'
-import { gcodeCommandBuilder, isBasicGcodeCommand, getParamNameForRawGcodeCommand } from '@/util/gcode-helpers'
+import { gcodeCommandBuilder, isBasicGcodeCommand as checkIsBasicGcodeCommand, getParamNameForRawGcodeCommand } from '@/util/gcode-helpers'
 import type { KlippyApp } from '@/store/printer/types'
+
+defineOptions({ inheritAttrs: false })
 
 type MacroParameter = {
   value: string | number
   reset: string | number
 }
 
-@Component({
-  inheritAttrs: false
+const props = defineProps<{
+  macro: Macro
+}>()
+
+const emit = defineEmits<{
+  (e: 'click', command: string): void
+}>()
+
+const { klippyReady, printerPrinting } = useStateMixin()
+const { typedGetters } = useStore()
+const listeners = useListeners()
+
+const params = ref<Record<string, MacroParameter>>({})
+
+const hasParams = computed(() => Object.keys(params.value).length > 0)
+
+const macroName = computed(() => props.macro.name.toUpperCase())
+
+const isBasicGcodeCommand = computed(() => checkIsBasicGcodeCommand(macroName.value))
+
+const paramNameForRawGcodeCommand = computed(() => getParamNameForRawGcodeCommand(macroName.value))
+
+const filteredListeners = computed(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { click, ...rest } = listeners.value
+
+  return rest
 })
-export default class MacroBtn extends Mixins(StateMixin) {
-  @Prop({ type: Object, required: true })
-  readonly macro!: Macro
 
-  params: Record<string, MacroParameter> = {}
+/**
+ * The formatted run command for a macro.
+ */
+const runCommand = computed(() => gcodeCommandBuilder(macroName.value, params.value))
 
-  get hasParams () {
-    return Object.keys(this.params).length > 0
+const borderStyle = computed(() => {
+  if (props.macro?.color) {
+    return `border-color: ${props.macro.color} !important; border-left: solid 4px ${props.macro.color} !important;`
   }
+  return ''
+})
 
-  get macroName () {
-    return this.macro.name.toUpperCase()
-  }
+const klippyApp = computed((): KlippyApp => typedGetters['printer/getKlippyApp'])
 
-  get isBasicGcodeCommand () {
-    return isBasicGcodeCommand(this.macroName)
-  }
+const supportsPythonGcodeMacros = computed(() => klippyApp.value.isKalicoOrDangerKlipper)
 
-  get paramNameForRawGcodeCommand () {
-    return getParamNameForRawGcodeCommand(this.macroName)
-  }
-
-  get filteredListeners () {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { click, ...listeners } = this.$listeners
-
-    return listeners
-  }
-
-  /**
-   * The formatted run command for a macro.
-   */
-  get runCommand () {
-    return gcodeCommandBuilder(this.macroName, this.params)
-  }
-
-  get borderStyle () {
-    if (this.macro?.color) {
-      return `border-color: ${this.macro.color} !important; border-left: solid 4px ${this.macro.color} !important;`
-    }
-    return ''
-  }
-
-  get klippyApp (): KlippyApp {
-    return this.$typedGetters['printer/getKlippyApp']
-  }
-
-  get supportsPythonGcodeMacros () {
-    return this.klippyApp.isKalicoOrDangerKlipper
-  }
-
-  handleClick () {
-    this.$emit('click', this.macroName)
-  }
-
-  mounted () {
-    const gcode = this.macro.config?.gcode
-
-    if (!gcode) return
-
-    const paramNameForRawGcodeCommand = this.paramNameForRawGcodeCommand
-
-    if (paramNameForRawGcodeCommand) {
-      this.$set(this.params, paramNameForRawGcodeCommand, { value: '', reset: '' })
-    } else {
-      if (
-        this.supportsPythonGcodeMacros &&
-        /^\s*!/.test(gcode)
-      ) {
-        return
-      }
-
-      for (const { name, value } of gcodeMacroParams(gcode)) {
-        if (!name.startsWith('_') && !this.params[name]) {
-          this.$set(this.params, name, { value, reset: value })
-        }
-      }
-    }
-  }
+function handleClick () {
+  emit('click', macroName.value)
 }
+
+onMounted(() => {
+  const gcode = props.macro.config?.gcode
+
+  if (!gcode) return
+
+  const paramName = paramNameForRawGcodeCommand.value
+
+  if (paramName) {
+    set(params.value, paramName, { value: '', reset: '' })
+  } else {
+    if (
+      supportsPythonGcodeMacros.value &&
+      /^\s*!/.test(gcode)
+    ) {
+      return
+    }
+
+    for (const { name, value } of gcodeMacroParams(gcode)) {
+      if (!name.startsWith('_') && !params.value[name]) {
+        set(params.value, name, { value, reset: value })
+      }
+    }
+  }
+})
 </script>
 
 <style lang="scss" scoped>

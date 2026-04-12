@@ -22,50 +22,44 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
 
-@Component({})
-export default class FileNameDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  title: string
+  label: string
+  name: string
+  isFile?: boolean
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly title!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+  (e: 'save', name: string): void
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly label!: string
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const newName = ref('')
 
-  @Prop({ type: Boolean })
-  readonly isFile?: boolean
+onMounted(() => { newName.value = props.name })
 
-  newName = ''
-
-  mounted () {
-    this.newName = this.name
-  }
-
-  handleFocus (event: FocusEvent) {
-    if (event.target instanceof HTMLInputElement) {
-      const index = this.isFile
-        ? event.target.value.lastIndexOf('.')
-        : -1
-
-      if (index > 0) {
-        event.target.setSelectionRange(0, index)
-      } else {
-        event.target.select()
-      }
+function handleFocus (event: FocusEvent) {
+  if (event.target instanceof HTMLInputElement) {
+    const index = props.isFile ? event.target.value.lastIndexOf('.') : -1
+    if (index > 0) {
+      event.target.setSelectionRange(0, index)
+    } else {
+      event.target.select()
     }
   }
+}
 
-  handleSave () {
-    this.$emit('save', this.newName)
-    this.open = false
-  }
+function handleSave () {
+  emit('save', newName.value)
+  open.value = false
 }
 </script>

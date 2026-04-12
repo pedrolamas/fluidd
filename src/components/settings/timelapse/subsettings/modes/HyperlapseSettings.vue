@@ -8,9 +8,9 @@
       <app-text-field
         :value="hyperlapseCycle"
         :rules="[
-          $rules.required,
-          $rules.numberValid,
-          $rules.numberGreaterThanOrEqual(1)
+          Rules.required,
+          Rules.numberValid,
+          Rules.numberGreaterThanOrEqual(1)
         ]"
         :disabled="hyperlapseCycleBlocked"
         hide-details="auto"
@@ -25,32 +25,32 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { Rules } from '@/plugins/filters'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import { defaultWritableSettings } from '@/store/timelapse/state'
 
-@Component({})
-export default class HyperlapseSettings extends Mixins(StateMixin) {
-  get hyperlapseCycleBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('hyperlapse_cycle')
-  }
+const { typedState, typedGetters } = useStore()
+const { tc } = useI18n()
 
-  get hyperlapseCycle () {
-    return this.settings.hyperlapse_cycle
-  }
+const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
+  typedState.timelapse.settings ?? defaultWritableSettings
+)
 
-  setHyperlapseCycle (value: number) {
-    SocketActions.machineTimelapsePostSettings({ hyperlapse_cycle: value })
-  }
+const hyperlapseCycleBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('hyperlapse_cycle')
+)
 
-  get settings (): Moonraker.Timelapse.WriteableSettings {
-    return this.$typedState.timelapse.settings ?? defaultWritableSettings
-  }
+const hyperlapseCycle = computed(() => settings.value.hyperlapse_cycle)
 
-  subtitleIfBlocked (blocked: boolean): string {
-    return blocked ? this.$tc('app.general.tooltip.managed_by_moonraker') : ''
-  }
+function setHyperlapseCycle (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ hyperlapse_cycle: Number(value) })
+}
+
+function subtitleIfBlocked (blocked: boolean): string {
+  return blocked ? tc('app.general.tooltip.managed_by_moonraker') : ''
 }
 </script>

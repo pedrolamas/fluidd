@@ -36,31 +36,31 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import StateMixin from '@/mixins/state'
-import { Component, Mixins, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({})
-export default class RolloverLogsDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const { printerPrinting, printerPaused } = useStateMixin()
 
-  application = ''
+const props = defineProps<{ value?: boolean }>()
+const emit = defineEmits<{ (e: 'input', v: boolean | undefined): void }>()
 
-  mounted () {
-    if (
-      this.printerPrinting ||
-      this.printerPaused
-    ) {
-      this.application = 'moonraker'
-    }
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
+
+const application = ref('')
+
+onMounted(() => {
+  if (printerPrinting.value || printerPaused.value) {
+    application.value = 'moonraker'
   }
+})
 
-  sendAccept () {
-    SocketActions.serverLogsRollover(this.application || undefined)
-
-    this.open = false
-  }
+function sendAccept () {
+  SocketActions.serverLogsRollover(application.value || undefined)
+  open.value = false
 }
 </script>

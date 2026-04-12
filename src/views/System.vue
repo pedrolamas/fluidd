@@ -30,11 +30,8 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
-
+<script setup lang="ts">
+import { computed } from 'vue'
 import SystemOverviewCard from '@/components/widgets/system/SystemOverviewCard.vue'
 import McuCard from '@/components/widgets/system/McuCard.vue'
 import SystemUsageCard from '@/components/widgets/system/SystemUsageCard.vue'
@@ -42,28 +39,9 @@ import DiskUsageCard from '@/components/widgets/system/DiskUsageCard.vue'
 import SdInfoCard from '@/components/widgets/system/SdInfoCard.vue'
 import MoonrakerDatabaseCard from '@/components/widgets/system/MoonrakerDatabaseCard.vue'
 import type { MCU } from '@/store/printer/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({
-  components: {
-    FileSystem,
-    SystemOverviewCard,
-    McuCard,
-    SystemUsageCard,
-    DiskUsageCard,
-    SdInfoCard,
-    MoonrakerDatabaseCard
-  }
-})
-export default class Configure extends Mixins(StateMixin) {
-  get breakpoint () {
-    if (this.$vuetify.breakpoint.mdAndDown) {
-      return 12
-    }
-    return 6
-  }
+const { typedGetters } = useStore()
 
-  get mcus (): MCU[] {
-    return this.$typedGetters['printer/getMcus']
-  }
-}
+const mcus = computed<MCU[]>(() => typedGetters['printer/getMcus'])
 </script>

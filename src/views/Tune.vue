@@ -39,43 +39,27 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-
+<script setup lang="ts">
+import { computed } from 'vue'
 import BedMeshCard from '@/components/widgets/bedmesh/BedMeshCard.vue'
 import BedMeshControls from '@/components/widgets/bedmesh/BedMeshControls.vue'
 import EndStopsCard from '@/components/widgets/endstops/EndStopsCard.vue'
 import RunoutSensorsCard from '@/components/widgets/runout-sensors/RunoutSensorsCard.vue'
 import BeaconCard from '@/components/widgets/beacon/BeaconCard.vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({
-  components: {
-    BedMeshCard,
-    BedMeshControls,
-    EndStopsCard,
-    RunoutSensorsCard,
-    BeaconCard
-  }
-})
-export default class Tune extends Mixins(StateMixin) {
-  get supportsBedMesh (): boolean {
-    return this.$typedGetters['mesh/getSupportsBedMesh']
-  }
+const { typedGetters } = useStore()
+const { klippyReady } = useStateMixin()
 
-  get supportsEndStops () {
-    return (
-      this.$typedGetters['printer/getSteppers'].length > 0 ||
-      this.$typedGetters['printer/getProbe'] != null
-    )
-  }
+const supportsBedMesh = computed<boolean>(() => typedGetters['mesh/getSupportsBedMesh'])
 
-  get supportsRunoutSensors () {
-    return this.$typedGetters['printer/getRunoutSensors'].length > 0
-  }
+const supportsEndStops = computed(() =>
+  typedGetters['printer/getSteppers'].length > 0 ||
+  typedGetters['printer/getProbe'] != null
+)
 
-  get supportsBeacon (): boolean {
-    return this.$typedGetters['printer/getSupportsBeacon']
-  }
-}
+const supportsRunoutSensors = computed(() => typedGetters['printer/getRunoutSensors'].length > 0)
+
+const supportsBeacon = computed<boolean>(() => typedGetters['printer/getSupportsBeacon'])
 </script>

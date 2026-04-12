@@ -50,60 +50,38 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed, onUnmounted } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { Waits } from '@/globals'
 import type { Endstop, Probe } from '@/store/printer/types'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({
-  components: {}
+const { typedGetters, typedCommit } = useStore()
+const { sendGcode, hasWait } = useStateMixin()
+
+const endstops = computed<Endstop[]>(() => typedGetters['printer/getEndstops'])
+const hasSteppers = computed(() => typedGetters['printer/getSteppers'].length > 0)
+const probe = computed<Probe | undefined>(() => typedGetters['printer/getProbe'])
+const hasEndstops = computed(() => endstops.value.length > 0)
+
+const endstopsAndProbes = computed(() => {
+  const items = [...endstops.value]
+  if (probe.value != null) {
+    items.push({
+      name: probe.value.name,
+      prettyName: probe.value.prettyName,
+      state: probe.value.last_query
+    })
+  }
+  return items
 })
-export default class EndStopsCard extends Mixins(StateMixin) {
-  get endstops (): Endstop[] {
-    return this.$typedGetters['printer/getEndstops']
-  }
 
-  get hasSteppers (): boolean {
-    return this.$typedGetters['printer/getSteppers'].length > 0
-  }
-
-  get probe (): Probe | undefined {
-    return this.$typedGetters['printer/getProbe']
-  }
-
-  get endstopsAndProbes () {
-    const endstopsAndProbes = [...this.endstops]
-
-    const probe = this.probe
-
-    if (probe != null) {
-      endstopsAndProbes.push({
-        name: probe.name,
-        prettyName: probe.prettyName,
-        state: probe.last_query
-      })
-    }
-
-    return endstopsAndProbes
-  }
-
-  get hasEndstops () {
-    return this.endstops.length > 0
-  }
-
-  queryEndstops () {
-    if (this.hasSteppers) {
-      SocketActions.printerQueryEndstops()
-    }
-
-    if (this.probe !== undefined) {
-      this.sendGcode('QUERY_PROBE', this.$waits.onQueryProbe)
-    }
-  }
-
-  destroyed () {
-    this.$typedCommit('printer/setClearEndStops')
-  }
+function queryEndstops () {
+  if (hasSteppers.value) SocketActions.printerQueryEndstops()
+  if (probe.value !== undefined) sendGcode('QUERY_PROBE', Waits.onQueryProbe)
 }
+
+onUnmounted(() => typedCommit('printer/setClearEndStops'))
 </script>

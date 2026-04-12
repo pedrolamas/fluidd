@@ -56,11 +56,8 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({})
-export default class KlippyStatusCard extends Mixins(StateMixin) {
-}
+const { klippyState, printerPoweredOff, klippyStateMessage, hasWarnings } = useStateMixin()
 </script>

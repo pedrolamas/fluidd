@@ -8,7 +8,7 @@
       <app-btn-group
         class="app-toolchanger-control d-flex"
         :class="{
-          [$vuetify.theme.dark ? 'theme--dark': 'theme--light']: true,
+          [vuetify.theme.dark ? 'theme--dark': 'theme--light']: true,
         }"
       >
         <v-tooltip
@@ -53,68 +53,68 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useVuetify } from '@/composables/useVuetify'
 import type { GcodeCommands } from '@/store/printer/types'
-import type { TranslateResult } from 'vue-i18n'
 import type { Spool } from '@/store/spoolman/types'
 import { chunk } from 'lodash-es'
 import type { Macro } from '@/store/macros/types'
 
 type ToolChangeCommand = {
   name: string,
-  description: string | TranslateResult,
+  description: string,
   color?: string,
   active?: boolean,
   spoolId?: number
 }
 
-@Component({})
-export default class ToolChangeCommands extends Mixins(StateMixin) {
-  get availableCommands (): GcodeCommands {
-    return this.$typedGetters['printer/getAvailableCommands']
-  }
+const { klippyReady, printerPrinting, sendGcode } = useStateMixin()
+const { typedGetters } = useStore()
+const { t } = useI18n()
+const vuetify = useVuetify()
 
-  get toolChangeCommands (): ToolChangeCommand[] {
-    const availableCommands = this.availableCommands
+const availableCommands = computed((): GcodeCommands => typedGetters['printer/getAvailableCommands'])
 
-    return Object.keys(availableCommands)
-      .filter(command => /^t\d+$/i.test(command))
-      .map((command): ToolChangeCommand => {
-        const { help } = availableCommands[command]
-        const description = help && help !== 'G-Code macro'
-          ? help
-          : this.$t('app.tool.tooltip.select_tool', { tool: command.substring(1) })
+const toolChangeCommands = computed((): ToolChangeCommand[] => {
+  const commands = availableCommands.value
 
-        const macro: Macro | undefined = this.$typedGetters['macros/getMacroByName'](command)
+  return Object.keys(commands)
+    .filter(command => /^t\d+$/i.test(command))
+    .map((command): ToolChangeCommand => {
+      const { help } = commands[command]
+      const description = help && help !== 'G-Code macro'
+        ? help
+        : t('app.tool.tooltip.select_tool', { tool: command.substring(1) })
 
-        return {
-          name: command,
-          description,
-          color: macro?.variables?.color ? `#${macro.variables.color}` : undefined,
-          active: macro?.variables?.active === true,
-          spoolId: macro?.variables?.spool_id ? +macro.variables.spool_id : undefined
-        }
-      })
-      .sort((a, b) => +a.name.substring(1) - +b.name.substring(1))
-  }
+      const macro: Macro | undefined = typedGetters['macros/getMacroByName'](command)
 
-  get toolChangeCommandsGrouped (): ToolChangeCommand[][] {
-    const toolChangeCommands = this.toolChangeCommands
+      return {
+        name: command,
+        description,
+        color: macro?.variables?.color ? `#${macro.variables.color}` : undefined,
+        active: macro?.variables?.active === true,
+        spoolId: macro?.variables?.spool_id ? +macro.variables.spool_id : undefined
+      }
+    })
+    .sort((a, b) => +a.name.substring(1) - +b.name.substring(1))
+})
 
-    const cols = Math.ceil(toolChangeCommands.length / Math.ceil(toolChangeCommands.length / 6))
+const toolChangeCommandsGrouped = computed((): ToolChangeCommand[][] => {
+  const commands = toolChangeCommands.value
+  const cols = Math.ceil(commands.length / Math.ceil(commands.length / 6))
+  return chunk(commands, cols)
+})
 
-    return chunk(toolChangeCommands, cols)
-  }
+function getSpoolById (id: number): Spool | undefined {
+  return typedGetters['spoolman/getSpoolById'](id)
+}
 
-  getSpoolById (id: number): Spool | undefined {
-    return this.$typedGetters['spoolman/getSpoolById'](id)
-  }
-
-  getSpoolColor (spool: Spool | undefined) {
-    return spool?.filament.color_hex ?? (this.$vuetify.theme.dark ? '#fff' : '#000')
-  }
+function getSpoolColor (spool: Spool | undefined) {
+  return spool?.filament.color_hex ?? (vuetify.theme.dark ? '#fff' : '#000')
 }
 </script>
 

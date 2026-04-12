@@ -1,13 +1,13 @@
 <template>
   <collapsable-card
-    :title="$t('app.database.label.moonraker_database')"
+    :title="t('app.database.label.moonraker_database')"
     icon="$database"
   >
     <template v-if="backups.length > 0">
       <v-simple-table>
         <thead>
           <tr>
-            <th>{{ $t('app.general.label.name') }}</th>
+            <th>{{ t('app.general.label.name') }}</th>
             <th>&nbsp;</th>
           </tr>
         </thead>
@@ -26,7 +26,7 @@
                   <app-btn
                     v-bind="attrs"
                     icon
-                    :loading="hasWait(`${$waits.onDatabaseRestore}/${item}`)"
+                    :loading="hasWait(`${Waits.onDatabaseRestore}/${item}`)"
                     :disabled="printerPrinting"
                     @click="handleRestoreBackup(item)"
                     v-on="on"
@@ -36,7 +36,7 @@
                     </v-icon>
                   </app-btn>
                 </template>
-                <span>{{ $t('app.database.tooltip.restore_backup') }}</span>
+                <span>{{ t('app.database.tooltip.restore_backup') }}</span>
               </v-tooltip>
 
               <v-tooltip bottom>
@@ -44,7 +44,7 @@
                   <app-btn
                     v-bind="attrs"
                     icon
-                    :loading="hasWait(`${$waits.onDatabaseDeleteBackup}/${item}`)"
+                    :loading="hasWait(`${Waits.onDatabaseDeleteBackup}/${item}`)"
                     @click="handleDeleteBackup(item)"
                     v-on="on"
                   >
@@ -53,7 +53,7 @@
                     </v-icon>
                   </app-btn>
                 </template>
-                <span>{{ $t('app.database.tooltip.delete_backup') }}</span>
+                <span>{{ t('app.database.tooltip.delete_backup') }}</span>
               </v-tooltip>
             </td>
           </tr>
@@ -68,7 +68,7 @@
         v-if="backups.length === 0"
         class="mb-4"
       >
-        {{ $t('app.database.msg.not_found') }}
+        {{ t('app.database.msg.not_found') }}
       </div>
       <v-row>
         <v-col cols="6">
@@ -77,11 +77,11 @@
             block
             class="mb-2"
             color="primary"
-            :loading="hasWait($waits.onDatabaseCompact)"
+            :loading="hasWait(Waits.onDatabaseCompact)"
             :disabled="printerPrinting"
             @click="handleCompactDatabase"
           >
-            {{ $t('app.database.btn.compact_database') }}
+            {{ t('app.database.btn.compact_database') }}
           </app-btn>
         </v-col>
         <v-col cols="6">
@@ -90,11 +90,11 @@
             block
             class="mb-2"
             color="primary"
-            :loading="hasWaitsBy(`${$waits.onDatabasePostBackup}/`)"
+            :loading="hasWaitsBy(`${Waits.onDatabasePostBackup}/`)"
             :disabled="printerPrinting"
             @click="handleCreateBackup"
           >
-            {{ $t('app.database.btn.create_backup') }}
+            {{ t('app.database.btn.create_backup') }}
           </app-btn>
         </v-col>
       </v-row>
@@ -102,48 +102,52 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useConfirm } from '@/composables/useConfirm'
+import { Filters } from '@/plugins/filters'
+import { Waits } from '@/globals'
 import { SocketActions } from '@/api/socketActions'
-import StateMixin from '@/mixins/state'
 
-@Component({ })
-export default class MoonrakerDatabaseCard extends Mixins(StateMixin) {
-  get backups (): string[] {
-    return this.$typedGetters['database/getBackups']
+const { typedGetters, typedCommit } = useStore()
+const { t, tc } = useI18n()
+const { printerPrinting, hasWait, hasWaitsBy } = useStateMixin()
+const confirm = useConfirm()
+
+const backups = computed((): string[] => typedGetters['database/getBackups'])
+
+async function handleRestoreBackup (filename: string) {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_restore_backup'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    SocketActions.serverDatabaseRestore(filename)
+    typedCommit('socket/setSocketDisconnecting', true)
   }
+}
 
-  async handleRestoreBackup (filename: string) {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_restore_backup'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
+async function handleDeleteBackup (filename: string) {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_delete', 1),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
 
-    if (result) {
-      SocketActions.serverDatabaseRestore(filename)
-      this.$typedCommit('socket/setSocketDisconnecting', true)
-    }
+  if (result) {
+    SocketActions.serverDatabaseDeleteBackup(filename)
   }
+}
 
-  async handleDeleteBackup (filename: string) {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_delete', 1),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
+function handleCreateBackup () {
+  const timestamp = Filters.formatTimestamp(Date.now())
+  SocketActions.serverDatabasePostBackup(`${timestamp}.db`)
+}
 
-    if (result) {
-      SocketActions.serverDatabaseDeleteBackup(filename)
-    }
-  }
-
-  handleCreateBackup () {
-    const timestamp = this.$filters.formatTimestamp(Date.now())
-
-    SocketActions.serverDatabasePostBackup(`${timestamp}.db`)
-  }
-
-  handleCompactDatabase () {
-    SocketActions.serverDatabaseCompact()
-  }
+function handleCompactDatabase () {
+  SocketActions.serverDatabaseCompact()
 }
 </script>

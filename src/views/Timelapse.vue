@@ -40,30 +40,19 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref } from 'vue'
 import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
 import TimelapseStatusCard from '@/components/widgets/timelapse/TimelapseStatusCard.vue'
 import TimelapseSettingsCard from '@/components/widgets/timelapse/TimelapseSettingsCard.vue'
 import TimelapseRenderSettingsDialog from '@/components/widgets/timelapse/TimelapseRenderSettingsDialog.vue'
 
-@Component({
-  components: {
-    TimelapseRenderSettingsDialog,
-    FileSystem,
-    TimelapseStatusCard,
-    TimelapseSettingsCard
-  }
-})
-export default class Timelapse extends Mixins(StateMixin) {
-  renderDialogOpen = false
-  renderDialogRenderable = false
+const renderDialogOpen = ref(false)
+const renderDialogRenderable = ref(false)
 
-  openRenderDialog (renderable = false) {
-    this.renderDialogRenderable = renderable
-    this.renderDialogOpen = true
-  }
+function openRenderDialog (renderable = false) {
+  renderDialogRenderable.value = renderable
+  renderDialogOpen.value = true
 }
 </script>
 

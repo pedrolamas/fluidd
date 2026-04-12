@@ -19,27 +19,23 @@
   </v-list>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router/composables'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class SystemLayout extends Mixins(StateMixin) {
-  get canEditLayout () {
-    return this.$route.meta?.dashboard ?? false
-  }
+const { typedState, typedCommit } = useStore()
+const route = useRoute()
 
-  get layoutMode (): boolean {
-    return this.$typedState.config.layoutMode
-  }
+const emit = defineEmits<{ (e: 'click'): void }>()
 
-  set layoutMode (val: boolean) {
-    this.$typedCommit('config/setLayoutMode', val)
-    this.close()
-  }
+const canEditLayout = computed(() => route.meta?.dashboard ?? false)
 
-  close () {
-    this.$emit('click')
+const layoutMode = computed({
+  get: () => typedState.config.layoutMode,
+  set: (val: boolean) => {
+    typedCommit('config/setLayoutMode', val)
+    emit('click')
   }
-}
+})
 </script>

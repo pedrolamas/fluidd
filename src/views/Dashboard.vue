@@ -35,9 +35,8 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
 import PrinterStatusCard from '@/components/widgets/status/PrinterStatusCard.vue'
 import JobsCard from '@/components/widgets/jobs/JobsCard.vue'
 import ToolheadCard from '@/components/widgets/toolhead/ToolheadCard.vue'
@@ -58,19 +57,23 @@ import SensorsCard from '@/components/widgets/sensors/SensorsCard.vue'
 import RunoutSensorsCard from '@/components/widgets/runout-sensors/RunoutSensorsCard.vue'
 import BeaconCard from '@/components/widgets/beacon/BeaconCard.vue'
 import AfcCard from '@/components/widgets/afc/AfcCard.vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({
+// Register all dashboard widget cards so they can be resolved by string ID
+// via <component :is="c.id"> in the dynamic layout system
+defineOptions({
   components: {
     PrinterStatusCard,
     JobsCard,
     ToolheadCard,
-    MacrosCard,
     TemperatureCard,
     CameraCard,
-    PrinterLimitsCard,
-    RetractCard,
+    MacrosCard,
     ConsoleCard,
     OutputsCard,
+    PrinterLimitsCard,
+    RetractCard,
     BedMeshCard,
     GcodePreviewCard,
     JobQueueCard,
@@ -82,161 +85,129 @@ import AfcCard from '@/components/widgets/afc/AfcCard.vue'
     AfcCard
   }
 })
-export default class Dashboard extends Mixins(StateMixin) {
-  containers: Array<LayoutConfig[]> = []
 
-  mounted () {
-    this.onLayoutChange()
-  }
+const { typedState, typedGetters, typedCommit, typedDispatch } = useStore()
+const { klippyReady } = useStateMixin()
 
-  get columnCount () {
-    if (this.inLayout) return 4
+const containers = ref<Array<LayoutConfig[]>>([])
 
-    return this.containers.reduce((count, container) => +this.hasCards(container) + count, 0)
-  }
+const inLayout = computed<boolean>(() => typedState.config.layoutMode)
 
-  @Watch('columnCount')
-  onColumnCount (value: number) {
-    this.$typedCommit('config/setContainerColumnCount', value)
-  }
+const layout = computed<LayoutContainer | undefined>(() => {
+  const layoutName: string = typedGetters['layout/getSpecificLayoutName']
+  return typedGetters['layout/getLayout'](layoutName)
+})
 
-  get columnSpan () {
-    return 12 / this.columnCount
-  }
+const printerSettings = computed<Klipper.SettingsState>(() => typedGetters['printer/getPrinterSettings'])
 
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
-  }
+const hasCameras = computed<boolean>(() => typedGetters['webcams/getEnabledWebcams'].length > 0)
 
-  get hasCameras (): boolean {
-    return this.$typedGetters['webcams/getEnabledWebcams'].length > 0
-  }
+const hasHeatersOrTemperatureSensors = computed<boolean>(() =>
+  typedGetters['printer/getHeaters'].length > 0 ||
+  typedGetters['printer/getOutputs'](['temperature_fan']).length > 0 ||
+  typedGetters['printer/getSensors'].length > 0
+)
 
-  get hasHeatersOrTemperatureSensors (): boolean {
-    return (
-      this.$typedGetters['printer/getHeaters'].length > 0 ||
-      this.$typedGetters['printer/getOutputs'](['temperature_fan']).length > 0 ||
-      this.$typedGetters['printer/getSensors'].length > 0
-    )
-  }
+const hasSensors = computed<boolean>(() => typedGetters['sensors/getSensors'].length > 0)
 
-  get hasSensors (): boolean {
-    return this.$typedGetters['sensors/getSensors'].length > 0
-  }
+const firmwareRetractionEnabled = computed<boolean>(() => 'firmware_retraction' in printerSettings.value)
 
-  get firmwareRetractionEnabled (): boolean {
-    return 'firmware_retraction' in this.printerSettings
-  }
+const supportsJobQueue = computed<boolean>(() => typedGetters['server/componentSupport']('job_queue'))
 
-  get supportsJobQueue (): boolean {
-    return this.$typedGetters['server/componentSupport']('job_queue')
-  }
+const supportsBedMesh = computed<boolean>(() => typedGetters['mesh/getSupportsBedMesh'])
 
-  get supportsBedMesh (): boolean {
-    return this.$typedGetters['mesh/getSupportsBedMesh']
-  }
+const supportsBeacon = computed<boolean>(() => typedGetters['printer/getSupportsBeacon'])
 
-  get supportsBeacon (): boolean {
-    return this.$typedGetters['printer/getSupportsBeacon']
-  }
+const supportsRunoutSensors = computed<boolean>(() => typedGetters['printer/getRunoutSensors'].length > 0)
 
-  get supportsRunoutSensors (): boolean {
-    return this.$typedGetters['printer/getRunoutSensors'].length > 0
-  }
+const supportsSpoolman = computed<boolean>(() => typedGetters['server/componentSupport']('spoolman'))
 
-  get supportsSpoolman (): boolean {
-    return this.$typedGetters['server/componentSupport']('spoolman')
-  }
+const supportsMmu = computed<boolean>(() => typedState.printer.printer.mmu != null)
 
-  get supportsMmu (): boolean {
-    return this.$typedState.printer.printer.mmu != null
-  }
+const supportsAfc = computed<boolean>(() => typedGetters['printer/getSupportsAfc'])
 
-  get supportsAfc (): boolean {
-    return this.$typedGetters['printer/getSupportsAfc']
-  }
+const hasMacros = computed<boolean>(() => typedGetters['macros/getVisibleMacros'].length > 0)
 
-  get hasMacros (): boolean {
-    return this.$typedGetters['macros/getVisibleMacros'].length > 0
-  }
+const hasOutputs = computed<boolean>(() =>
+  typedGetters['printer/getAllFans'].length > 0 ||
+  typedGetters['printer/getAllPins'].length > 0 ||
+  typedGetters['printer/getAllLeds'].length > 0
+)
 
-  get hasOutputs (): boolean {
-    return (
-      this.$typedGetters['printer/getAllFans'].length > 0 ||
-      this.$typedGetters['printer/getAllPins'].length > 0 ||
-      this.$typedGetters['printer/getAllLeds'].length > 0
-    )
-  }
+const columnCount = computed(() => {
+  if (inLayout.value) return 4
+  return containers.value.reduce((count, container) => +hasCards(container) + count, 0)
+})
 
-  get inLayout (): boolean {
-    return this.$typedState.config.layoutMode
-  }
+const columnSpan = computed(() => 12 / columnCount.value)
 
-  get layout (): LayoutContainer | undefined {
-    const layoutName: string = this.$typedGetters['layout/getSpecificLayoutName']
+watch(columnCount, (value: number) => {
+  typedCommit('config/setContainerColumnCount', value)
+})
 
-    return this.$typedGetters['layout/getLayout'](layoutName)
-  }
+function onLayoutChange () {
+  const newContainers: Array<LayoutConfig[]> = []
 
-  @Watch('layout')
-  onLayoutChange () {
-    const containers: Array<LayoutConfig[]> = []
+  for (let index = 1; index <= 4; index++) {
+    const container = layout.value?.[`container${index}`]
 
-    for (let index = 1; index <= 4; index++) {
-      const container = this.layout?.[`container${index}`]
-
-      if (container && container.length > 0) {
-        containers.push(container)
-      }
+    if (container && container.length > 0) {
+      newContainers.push(container)
     }
-
-    while (containers.length < 4) {
-      containers.push([])
-    }
-
-    this.containers = containers.slice(0, 4)
   }
 
-  handleUpdateLayout () {
-    const name: string = this.$typedGetters['layout/getSpecificLayoutName']
-
-    this.$typedDispatch('layout/onLayoutChange', {
-      name,
-      value: {
-        container1: this.containers[0],
-        container2: this.containers[1],
-        container3: this.containers[2],
-        container4: this.containers[3]
-      }
-    })
+  while (newContainers.length < 4) {
+    newContainers.push([])
   }
 
-  hasCards (container: LayoutConfig[]) {
-    return container.some(card => card.enabled && !this.filtered(card))
-  }
-
-  filtered (item: LayoutConfig) {
-    // Take care of special cases.
-    if (this.inLayout) return false
-    if (item.id === 'camera-card' && !this.hasCameras) return true
-    if (item.id === 'macros-card' && !this.hasMacros) return true
-    if (item.id === 'outputs-card' && !this.hasOutputs) return true
-    if (item.id === 'printer-status-card' && !this.klippyReady) return true
-    if (item.id === 'job-queue-card' && !this.supportsJobQueue) return true
-    if (item.id === 'retract-card' && !this.firmwareRetractionEnabled) return true
-    if (item.id === 'bed-mesh-card' && !this.supportsBedMesh) return true
-    if (item.id === 'beacon-card' && !this.supportsBeacon) return true
-    if (item.id === 'runout-sensors-card' && !this.supportsRunoutSensors) return true
-    if (item.id === 'spoolman-card' && !this.supportsSpoolman) return true
-    if (item.id === 'mmu-card' && !this.supportsMmu) return true
-    if (item.id === 'sensors-card' && !this.hasSensors) return true
-    if (item.id === 'temperature-card' && !this.hasHeatersOrTemperatureSensors) return true
-    if (item.id === 'afc-card' && !this.supportsAfc) return true
-
-    // Otherwise return the opposite of whatever the enabled state is.
-    return !item.enabled
-  }
+  containers.value = newContainers.slice(0, 4)
 }
+
+watch(layout, onLayoutChange)
+
+function handleUpdateLayout () {
+  const name: string = typedGetters['layout/getSpecificLayoutName']
+
+  typedDispatch('layout/onLayoutChange', {
+    name,
+    value: {
+      container1: containers.value[0],
+      container2: containers.value[1],
+      container3: containers.value[2],
+      container4: containers.value[3]
+    }
+  })
+}
+
+function hasCards (container: LayoutConfig[]) {
+  return container.some(card => card.enabled && !filtered(card))
+}
+
+function filtered (item: LayoutConfig) {
+  // Take care of special cases.
+  if (inLayout.value) return false
+  if (item.id === 'camera-card' && !hasCameras.value) return true
+  if (item.id === 'macros-card' && !hasMacros.value) return true
+  if (item.id === 'outputs-card' && !hasOutputs.value) return true
+  if (item.id === 'printer-status-card' && !klippyReady.value) return true
+  if (item.id === 'job-queue-card' && !supportsJobQueue.value) return true
+  if (item.id === 'retract-card' && !firmwareRetractionEnabled.value) return true
+  if (item.id === 'bed-mesh-card' && !supportsBedMesh.value) return true
+  if (item.id === 'beacon-card' && !supportsBeacon.value) return true
+  if (item.id === 'runout-sensors-card' && !supportsRunoutSensors.value) return true
+  if (item.id === 'spoolman-card' && !supportsSpoolman.value) return true
+  if (item.id === 'mmu-card' && !supportsMmu.value) return true
+  if (item.id === 'sensors-card' && !hasSensors.value) return true
+  if (item.id === 'temperature-card' && !hasHeatersOrTemperatureSensors.value) return true
+  if (item.id === 'afc-card' && !supportsAfc.value) return true
+
+  // Otherwise return the opposite of whatever the enabled state is.
+  return !item.enabled
+}
+
+onMounted(() => {
+  onLayoutChange()
+})
 </script>
 
 <style lang="scss" scoped>

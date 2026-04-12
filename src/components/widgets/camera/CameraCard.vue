@@ -1,6 +1,6 @@
 <template>
   <collapsable-card
-    :title="$tc('app.general.title.camera', 2)"
+    :title="tc('app.general.title.camera', 2)"
     icon="$camera"
     :lazy="false"
     draggable
@@ -39,33 +39,27 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
 import CameraMenu from './CameraMenu.vue'
-import StateMixin from '@/mixins/state'
 
-@Component({
-  components: {
-    CameraItem,
-    CameraMenu
-  }
+const { typedGetters, typedDispatch } = useStore()
+const { tc } = useI18n()
+
+const collapsed = ref(false)
+
+const cameras = computed((): Moonraker.Webcam.Entry[] => typedGetters['webcams/getVisibleWebcams'])
+
+const cols = computed(() => {
+  if (cameras.value.length === 1) return 12
+  if (cameras.value.length <= 2) return 6
+  return 4
 })
-export default class CameraCard extends Mixins(StateMixin) {
-  collapsed = false
 
-  get cols () {
-    if (this.cameras.length === 1) return 12
-    if (this.cameras.length <= 2) return 6
-    if (this.cameras.length > 2) return 4
-  }
-
-  get cameras (): Moonraker.Webcam.Entry[] {
-    return this.$typedGetters['webcams/getVisibleWebcams']
-  }
-
-  handleCameraSelect (id: string) {
-    this.$typedDispatch('webcams/updateActiveWebcam', id)
-  }
+function handleCameraSelect (id: string) {
+  typedDispatch('webcams/updateActiveWebcam', id)
 }
 </script>

@@ -67,38 +67,26 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { FileUpload } from '@/store/files/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class FileSystemUploadDialog extends Mixins(StateMixin) {
-  get open () {
-    return this.uploads.length > 0
-  }
+const { typedState, typedDispatch } = useStore()
 
-  get uploads (): FileUpload[] {
-    const uploads: FileUpload[] = this.$typedState.files.uploads
+const uploads = computed<FileUpload[]>(() =>
+  (typedState.files.uploads as FileUpload[])
+    .filter(file => !file.cancelled && (file.percent !== 100 || !file.complete))
+)
+const open = computed(() => uploads.value.length > 0)
 
-    return uploads
-      .filter(file => !file.cancelled && (file.percent !== 100 || !file.complete))
-  }
-
-  handleCancelUpload (file: FileUpload) {
-    if (!file.complete) {
-      // Hasn't started uploading...
-      if (file.loaded === 0) {
-        this.$typedDispatch('files/updateFileUpload', {
-          uid: file.uid,
-          cancelled: true
-        })
-      }
-
-      // Started uploading, but not complete.
-      if (file.loaded > 0 && file.loaded < file.size) {
-        file.abortController.abort()
-      }
+function handleCancelUpload (file: FileUpload) {
+  if (!file.complete) {
+    if (file.loaded === 0) {
+      typedDispatch('files/updateFileUpload', { uid: file.uid, cancelled: true })
+    }
+    if (file.loaded > 0 && file.loaded < file.size) {
+      file.abortController.abort()
     }
   }
 }

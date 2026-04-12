@@ -66,155 +66,139 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, VModel, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import { Globals } from '@/globals'
+import { Filters } from '@/plugins/filters'
 import axios from 'axios'
-import StateMixin from '@/mixins/state'
-import { Debounce } from 'vue-debounce-decorator'
+import { debounce } from 'lodash-es'
 import { consola } from 'consola'
 import { httpClientActions } from '@/api/httpClientActions'
 import webSocketWrapper from '@/util/web-socket-wrapper'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class AddInstanceDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+}>()
 
-  valid = true
-  verifying = false
-  verified = false
-  error: any = null
-  note: any = null
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'resolve', value: ReturnType<typeof Filters.getApiUrls>): void
+}>()
 
-  get customRules () {
-    return {
-      url: (v: string) => (this.validUrl(v)) || this.$t('app.general.simple_form.error.invalid_url')
-    }
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v ?? false)
+})
+
+const { typedState } = useStore()
+const { t } = useI18n()
+
+const valid = ref(true)
+const verifying = ref(false)
+const verified = ref(false)
+const error = ref<any>(null)
+const note = ref<any>(null)
+const url = ref('')
+const abortController = ref<AbortController | undefined>(undefined)
+
+const customRules = computed(() => ({
+  url: (v: string) => validUrl(v) || t('app.general.simple_form.error.invalid_url')
+}))
+
+function validUrl (u: string) {
+  try {
+    Filters.getApiUrls(u)
+  } catch {
+    return false
   }
+  return true
+}
 
-  /**
-   * Validates a URL
-   */
-  validUrl (url: string) {
-    try {
-      this.$filters.getApiUrls(url)
-    } catch {
-      return false
-    }
-    return true
-  }
+const hosted = computed((): boolean => typedState.config.hostConfig.hosted)
 
-  timer = 0
-  url = ''
+const helpTxt = computed(() =>
+  t('app.endpoint.msg.trouble', { url: Globals.DOCS_MULTIPLE_INSTANCES })
+)
 
-  abortController?: AbortController = undefined
+const handleUrlChange = debounce(async (value: string) => {
+  if (valid.value) {
+    verified.value = false
+    error.value = null
+    note.value = null
+    verifying.value = true
 
-  // Watch for valid url changes.
-  @Watch('url')
-  onUrlChange (value: string, oldVal: string) {
-    if (value === oldVal) return
-    if (this.valid) this.handleUrlChange(value)
-  }
+    const { apiUrl, socketUrl } = Filters.getApiUrls(value)
 
-  @Debounce(750)
-  async handleUrlChange (value: string) {
-    if (this.valid) {
-      this.verified = false
-      this.error = null
-      this.note = null
-      this.verifying = true
+    abortController.value?.abort()
+    abortController.value = new AbortController()
 
-      const { apiUrl, socketUrl } = this.$filters.getApiUrls(value)
+    const { signal } = abortController.value
 
-      // Handle cancelling axios requests.
-      this.abortController?.abort()
-
-      this.abortController = new AbortController()
-
-      const { signal } = this.abortController
-
-      // Start by making a standard request. Maybe it's good?
-      const request = await httpClientActions.get(`${apiUrl}/server/info?t=${Date.now()}`, {
-        withAuth: false,
-        signal
+    const request = await httpClientActions.get(`${apiUrl}/server/info?t=${Date.now()}`, {
+      withAuth: false,
+      signal
+    })
+      .then(() => {
+        verified.value = true
+        verifying.value = false
+        return 'ok'
       })
-        .then(() => {
-          this.verified = true
-          this.verifying = false
+      .catch(e => {
+        if (axios.isCancel(e)) {
           return 'ok'
-        })
-        .catch(e => {
-          // If it failed because we cancelled, set ok and move on.
-          if (axios.isCancel(e)) {
+        } else if (axios.isAxiosError(e)) {
+          if (e.response?.status === 401) {
+            verified.value = true
+            verifying.value = false
             return 'ok'
-          } else if (axios.isAxiosError(e)) {
-            // If it failed because of a 401, set ok and move on.
-            if (e.response?.status === 401) {
-              this.verified = true
-              this.verifying = false
-              return 'ok'
-            }
-
-            // If it failed with a network issue..
-            if (e.request) return e.message
           }
-
-          // Otherwise pass along the error..
-          this.error = e
-          return 'ok'
-        })
-
-      // The initial request failed with a network issue..
-      if (request !== 'ok') {
-        if (this.hosted) {
-          await webSocketWrapper(socketUrl, signal)
-            .then(() => {
-              // likely a cors issue, but socket worked
-              this.verified = true
-            })
-            .catch(e => {
-              // external host not reachable (fetch returns 'failed to fetch')
-              consola.debug('Network Error', e, request)
-              this.error = request
-              this.note = this.$t('app.endpoint.error.cant_connect')
-            })
-            .finally(() => { this.verifying = false })
-        } else {
-          await fetch(`${apiUrl}/server/info`, { signal, mode: 'no-cors', cache: 'no-cache' })
-            .then(() => {
-              // likely a cors issue
-              this.error = this.$t('app.endpoint.error.cors_error')
-              this.note = this.$t('app.endpoint.error.cors_note', {
-                url: Globals.DOCS_MULTIPLE_INSTANCES
-              })
-            })
-            .catch(e => {
-              // external host not reachable (fetch returns 'failed to fetch')
-              consola.debug('Network Error', e, request)
-              this.error = request
-              this.note = this.$t('app.endpoint.error.cant_connect')
-            })
-            .finally(() => { this.verifying = false })
+          if (e.request) return e.message
         }
+        error.value = e
+        return 'ok'
+      })
+
+    if (request !== 'ok') {
+      if (hosted.value) {
+        await webSocketWrapper(socketUrl, signal)
+          .then(() => {
+            verified.value = true
+          })
+          .catch(e => {
+            consola.debug('Network Error', e, request)
+            error.value = request
+            note.value = t('app.endpoint.error.cant_connect')
+          })
+          .finally(() => { verifying.value = false })
+      } else {
+        await fetch(`${apiUrl}/server/info`, { signal, mode: 'no-cors', cache: 'no-cache' })
+          .then(() => {
+            error.value = t('app.endpoint.error.cors_error')
+            note.value = t('app.endpoint.error.cors_note', {
+              url: Globals.DOCS_MULTIPLE_INSTANCES
+            })
+          })
+          .catch(e => {
+            consola.debug('Network Error', e, request)
+            error.value = request
+            note.value = t('app.endpoint.error.cant_connect')
+          })
+          .finally(() => { verifying.value = false })
       }
     }
   }
+}, 750)
 
-  get helpTxt () {
-    return this.$t('app.endpoint.msg.trouble', {
-      url: Globals.DOCS_MULTIPLE_INSTANCES
-    })
-  }
+watch(url, (value, oldVal) => {
+  if (value === oldVal) return
+  if (valid.value) handleUrlChange(value)
+})
 
-  get hosted (): boolean {
-    return this.$typedState.config.hostConfig.hosted
-  }
-
-  addInstance () {
-    const apiConfig = this.$filters.getApiUrls(this.url)
-    this.open = false
-    this.$emit('resolve', apiConfig)
-  }
+function addInstance () {
+  const apiConfig = Filters.getApiUrls(url.value)
+  open.value = false
+  emit('resolve', apiConfig)
 }
 </script>

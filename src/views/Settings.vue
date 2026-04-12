@@ -30,10 +30,8 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-
+<script setup lang="ts">
+import { computed } from 'vue'
 import MacroSettings from '@/components/settings/macros/MacroSettings.vue'
 import GeneralSettings from '@/components/settings/GeneralSettings.vue'
 import PresetSettings from '@/components/settings/presets/PresetSettings.vue'
@@ -50,46 +48,15 @@ import TimelapseSettings from '@/components/settings/timelapse/TimelapseSettings
 import SpoolmanSettings from '@/components/settings/SpoolmanSettings.vue'
 import MmuSettings from '@/components/settings/MmuSettings.vue'
 import WarningsSettings from '@/components/settings/WarningsSettings.vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({
-  components: {
-    SpoolmanSettings,
-    MmuSettings,
-    TimelapseSettings,
-    MacroSettings,
-    GeneralSettings,
-    PresetSettings,
-    CameraSettings,
-    ToolheadSettings,
-    ThemeSettings,
-    VersionSettings,
-    GcodePreviewSettings,
-    AuthSettings,
-    ConsoleSettings,
-    FileBrowserSettings,
-    FileEditorSettings,
-    WarningsSettings
-  }
-})
-export default class Settings extends Mixins(StateMixin) {
-  get supportsVersions (): boolean {
-    return this.$typedGetters['server/componentSupport']('update_manager')
-  }
+const { typedState, typedGetters } = useStore()
+const { authenticated, socketConnected } = useStateMixin()
 
-  get supportsAuth (): boolean {
-    return this.$typedGetters['server/componentSupport']('authorization')
-  }
-
-  get supportsTimelapse (): boolean {
-    return this.$typedGetters['server/componentSupport']('timelapse')
-  }
-
-  get supportsSpoolman (): boolean {
-    return this.$typedGetters['server/componentSupport']('spoolman')
-  }
-
-  get supportsMmu (): boolean {
-    return this.$typedState.printer.printer.mmu != null
-  }
-}
+const supportsVersions = computed<boolean>(() => typedGetters['server/componentSupport']('update_manager'))
+const supportsAuth = computed<boolean>(() => typedGetters['server/componentSupport']('authorization'))
+const supportsTimelapse = computed<boolean>(() => typedGetters['server/componentSupport']('timelapse'))
+const supportsSpoolman = computed<boolean>(() => typedGetters['server/componentSupport']('spoolman'))
+const supportsMmu = computed<boolean>(() => typedState.printer.printer.mmu != null)
 </script>

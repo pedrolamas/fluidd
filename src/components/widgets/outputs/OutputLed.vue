@@ -24,118 +24,64 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { IroColor } from '@irojs/iro-core'
-import StateMixin from '@/mixins/state'
 import type { Led } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-type Rgbw = {
-  r: number,
-  g: number,
-  b: number,
-  w: number
+type Rgbw = { r: number; g: number; b: number; w: number }
+
+const { sendGcode, klippyReady } = useStateMixin()
+
+const props = defineProps<{ led: Led }>()
+
+const channelLookup: Record<keyof Rgbw, string> = { r: 'RED', g: 'GREEN', b: 'BLUE', w: 'WHITE' }
+
+const supportedChannels = computed(() => {
+  const { type, config } = props.led
+  if (config) {
+    if ('color_order' in config) {
+      const colorOrder = Array.isArray(config.color_order) ? config.color_order[0] : config.color_order
+      if (typeof colorOrder === 'string') return colorOrder
+    }
+    switch (type) {
+      case 'dotstar': return 'RGB'
+      case 'led': {
+        const channels = []
+        if ('red_pin' in config) channels.push('R')
+        if ('green_pin' in config) channels.push('G')
+        if ('blue_pin' in config) channels.push('B')
+        if ('white_pin' in config) channels.push('W')
+        return channels.join('')
+      }
+    }
+  }
+  return 'RBGW'
+})
+
+const color = computed<Rgbw>(() => {
+  const [r, g, b, w] = props.led.color_data[0].map(value => Math.round(value * 255))
+  return { r, g, b, w }
+})
+
+function sendColor (c: Rgbw) {
+  const channels = supportedChannels.value.toLowerCase().split('') as (keyof Rgbw)[]
+  const colorsString = channels.map(ch => ` ${channelLookup[ch]}=${Math.round(c[ch] * 1000 / 255) / 1000}`).join('')
+  sendGcode(`SET_LED LED=${encodeGcodeParamValue(props.led.name)}${colorsString}`)
 }
 
-@Component({})
-export default class OutputLed extends Mixins(StateMixin) {
-  @Prop({ type: Object, required: true })
-  readonly led!: Led
-
-  channelLookup: Record<keyof Rgbw, string> = {
-    r: 'RED',
-    g: 'GREEN',
-    b: 'BLUE',
-    w: 'WHITE'
-  }
-
-  get supportedChannels (): string {
-    const { type, config } = this.led
-
-    if (config) {
-      if ('color_order' in config) {
-        const colorOrder = Array.isArray(config.color_order)
-          ? config.color_order[0]
-          : config.color_order
-
-        if (typeof colorOrder === 'string') {
-          return colorOrder
-        }
-      }
-
-      switch (type) {
-        case 'dotstar':
-          return 'RGB'
-
-        case 'led': {
-          const channels = []
-
-          if ('red_pin' in config) channels.push('R')
-          if ('green_pin' in config) channels.push('G')
-          if ('blue_pin' in config) channels.push('B')
-          if ('white_pin' in config) channels.push('W')
-
-          return channels.join('')
-        }
-      }
-    }
-
-    return 'RBGW'
-  }
-
-  get color (): Rgbw {
-    const [r, g, b, w] = this.led.color_data[0]
-      .map(value => Math.round(value * 255))
-
-    return {
-      r,
-      g,
-      b,
-      w
-    }
-  }
-
-  get primaryColor (): string {
-    const color = new IroColor(this.color)
-
-    return color.hexString
-  }
-
-  set primaryColor (value: string) {
+const primaryColor = computed({
+  get: () => new IroColor(color.value).hexString,
+  set: (value: string) => {
     const { r, g, b } = new IroColor(value).rgb
-
-    const newColor: Rgbw = {
-      ...this.color,
-      r,
-      g,
-      b
-    }
-
-    this.sendColor(newColor)
+    sendColor({ ...color.value, r, g, b })
   }
+})
 
-  get whiteValue () {
-    return this.color.w
-  }
-
-  set whiteValue (value: number) {
-    const newColor: Rgbw = {
-      ...this.color,
-      w: value
-    }
-
-    this.sendColor(newColor)
-  }
-
-  sendColor (color: Rgbw) {
-    const supportedChannels = this.supportedChannels.toLowerCase().split('') as (keyof Rgbw)[]
-
-    const colorsString = supportedChannels
-      .map(channel => ` ${this.channelLookup[channel]}=${Math.round(color[channel] * 1000 / 255) / 1000}`)
-      .join('')
-
-    this.sendGcode(`SET_LED LED=${encodeGcodeParamValue(this.led.name)}${colorsString}`)
-  }
-}
+const whiteValue = computed({
+  get: () => color.value.w,
+  set: (value: number) => sendColor({ ...color.value, w: value })
+})
 </script>

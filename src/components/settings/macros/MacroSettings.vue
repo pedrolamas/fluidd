@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-subheader id="macros">
-      {{ $t('app.setting.title.macros') }}
+      {{ t('app.setting.title.macros') }}
     </v-subheader>
     <v-card
       :elevation="5"
@@ -21,7 +21,7 @@
           >
             $plus
           </v-icon>
-          {{ $t('app.setting.btn.add_category') }}
+          {{ t('app.setting.btn.add_category') }}
         </app-btn>
       </app-setting>
 
@@ -83,7 +83,7 @@
           @click="handleCategoryClick()"
         >
           <template #title>
-            {{ $t('app.general.label.uncategorized') }}
+            {{ t('app.general.label.uncategorized') }}
             <v-chip
               small
               class="ms-1"
@@ -112,104 +112,99 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, reactive } from 'vue'
+import { useRouter } from 'vue-router/composables'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
 import MacroCategoryDialog from './MacroCategoryDialog.vue'
-import StateMixin from '@/mixins/state'
 import type { Macro, MacroCategory } from '@/store/macros/types'
 
-@Component({
-  components: {
-    MacroCategoryDialog
-  }
-})
-export default class MacroSettings extends Mixins(StateMixin) {
-  categoryDialogState: any = {
-    open: false,
-    title: 'add',
-    label: '',
-    category: null,
-    name: '',
-    handler: this.handleAddCategory
-  }
+const { typedGetters, typedDispatch } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+const router = useRouter()
 
-  get categories (): MacroCategory[] {
-    return this.$typedGetters['macros/getCategories']
-  }
-
-  set categories (value: MacroCategory[]) {
-    const categories = value
-      .map(({ id, name }) => ({
-        id,
-        name
-      }))
-
-    this.$typedDispatch('macros/updateCategories', categories)
-  }
-
-  get uncategorizedMacros () {
-    const uncategorized: Macro[] = this.$typedGetters['macros/getMacrosByCategory']()
-    const count = uncategorized.length
-    const visible = uncategorized.filter(macro => macro.visible).length
-    return {
-      count,
-      visible
-    }
-  }
-
-  handleAddCategoryDialog () {
-    this.categoryDialogState = {
-      open: true,
-      title: this.$t('app.general.label.add_category'),
-      label: this.$t('app.general.label.name'),
+const categoryDialogState = reactive<{
+  open: boolean
+  title: string
+  label: string
+  category: MacroCategory | null
+  name: string
+  handler: (name: string) => void
+}>({
+      open: false,
+      title: 'add',
+      label: '',
       category: null,
       name: '',
-      handler: this.handleAddCategory
-    }
-  }
-
-  handleEditCategoryDialog (category: MacroCategory) {
-    this.categoryDialogState = {
-      open: true,
-      title: this.$t('app.general.label.edit_category'),
-      label: this.$t('app.general.label.name'),
-      category,
-      name: category.name,
-      handler: this.handleEditCategory
-    }
-  }
-
-  async handleRemoveCategory (category: MacroCategory) {
-    const result = await this.$confirm(
-      this.$t('app.general.simple_form.msg.confirm_remove_macro_category', { name: category.name }).toString(),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$typedDispatch('macros/removeCategory', category)
-    }
-  }
-
-  handleAddCategory (category: string) {
-    this.$typedDispatch('macros/addCategory', category)
-  }
-
-  handleEditCategory (name: string) {
-    const category = {
-      ...this.categoryDialogState.category,
-      name
-    }
-    this.$typedDispatch('macros/editCategory', category)
-  }
-
-  handleCategoryClick (category?: MacroCategory) {
-    const categoryId = category?.id ?? '0'
-    this.$router.push({
-      name: 'macro_category_settings',
-      params: {
-        categoryId
-      }
+      handler: handleAddCategory
     })
+
+const categories = computed({
+  get: (): MacroCategory[] => typedGetters['macros/getCategories'],
+  set: (value: MacroCategory[]) => {
+    const mapped = value.map(({ id, name }) => ({ id, name }))
+    typedDispatch('macros/updateCategories', mapped)
   }
+})
+
+const uncategorizedMacros = computed(() => {
+  const uncategorized: Macro[] = typedGetters['macros/getMacrosByCategory']()
+  const count = uncategorized.length
+  const visible = uncategorized.filter(macro => macro.visible).length
+  return { count, visible }
+})
+
+function handleAddCategoryDialog () {
+  categoryDialogState.open = true
+  categoryDialogState.title = t('app.general.label.add_category')
+  categoryDialogState.label = t('app.general.label.name')
+  categoryDialogState.category = null
+  categoryDialogState.name = ''
+  categoryDialogState.handler = handleAddCategory
+}
+
+function handleEditCategoryDialog (category: MacroCategory) {
+  categoryDialogState.open = true
+  categoryDialogState.title = t('app.general.label.edit_category')
+  categoryDialogState.label = t('app.general.label.name')
+  categoryDialogState.category = category
+  categoryDialogState.name = category.name
+  categoryDialogState.handler = handleEditCategory
+}
+
+async function handleRemoveCategory (category: MacroCategory) {
+  const result = await confirm(
+    t('app.general.simple_form.msg.confirm_remove_macro_category', { name: category.name }),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    typedDispatch('macros/removeCategory', category)
+  }
+}
+
+function handleAddCategory (category: string) {
+  typedDispatch('macros/addCategory', category)
+}
+
+function handleEditCategory (name: string) {
+  const category = {
+    ...categoryDialogState.category as MacroCategory,
+    name
+  }
+  typedDispatch('macros/editCategory', category)
+}
+
+function handleCategoryClick (category?: MacroCategory) {
+  const categoryId = category?.id ?? '0'
+  router.push({
+    name: 'macro_category_settings',
+    params: {
+      categoryId
+    }
+  })
 }
 </script>

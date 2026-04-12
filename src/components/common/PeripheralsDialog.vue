@@ -351,9 +351,11 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, VModel, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import { SocketActions } from '@/api/socketActions'
 import type { Peripherals } from '@/store/server/types'
 
@@ -364,105 +366,113 @@ type PeripheralGroup = {
   count?: number
 }
 
-@Component({})
-export default class ManualProbeDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+}>()
 
-  tab: number | null = null
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  get peripherals (): Peripherals {
-    return this.$typedState.server.peripherals
-  }
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v ?? false)
+})
 
-  get canbusUuids (): Record<string, Moonraker.Peripherals.CanbusUuid[]> | null {
-    return this.$typedState.server.can_uuids
-  }
+const { hasWait, hasWaitsBy } = useStateMixin()
+const { typedState } = useStore()
 
-  get systemInfo (): Moonraker.Machine.SystemInfo | null {
-    return this.$typedState.server.system_info
-  }
+const tab = ref<number | null>(null)
 
-  get canbusInterfaces (): string[] {
-    return Object.keys(this.systemInfo?.canbus ?? {})
-  }
+const peripherals = computed((): Peripherals => typedState.server.peripherals)
 
-  get peripheralGroups (): PeripheralGroup[] {
-    const peripheralGroups: PeripheralGroup[] = [
-      {
-        type: 'serial',
-        count: this.peripherals.serial_devices?.length
-      },
-      {
-        type: 'usb',
-        count: this.peripherals.usb_devices?.length
-      },
-      {
-        type: 'video',
-        count: (
-          this.peripherals.v4l2_devices && this.peripherals.libcamera_devices
-            ? this.peripherals.v4l2_devices.length + this.peripherals.libcamera_devices.length
-            : undefined
-        )
-      }
-    ]
+const canbusUuids = computed((): Record<string, Moonraker.Peripherals.CanbusUuid[]> | null =>
+  typedState.server.can_uuids
+)
 
-    if (this.canbusInterfaces.length > 0) {
-      peripheralGroups.push({
-        type: 'can',
-        count: this.canbusUuids
-          ? Object.values(this.canbusUuids)
-            .reduce((a, b) => a + b.length, 0)
+const systemInfo = computed((): Moonraker.Machine.SystemInfo | null =>
+  typedState.server.system_info
+)
+
+const canbusInterfaces = computed((): string[] =>
+  Object.keys(systemInfo.value?.canbus ?? {})
+)
+
+const peripheralGroups = computed((): PeripheralGroup[] => {
+  const groups: PeripheralGroup[] = [
+    {
+      type: 'serial',
+      count: peripherals.value.serial_devices?.length
+    },
+    {
+      type: 'usb',
+      count: peripherals.value.usb_devices?.length
+    },
+    {
+      type: 'video',
+      count: (
+        peripherals.value.v4l2_devices && peripherals.value.libcamera_devices
+          ? peripherals.value.v4l2_devices.length + peripherals.value.libcamera_devices.length
           : undefined
-      })
+      )
     }
+  ]
 
-    return peripheralGroups
+  if (canbusInterfaces.value.length > 0) {
+    groups.push({
+      type: 'can',
+      count: canbusUuids.value
+        ? Object.values(canbusUuids.value)
+          .reduce((a, b) => a + b.length, 0)
+        : undefined
+    })
   }
 
-  get currentPeripheralGroup (): PeripheralGroup | false {
-    return this.tab != null && this.peripheralGroups[this.tab]
-  }
+  return groups
+})
 
-  hasWaitFor (peripheralGroup: PeripheralGroup) {
-    switch (peripheralGroup.type) {
+const currentPeripheralGroup = computed((): PeripheralGroup | false =>
+  tab.value != null && peripheralGroups.value[tab.value]
+)
+
+function hasWaitFor (peripheralGroup: PeripheralGroup) {
+  switch (peripheralGroup.type) {
+    case 'serial':
+      return hasWait(Waits.onMachinePeripheralsSerial)
+
+    case 'usb':
+      return hasWait(Waits.onMachinePeripheralsUsb)
+
+    case 'video':
+      return hasWait(Waits.onMachinePeripheralsVideo)
+
+    case 'can':
+      return hasWaitsBy(`${Waits.onMachinePeripheralsCanbus}/`)
+  }
+}
+
+function handleRefresh () {
+  const group = currentPeripheralGroup.value
+
+  if (group) {
+    switch (group.type) {
       case 'serial':
-        return this.hasWait(this.$waits.onMachinePeripheralsSerial)
+        SocketActions.machinePeripheralsSerial()
+        break
 
       case 'usb':
-        return this.hasWait(this.$waits.onMachinePeripheralsUsb)
+        SocketActions.machinePeripheralsUsb()
+        break
 
       case 'video':
-        return this.hasWait(this.$waits.onMachinePeripheralsVideo)
+        SocketActions.machinePeripheralsVideo()
+        break
 
       case 'can':
-        return this.hasWaitsBy(`${this.$waits.onMachinePeripheralsCanbus}/`)
-    }
-  }
-
-  handleRefresh () {
-    const currentPeripheralGroup = this.currentPeripheralGroup
-
-    if (currentPeripheralGroup) {
-      switch (currentPeripheralGroup.type) {
-        case 'serial':
-          SocketActions.machinePeripheralsSerial()
-          break
-
-        case 'usb':
-          SocketActions.machinePeripheralsUsb()
-          break
-
-        case 'video':
-          SocketActions.machinePeripheralsVideo()
-          break
-
-        case 'can':
-          for (const canbusInterface of this.canbusInterfaces) {
-            SocketActions.machinePeripheralsCanbus(canbusInterface)
-          }
-          break
-      }
+        for (const canbusInterface of canbusInterfaces.value) {
+          SocketActions.machinePeripheralsCanbus(canbusInterface)
+        }
+        break
     }
   }
 }

@@ -41,29 +41,25 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { PromptDialog, PromptDialogButton } from '@/store/console/types'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({})
-export default class ActionCommandPromptDialog extends Mixins(StateMixin) {
-  get dialog (): PromptDialog {
-    return this.$typedState.console.promptDialog
-  }
+const { typedState } = useStore()
+const { sendGcode } = useStateMixin()
 
-  get open (): boolean {
-    return this.dialog.open
-  }
+const dialog = computed<PromptDialog>(() => typedState.console.promptDialog)
 
-  set open (value: boolean) {
-    if (!value) {
-      this.sendGcode('RESPOND TYPE=command MSG="action:prompt_end"')
-    }
+const open = computed({
+  get: () => dialog.value.open,
+  set: (value: boolean) => {
+    if (!value) sendGcode('RESPOND TYPE=command MSG="action:prompt_end"')
   }
+})
 
-  handleClick (button: PromptDialogButton) {
-    this.sendGcode(button.command || button.text)
-  }
+function handleClick (button: PromptDialogButton) {
+  sendGcode(button.command || button.text)
 }
 </script>

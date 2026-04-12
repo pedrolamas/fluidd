@@ -69,120 +69,110 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
-import StateMixin from '@/mixins/state'
 import type { DiagnosticsCardConfig, DiagnosticsCardContainer } from '@/store/diagnostics/types'
 import DiagnosticsCard from '@/components/widgets/diagnostics/DiagnosticsCard.vue'
 import DiagnosticsCardConfigDialog from '@/components/widgets/diagnostics/DiagnosticsCardConfigDialog.vue'
 import type { LayoutConfig } from '@/store/layout/types'
 import { defaultState } from '@/store/layout/state'
+import { useStore } from '@/composables/useStore'
 
-@Component({
-  components: {
-    DiagnosticsCard,
-    DiagnosticsCardConfigDialog
-  }
+const { typedState, typedGetters, typedDispatch } = useStore()
+
+const dialogState = ref<{ active: boolean, card: DiagnosticsCardConfig | null }>({
+  active: false,
+  card: null
 })
-export default class Diagnostics extends Mixins(StateMixin) {
-  dialogState: { active: boolean, card: DiagnosticsCardConfig | null } = {
-    active: false,
-    card: null
+
+const containers = ref<Array<DiagnosticsCardConfig[]>>([])
+
+const inLayout = computed<boolean>(() => typedState.config.layoutMode)
+
+const layout = computed<DiagnosticsCardContainer>(() =>
+  typedGetters['layout/getLayout']('diagnostics') as DiagnosticsCardContainer
+)
+
+const columnCount = computed(() => {
+  if (inLayout.value) return 4
+  return containers.value.reduce((count, container) => +hasCards(container) + count, 0)
+})
+
+const columnSpan = computed(() => 12 / columnCount.value)
+
+function handleAddCard () {
+  const clonedDefaultCard = JSON.parse(JSON.stringify(defaultState().layouts.diagnostics.container1[0])) as DiagnosticsCardConfig
+  clonedDefaultCard.id = ''
+  dialogState.value.card = clonedDefaultCard
+  dialogState.value.active = true
+}
+
+function handleEditCard (card: DiagnosticsCardConfig) {
+  dialogState.value.card = JSON.parse(JSON.stringify(card)) as DiagnosticsCardConfig
+  dialogState.value.active = true
+}
+
+function handleDeleteCard (id: string) {
+  for (const container of Object.values(layout.value)) {
+    const index = container.findIndex(card => card.id === id)
+    if (index > -1) {
+      container.splice(index, 1)
+      break
+    }
   }
 
-  containers: Array<DiagnosticsCardConfig[]> = []
+  updateLayout()
+}
 
-  mounted () {
-    this.onLayoutChange()
-  }
-
-  handleAddCard () {
-    const clonedDefaultCard = JSON.parse(JSON.stringify(defaultState().layouts.diagnostics.container1[0])) as DiagnosticsCardConfig
-    clonedDefaultCard.id = ''
-    this.dialogState.card = clonedDefaultCard
-    this.dialogState.active = true
-  }
-
-  handleEditCard (card: DiagnosticsCardConfig) {
-    this.dialogState.card = JSON.parse(JSON.stringify(card)) as DiagnosticsCardConfig
-    this.dialogState.active = true
-  }
-
-  handleDeleteCard (id: string) {
-    for (const container of Object.values(this.layout)) {
-      const index = container.findIndex(card => card.id === id)
+function handleSaveCard (card: DiagnosticsCardConfig) {
+  if (card.id === '') {
+    card.id = uuidv4()
+    layout.value.container1.push(card)
+  } else {
+    for (const container of Object.values(layout.value)) {
+      const index = container.findIndex(existingCard => existingCard.id === card.id)
       if (index > -1) {
-        container.splice(index, 1)
+        container[index] = card
         break
       }
     }
-
-    this.updateLayout()
   }
 
-  handleSaveCard (card: DiagnosticsCardConfig) {
-    if (card.id === '') {
-      card.id = uuidv4()
-      this.layout.container1.push(card)
-    } else {
-      for (const container of Object.values(this.layout)) {
-        const index = container.findIndex(existingCard => existingCard.id === card.id)
-        if (index > -1) {
-          container[index] = card
-          break
-        }
-      }
-    }
-
-    this.updateLayout()
-  }
-
-  get columnCount () {
-    if (this.inLayout) return 4
-
-    return this.containers.reduce((count, container) => +this.hasCards(container) + count, 0)
-  }
-
-  get columnSpan () {
-    return 12 / this.columnCount
-  }
-
-  get inLayout (): boolean {
-    return this.$typedState.config.layoutMode
-  }
-
-  get layout (): DiagnosticsCardContainer {
-    return this.$typedGetters['layout/getLayout']('diagnostics') as DiagnosticsCardContainer
-  }
-
-  @Watch('layout', { deep: true })
-  onLayoutChange () {
-    const containers = Object.values(this.layout)
-
-    while (containers.length < 4) {
-      containers.push([])
-    }
-
-    this.containers = containers.slice(0, 4)
-  }
-
-  updateLayout () {
-    this.$typedDispatch('layout/onLayoutChange', {
-      name: 'diagnostics',
-      value: {
-        container1: this.containers[0],
-        container2: this.containers[1],
-        container3: this.containers[2],
-        container4: this.containers[3]
-      }
-    })
-  }
-
-  hasCards (container: LayoutConfig[]) {
-    return container.some(card => card.enabled)
-  }
+  updateLayout()
 }
+
+function onLayoutChange () {
+  const newContainers = Object.values(layout.value)
+
+  while (newContainers.length < 4) {
+    newContainers.push([])
+  }
+
+  containers.value = newContainers.slice(0, 4)
+}
+
+function updateLayout () {
+  typedDispatch('layout/onLayoutChange', {
+    name: 'diagnostics',
+    value: {
+      container1: containers.value[0],
+      container2: containers.value[1],
+      container3: containers.value[2],
+      container4: containers.value[3]
+    }
+  })
+}
+
+function hasCards (container: LayoutConfig[]) {
+  return container.some(card => card.enabled)
+}
+
+watch(layout, onLayoutChange, { deep: true })
+
+onMounted(() => {
+  onLayoutChange()
+})
 </script>
 
 <style lang="scss" scoped>

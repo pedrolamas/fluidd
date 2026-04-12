@@ -65,104 +65,89 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useVuetify } from '@/composables/useVuetify'
 import type { AppFile } from '@/store/files/types'
 import { Marked, type MarkedExtension, type Tokens } from 'marked'
 import { baseUrl } from 'marked-base-url'
 import { consola } from 'consola'
 
-@Component({})
-export default class FilePreviewDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  path?: string
+  file?: AppFile
+  filename: string
+  extension?: string
+  src: string
+  type: string
+  width?: number
+  readonly?: boolean
+}>()
 
-  @Prop({ type: String })
-  readonly path?: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'remove', file: AppFile): void
+  (e: 'download', file: AppFile): void
+}>()
 
-  @Prop({ type: Object })
-  readonly file?: AppFile
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v ?? false)
+})
 
-  @Prop({ type: String, required: true })
-  readonly filename!: string
+const { typedState } = useStore()
+const vuetify = useVuetify()
 
-  @Prop({ type: String })
-  readonly extension?: string
+const renderedMarkdown = ref<string | null>(null)
 
-  @Prop({ type: String, required: true })
-  readonly src!: string
+const calculatedWidth = computed(() => {
+  const defaultWidth = window.innerWidth * (vuetify.breakpoint.mdAndDown ? 1 : 0.75)
+  return Math.min(window.innerWidth * 0.9, Math.max(props.width ?? defaultWidth, defaultWidth / 2))
+})
 
-  @Prop({ type: String, required: true })
-  readonly type!: string
+const isVideo = computed(() => props.type.startsWith('video/'))
+const isImage = computed(() => props.type.startsWith('image/'))
+const isMarkdown = computed(() => props.type.startsWith('text/markdown'))
 
-  @Prop({ type: Number })
-  readonly width?: number
+const apiUrl = computed((): string => typedState.config.apiUrl)
 
-  @Prop({ type: Boolean })
-  readonly readonly?: boolean
-
-  renderedMarkdown: string | null = null
-
-  get calculatedWidth () {
-    const defaultWidth = window.innerWidth * (this.$vuetify.breakpoint.mdAndDown ? 1 : 0.75)
-    return Math.min(window.innerWidth * 0.9, Math.max(this.width ?? defaultWidth, defaultWidth / 2))
+async function loadMarkdown () {
+  if (!props.path) {
+    consola.error('[FilePreviewDialog] missing path property in markdown viewer')
+    return
   }
 
-  get isVideo () {
-    return this.type.startsWith('video/')
-  }
+  const response = await fetch(props.src)
+  const data = await response.text()
 
-  get isImage () {
-    return this.type.startsWith('image/')
-  }
+  const apiFileUrl = `${apiUrl.value}/server/files/${props.path}/`
 
-  get isMarkdown () {
-    return this.type.startsWith('text/markdown')
-  }
+  const baseUrlExtension = baseUrl(apiFileUrl)
 
-  get apiUrl (): string {
-    return this.$typedState.config.apiUrl
-  }
+  const customExtension: MarkedExtension = {
+    renderer: {
+      link (args: Tokens.Link) {
+        const html = this.constructor.prototype.link.call(this, args)
 
-  async LoadMarkdown () {
-    if (!this.path) {
-      // refuse rendering markdown if no base path has been supplied
-      consola.error('[FilePreviewDialog] missing path property in markdown viewer')
-
-      return
-    }
-
-    const response = await fetch(this.src)
-    const data = await response.text()
-
-    const apiFileUrl = `${this.apiUrl}/server/files/${this.path}/`
-
-    const baseUrlExtension = baseUrl(apiFileUrl)
-
-    const customExtension: MarkedExtension = {
-      renderer: {
-        link (args: Tokens.Link) {
-          const html = this.constructor.prototype.link.call(this, args)
-
-          return html.replace(/^<a /, '<a target="_blank" ')
-        }
+        return html.replace(/^<a /, '<a target="_blank" ')
       }
     }
-
-    const marked = new Marked(baseUrlExtension, customExtension)
-
-    this.renderedMarkdown = await marked.parse(data, {
-      async: true
-    })
   }
 
-  mounted () {
-    if (this.isMarkdown) {
-      this.LoadMarkdown()
-    }
-  }
+  const marked = new Marked(baseUrlExtension, customExtension)
+
+  renderedMarkdown.value = await marked.parse(data, {
+    async: true
+  })
 }
+
+onMounted(() => {
+  if (isMarkdown.value) {
+    loadMarkdown()
+  }
+})
 </script>
 
 <style lang="scss" scoped>

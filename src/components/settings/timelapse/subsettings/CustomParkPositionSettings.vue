@@ -9,10 +9,10 @@
         <app-text-field
           :value="parkPosX"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(bedSize.minX),
-            $rules.numberLessThanOrEqual(bedSize.maxX)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(bedSize.minX),
+            Rules.numberLessThanOrEqual(bedSize.maxX)
           ]"
           :disabled="getCustomParkPosBlocked('x')"
           hide-details="auto"
@@ -35,10 +35,10 @@
         <app-text-field
           :value="parkPosY"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(bedSize.minY),
-            $rules.numberLessThanOrEqual(bedSize.maxY)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(bedSize.minY),
+            Rules.numberLessThanOrEqual(bedSize.maxY)
           ]"
           :disabled="getCustomParkPosBlocked('y')"
           hide-details="auto"
@@ -54,58 +54,49 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { SocketActions } from '@/api/socketActions'
-import ParkExtrudeRetractSettings from './ParkExtrudeRetractSettings.vue'
-import type { BedSize } from '@/store/printer/types'
+import { Rules } from '@/plugins/filters'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import { defaultWritableSettings } from '@/store/timelapse/state'
+import type { BedSize } from '@/store/printer/types'
 
-@Component({
-  components: {
-    ParkExtrudeRetractSettings
-  }
-})
-export default class CustomParkPositionSettings extends Mixins(StateMixin) {
-  getCustomParkPosBlocked (axis: 'x' | 'y'): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting'](`park_custom_pos_${axis}`)
-  }
+const { typedState, typedGetters } = useStore()
+const { tc } = useI18n()
 
-  get parkpos (): Moonraker.Timelapse.ParkPosition {
-    return this.settings.parkpos ?? defaultWritableSettings.parkpos
-  }
+function getCustomParkPosBlocked (axis: 'x' | 'y'): boolean {
+  return typedGetters['timelapse/isBlockedSetting'](`park_custom_pos_${axis}`)
+}
 
-  set parkpos (value: Moonraker.Timelapse.ParkPosition) {
-    SocketActions.machineTimelapsePostSettings({ parkpos: value })
-  }
+const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
+  typedState.timelapse.settings ?? defaultWritableSettings
+)
 
-  get parkPosX (): number {
-    return this.settings.park_custom_pos_x ?? defaultWritableSettings.park_custom_pos_x
-  }
+const parkpos = computed((): Moonraker.Timelapse.ParkPosition =>
+  settings.value.parkpos ?? defaultWritableSettings.parkpos
+)
 
-  setParkPosX (value: number) {
-    SocketActions.machineTimelapsePostSettings({ park_custom_pos_x: value })
-  }
+const parkPosX = computed((): number =>
+  settings.value.park_custom_pos_x ?? defaultWritableSettings.park_custom_pos_x
+)
 
-  get parkPosY (): number {
-    return this.settings.park_custom_pos_y ?? defaultWritableSettings.park_custom_pos_y
-  }
+function setParkPosX (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ park_custom_pos_x: Number(value) })
+}
 
-  setParkPosY (value: number) {
-    SocketActions.machineTimelapsePostSettings({ park_custom_pos_y: value })
-  }
+const parkPosY = computed((): number =>
+  settings.value.park_custom_pos_y ?? defaultWritableSettings.park_custom_pos_y
+)
 
-  get bedSize (): BedSize {
-    return this.$typedGetters['printer/getBedSize']
-  }
+function setParkPosY (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ park_custom_pos_y: Number(value) })
+}
 
-  get settings (): Moonraker.Timelapse.WriteableSettings {
-    return this.$typedState.timelapse.settings ?? defaultWritableSettings
-  }
+const bedSize = computed((): BedSize => typedGetters['printer/getBedSize'])
 
-  subtitleIfBlocked (blocked: boolean): string {
-    return blocked ? this.$tc('app.general.tooltip.managed_by_moonraker') : ''
-  }
+function subtitleIfBlocked (blocked: boolean): string {
+  return blocked ? tc('app.general.tooltip.managed_by_moonraker') : ''
 }
 </script>

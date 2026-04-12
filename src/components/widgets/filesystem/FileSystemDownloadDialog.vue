@@ -43,23 +43,17 @@
   </v-snackbar>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { FileDownload } from '@/store/files/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class FileSystemDownloadDialog extends Mixins(StateMixin) {
-  get open () {
-    return this.currentDownload != null
-  }
+const { typedState } = useStore()
 
-  get currentDownload (): FileDownload | null {
-    return this.$typedState.files.download
-  }
+const currentDownload = computed<FileDownload | null>(() => typedState.files.download)
+const open = computed(() => currentDownload.value != null)
 
-  handleCancelDownload () {
-    this.currentDownload?.abortController.abort()
-  }
+function handleCancelDownload () {
+  currentDownload.value?.abortController.abort()
 }
 </script>

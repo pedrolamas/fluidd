@@ -24,15 +24,9 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { Icons } from '@/globals'
 
-@Component({})
-export default class Configure extends Mixins(StateMixin) {
-  get icons () {
-    return Object.keys(Icons)
-  }
-}
+const icons = computed(() => Object.keys(Icons))
 </script>

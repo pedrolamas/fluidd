@@ -1,14 +1,14 @@
 <template>
   <div>
     <v-subheader id="editor">
-      {{ $t('app.setting.title.file_editor') }}
+      {{ t('app.setting.title.file_editor') }}
     </v-subheader>
     <v-card
       :elevation="5"
       dense
       class="mb-4"
     >
-      <app-setting :title="$t('app.setting.label.confirm_dirty_editor_close')">
+      <app-setting :title="t('app.setting.label.confirm_dirty_editor_close')">
         <v-switch
           v-model="confirmDirtyEditorClose"
           hide-details
@@ -18,7 +18,7 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.auto_edit_extensions')">
+      <app-setting :title="t('app.setting.label.auto_edit_extensions')">
         <v-combobox
           v-model="autoEditExtensions"
           filled
@@ -34,7 +34,7 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.save_and_restore_view_state')">
+      <app-setting :title="t('app.setting.label.save_and_restore_view_state')">
         <v-select
           v-model="restoreViewState"
           filled
@@ -46,7 +46,7 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.show_code_lens')">
+      <app-setting :title="t('app.setting.label.show_code_lens')">
         <v-switch
           v-model="codeLens"
           hide-details
@@ -56,7 +56,7 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.klipper_save_and_restart_action')">
+      <app-setting :title="t('app.setting.label.klipper_save_and_restart_action')">
         <v-select
           v-model="klipperSaveAndRestartAction"
           filled
@@ -68,46 +68,45 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.reset')">
+      <app-setting :title="t('app.setting.label.reset')">
         <app-btn
           outlined
           small
           color="primary"
           @click="handleReset"
         >
-          {{ $t('app.setting.btn.reset') }}
+          {{ t('app.setting.btn.reset') }}
         </app-btn>
       </app-setting>
     </v-card>
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import { defaultState } from '@/store/config/state'
 import type { KlipperSaveAndRestartAction, RestoreViewState } from '@/store/config/types'
 
-@Component({})
-export default class FileEditorSettings extends Mixins(StateMixin) {
-  get confirmDirtyEditorClose (): boolean {
-    return this.$typedState.config.uiSettings.editor.confirmDirtyEditorClose
-  }
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { t, tc } = useI18n()
 
-  set confirmDirtyEditorClose (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const confirmDirtyEditorClose = computed({
+  get: (): boolean => typedState.config.uiSettings.editor.confirmDirtyEditorClose,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.editor.confirmDirtyEditorClose',
       value,
       server: true
     })
   }
+})
 
-  get autoEditExtensions (): string[] {
-    return this.$typedState.config.uiSettings.editor.autoEditExtensions
-  }
-
-  set autoEditExtensions (value: string[]) {
-    this.$typedDispatch('config/saveByPath', {
+const autoEditExtensions = computed({
+  get: (): string[] => typedState.config.uiSettings.editor.autoEditExtensions,
+  set: (value: string[]) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.editor.autoEditExtensions',
       value: [
         ...new Set(value.map(ext => ext.startsWith('.') ? ext : `.${ext}`))
@@ -115,89 +114,84 @@ export default class FileEditorSettings extends Mixins(StateMixin) {
       server: true
     })
   }
+})
 
-  get restoreViewState (): RestoreViewState {
-    return this.$typedState.config.uiSettings.editor.restoreViewState
-  }
-
-  set restoreViewState (value: RestoreViewState) {
-    this.$typedDispatch('config/saveByPath', {
+const restoreViewState = computed({
+  get: (): RestoreViewState => typedState.config.uiSettings.editor.restoreViewState,
+  set: (value: RestoreViewState) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.editor.restoreViewState',
       value,
       server: true
     })
   }
+})
 
-  get availableRestoreViewState (): { value: RestoreViewState, text: string }[] {
-    return [
-      {
-        value: 'never',
-        text: this.$tc('app.setting.label.never')
-      },
-      {
-        value: 'session',
-        text: this.$tc('app.setting.label.to_browser_session_storage')
-      },
-      {
-        value: 'local',
-        text: this.$tc('app.setting.label.to_browser_local_storage')
-      }
-    ]
+const availableRestoreViewState = computed((): { value: RestoreViewState; text: string }[] => [
+  {
+    value: 'never',
+    text: tc('app.setting.label.never')
+  },
+  {
+    value: 'session',
+    text: tc('app.setting.label.to_browser_session_storage')
+  },
+  {
+    value: 'local',
+    text: tc('app.setting.label.to_browser_local_storage')
   }
+])
 
-  get codeLens (): boolean {
-    return this.$typedState.config.uiSettings.editor.codeLens
-  }
-
-  set codeLens (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const codeLens = computed({
+  get: (): boolean => typedState.config.uiSettings.editor.codeLens,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.editor.codeLens',
       value,
       server: true
     })
   }
+})
 
-  get klipperSaveAndRestartAction (): KlipperSaveAndRestartAction {
-    return this.$typedState.config.uiSettings.editor.klipperSaveAndRestartAction
-  }
-
-  set klipperSaveAndRestartAction (value: KlipperSaveAndRestartAction) {
-    this.$typedDispatch('config/saveByPath', {
+const klipperSaveAndRestartAction = computed({
+  get: (): KlipperSaveAndRestartAction => typedState.config.uiSettings.editor.klipperSaveAndRestartAction,
+  set: (value: KlipperSaveAndRestartAction) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.editor.klipperSaveAndRestartAction',
       value,
       server: true
     })
   }
+})
 
-  get availableKlipperSaveAndRestartActions (): { value: KlipperSaveAndRestartAction, text: string }[] {
-    const isSimulavrMcu: boolean = this.$typedGetters['printer/getIsSimulavrMcu']
+const availableKlipperSaveAndRestartActions = computed((): { value: KlipperSaveAndRestartAction; text: string }[] => {
+  const isSimulavrMcu: boolean = typedGetters['printer/getIsSimulavrMcu']
 
-    return [
-      {
-        value: 'auto',
-        text: `${this.$tc('app.setting.label.auto')} (${isSimulavrMcu ? this.$tc('app.setting.label.service_restart') : this.$tc('app.setting.label.firmware_restart')})`,
-      },
-      {
-        value: 'firmware-restart',
-        text: this.$tc('app.setting.label.firmware_restart')
-      },
-      {
-        value: 'host-restart',
-        text: this.$tc('app.setting.label.host_restart')
-      },
-      {
-        value: 'service-restart',
-        text: this.$tc('app.setting.label.service_restart')
-      }
-    ]
-  }
+  return [
+    {
+      value: 'auto',
+      text: `${tc('app.setting.label.auto')} (${isSimulavrMcu ? tc('app.setting.label.service_restart') : tc('app.setting.label.firmware_restart')})`,
+    },
+    {
+      value: 'firmware-restart',
+      text: tc('app.setting.label.firmware_restart')
+    },
+    {
+      value: 'host-restart',
+      text: tc('app.setting.label.host_restart')
+    },
+    {
+      value: 'service-restart',
+      text: tc('app.setting.label.service_restart')
+    }
+  ]
+})
 
-  handleReset () {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.editor',
-      value: defaultState().uiSettings.editor,
-      server: true
-    })
-  }
+function handleReset () {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.editor',
+    value: defaultState().uiSettings.editor,
+    server: true
+  })
 }
 </script>

@@ -54,53 +54,54 @@
   </svg>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component
-export default class AfcFilamentReel extends Mixins(StateMixin) {
-  @Prop({ type: String, default: '#ff0' })
-  readonly color!: string
+const props = withDefaults(defineProps<{
+  color?: string
+  percent?: number
+}>(), {
+  color: '#ff0',
+  percent: 100
+})
 
-  @Prop({ type: Number, default: 100 })
-  readonly percent!: number
+const emit = defineEmits<{
+  (e: 'click-spool'): void
+}>()
 
-  spoolColor = '#c08f4f'
-  spoolHoleColor = '#231a0f'
-  spoolTubeColor = '#594226'
-  spoolRimColor = '#9b7242'
+const spoolColor = '#c08f4f'
+const spoolHoleColor = '#231a0f'
+const spoolTubeColor = '#594226'
+const spoolRimColor = '#9b7242'
 
-  get styleReel () {
-    const minScale = 0.37 // 37% is the minimum visible size
-    const centerX = 128 // Center X of the SVG
-    const centerY = 250 // Center Y of the SVG
+const styleReel = computed(() => {
+  const minScale = 0.37 // 37% is the minimum visible size
+  const centerX = 128 // Center X of the SVG
+  const centerY = 250 // Center Y of the SVG
 
-    const style = {
-      fill: 'transparent',
-      stroke: 'black',
-      strokeWidth: '0',
-      transformOrigin: `${centerX}px ${centerY}px`,
-      transform: `scale(1, ${minScale})`,
-    }
-
-    // If percent greater than 0, set fill to color and apply scaling
-    if (this.percent > 0) {
-      style.fill = this.color
-
-      const scaleY = minScale + (this.percent / 100) * (1 - minScale)
-      style.transform = `scale(1, ${scaleY})`
-
-      // Apply stroke if color is not transparent
-      if (style.fill === 'transparent') style.strokeWidth = '3px'
-    }
-
-    return style
+  const style = {
+    fill: 'transparent',
+    stroke: 'black',
+    strokeWidth: '0',
+    transformOrigin: `${centerX}px ${centerY}px`,
+    transform: `scale(1, ${minScale})`,
   }
 
-  clickSpool () {
-    this.$emit('click-spool')
+  // If percent greater than 0, set fill to color and apply scaling
+  if (props.percent > 0) {
+    style.fill = props.color
+
+    const scaleY = minScale + (props.percent / 100) * (1 - minScale)
+    style.transform = `scale(1, ${scaleY})`
+
+    // Apply stroke if color is not transparent
+    if (style.fill === 'transparent') style.strokeWidth = '3px'
   }
+
+  return style
+})
+
+function clickSpool () {
+  emit('click-spool')
 }
 </script>

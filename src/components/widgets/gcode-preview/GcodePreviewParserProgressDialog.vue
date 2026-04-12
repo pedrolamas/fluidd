@@ -41,24 +41,25 @@
   </v-snackbar>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { AppFile } from '@/store/files/types'
 
-@Component({})
-export default class GcodePreviewParserProgressDialog extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  progress: number
+  file: AppFile
+}>()
 
-  @Prop({ type: Number })
-  readonly progress!: number
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+  (e: 'cancel'): void
+}>()
 
-  @Prop({ type: Object })
-  readonly file!: AppFile
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  get percent () {
-    return Math.floor((this.progress / this.file.size) * 100)
-  }
-}
+const percent = computed(() => Math.floor((props.progress / props.file.size) * 100))
 </script>

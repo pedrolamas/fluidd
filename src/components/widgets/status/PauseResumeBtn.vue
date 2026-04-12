@@ -75,46 +75,53 @@
   </app-btn-group>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { Macro } from '@/store/macros/types'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
 
-@Component({})
-export default class PauseResumeBtn extends Mixins(StateMixin) {
-  get hasLayersFromPrintStats () {
-    const { total_layer, current_layer } = this.$typedState.printer.printer.print_stats?.info ?? {}
+const { typedState, typedGetters } = useStore()
+const { printerPaused, hasWait } = useStateMixin()
 
-    return (
-      typeof (total_layer) === 'number' &&
-      typeof (current_layer) === 'number'
-    )
+defineEmits<{
+  (e: 'pause'): void
+  (e: 'resume'): void
+  (e: 'pauseAtLayer'): void
+}>()
+
+const hasLayersFromPrintStats = computed(() => {
+  const { total_layer, current_layer } = typedState.printer.printer.print_stats?.info ?? {}
+
+  return (
+    typeof (total_layer) === 'number' &&
+    typeof (current_layer) === 'number'
+  )
+})
+
+const hasPauseAtLayerMacros = computed(() => {
+  const macro: Macro | undefined = typedGetters['macros/getMacroByName'](
+    'SET_PAUSE_NEXT_LAYER',
+    'SET_PAUSE_AT_LAYER'
+  )
+
+  return macro != null
+})
+
+const setPrintStatsInfoMacro = computed<Macro | undefined>(() =>
+  typedGetters['macros/getMacroByName']('SET_PRINT_STATS_INFO')
+)
+
+const hasPrintAtLayerMacros = computed(() => {
+  if (!hasPauseAtLayerMacros.value) {
+    return false
   }
 
-  get hasPauseAtLayerMacros () {
-    const macro: Macro | undefined = this.$typedGetters['macros/getMacroByName'](
-      'SET_PAUSE_NEXT_LAYER',
-      'SET_PAUSE_AT_LAYER'
-    )
+  const setPrintStatsInfoVariables = setPrintStatsInfoMacro.value?.variables ?? {}
 
-    return macro != null
-  }
-
-  get setPrintStatsInfoMacro (): Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName']('SET_PRINT_STATS_INFO')
-  }
-
-  get hasPrintAtLayerMacros () {
-    if (!this.hasPauseAtLayerMacros) {
-      return false
-    }
-
-    const setPrintStatsInfoVariables = this.setPrintStatsInfoMacro?.variables ?? {}
-
-    return (
-      'pause_next_layer' in setPrintStatsInfoVariables &&
-      'pause_at_layer' in setPrintStatsInfoVariables
-    )
-  }
-}
+  return (
+    'pause_next_layer' in setPrintStatsInfoVariables &&
+    'pause_at_layer' in setPrintStatsInfoVariables
+  )
+})
 </script>

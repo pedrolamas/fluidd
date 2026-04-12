@@ -86,10 +86,10 @@
               :disabled="item.disconnected"
               :value="item.target"
               :rules="[
-                $rules.required,
-                $rules.numberValid,
-                $rules.numberGreaterThanOrEqualOrZero(item.minTemp),
-                $rules.numberLessThanOrEqualOrZero(item.maxTemp)
+                Rules.required,
+                Rules.numberValid,
+                Rules.numberGreaterThanOrEqualOrZero(item.minTemp),
+                Rules.numberLessThanOrEqualOrZero(item.maxTemp)
               ]"
               type="number"
               outlined
@@ -156,8 +156,8 @@
             <span v-if="item.temperature != null && !item.disconnected">
               {{ item.temperature.toFixed(1) }}<small>°C</small>
               <small v-if="item.humidity != null && showRelativeHumidity"><br>{{ item.humidity.toFixed(1) }} %</small>
-              <small v-if="item.pressure != null && showBarometricPressure"><br>{{ $filters.getReadableAtmosphericPressureString(item.pressure) }}</small>
-              <small v-if="item.gas != null && showGasResistance"><br>{{ $filters.getReadableResistanceString(item.gas) }}</small>
+              <small v-if="item.pressure != null && showBarometricPressure"><br>{{ Filters.getReadableAtmosphericPressureString(item.pressure) }}</small>
+              <small v-if="item.gas != null && showGasResistance"><br>{{ Filters.getReadableResistanceString(item.gas) }}</small>
             </span>
             <span v-else>
               -
@@ -170,10 +170,10 @@
               :disabled="item.disconnected"
               :value="item.target"
               :rules="[
-                $rules.required,
-                $rules.numberValid,
-                $rules.numberGreaterThanOrEqualOrZero(item.minTemp),
-                $rules.numberLessThanOrEqualOrZero(item.maxTemp)
+                Rules.required,
+                Rules.numberValid,
+                Rules.numberGreaterThanOrEqualOrZero(item.minTemp),
+                Rules.numberLessThanOrEqualOrZero(item.maxTemp)
               ]"
               type="number"
               outlined
@@ -231,9 +231,9 @@
                   <span v-if="item.temperature != null && !item.disconnected">
                     {{ item.temperature.toFixed(1) }}<small>°C</small>
                     <small v-if="item.humidity != null && showRelativeHumidity"><br>{{ item.humidity.toFixed(1) }} %</small>
-                    <small v-if="item.pressure != null && showBarometricPressure"><br>{{ $filters.getReadableAtmosphericPressureString(item.pressure) }}</small>
-                    <small v-if="item.gas != null && showGasResistance"><br>{{ $filters.getReadableResistanceString(item.gas) }}</small>
-                    <small v-if="item.current_z_adjust != null"><br>{{ $filters.getReadableLengthString(item.current_z_adjust, { showMicrons: true }) }}</small>
+                    <small v-if="item.pressure != null && showBarometricPressure"><br>{{ Filters.getReadableAtmosphericPressureString(item.pressure) }}</small>
+                    <small v-if="item.gas != null && showGasResistance"><br>{{ Filters.getReadableResistanceString(item.gas) }}</small>
+                    <small v-if="item.current_z_adjust != null"><br>{{ Filters.getReadableLengthString(item.current_z_adjust, { showMicrons: true }) }}</small>
                   </span>
                   <span v-else>
                     -
@@ -329,242 +329,195 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import TemperaturePresetsMenu from './TemperaturePresetsMenu.vue'
+<script setup lang="ts">
+import { reactive, computed, nextTick } from 'vue'
 import HeaterContextMenu from './HeaterContextMenu.vue'
 import HeaterPidCalibrateDialog from './HeaterPidCalibrateDialog.vue'
 import HeaterMpcCalibrateDialog from './HeaterMpcCalibrateDialog.vue'
-import StateMixin from '@/mixins/state'
+
+// Explicit registration for ESLint to recognize template usage
+defineOptions({ components: { HeaterPidCalibrateDialog, HeaterMpcCalibrateDialog } })
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
+import { Filters, Rules } from '@/plugins/filters'
 import type { Fan, Heater, Sensor } from '@/store/printer/types'
 import { takeRightWhile } from 'lodash-es'
 import type { ChartData, ChartSelectedLegends } from '@/store/charts/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 import isNullOrEmpty, { type NullableOrEmpty } from '@/util/is-null-or-empty'
 
-@Component({
-  components: {
-    TemperaturePresetsMenu,
-    HeaterContextMenu,
-    HeaterPidCalibrateDialog,
-    HeaterMpcCalibrateDialog
-  }
+const emit = defineEmits<{
+  (e: 'updateChartSelectedLegends', legends: ChartSelectedLegends): void
+}>()
+
+const { klippyReady, sendGcode } = useStateMixin()
+const { typedState, typedGetters, store } = useStore()
+
+const contextMenuState = reactive<{
+  open: boolean,
+  x: number,
+  y: number,
+  heater: Heater | null
+}>({
+  open: false,
+  x: 0,
+  y: 0,
+  heater: null
 })
-export default class TemperatureTargets extends Mixins(StateMixin) {
-  contextMenuState: any = {
-    open: false,
-    x: 0,
-    y: 0,
-    heater: null
-  }
 
-  heaterPidCalibrateDialog: any = {
-    heater: null,
-    open: false
-  }
+const heaterPidCalibrateDialog = reactive<{
+  heater: Heater | null,
+  open: boolean
+}>({
+  heater: null,
+  open: false
+})
 
-  heaterMpcCalibrateDialog: any = {
-    heater: null,
-    open: false
-  }
+const heaterMpcCalibrateDialog = reactive<{
+  heater: Heater | null,
+  open: boolean
+}>({
+  heater: null,
+  open: false
+})
 
-  get heaters (): Heater[] {
-    return this.$typedGetters['printer/getHeaters']
-  }
+const heaters = computed((): Heater[] => typedGetters['printer/getHeaters'])
+const fans = computed(() => store.getters['printer/getOutputs'](['temperature_fan']))
+const nevermore = computed(() => store.getters['printer/getOutputs'](['nevermore']))
+const sensors = computed((): Sensor[] => typedGetters['printer/getSensors'])
+const chartSelectedLegends = computed((): ChartSelectedLegends => typedState.charts.selectedLegends)
+const chartData = computed((): Readonly<ChartData>[] => typedState.charts.chart)
+const showRateOfChange = computed((): boolean => typedState.config.uiSettings.general.showRateOfChange)
+const showRelativeHumidity = computed((): boolean => typedState.config.uiSettings.general.showRelativeHumidity)
+const showBarometricPressure = computed((): boolean => typedState.config.uiSettings.general.showBarometricPressure)
+const showGasResistance = computed((): boolean => typedState.config.uiSettings.general.showGasResistance)
 
-  get fans () {
-    return this.$store.getters['printer/getOutputs'](['temperature_fan'])
-  }
+function setHeaterTargetTemp (heater: string, target: number) {
+  sendGcode(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heater)} TARGET=${target}`)
+}
 
-  get nevermore () {
-    return this.$store.getters['printer/getOutputs'](['nevermore'])
-  }
+function setFanTargetTemp (fan: string, target: number) {
+  sendGcode(`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(fan)} TARGET=${target}`)
+}
 
-  get sensors (): Sensor[] {
-    return this.$typedGetters['printer/getSensors']
-  }
+function getRateOfChange (item: Heater | Sensor) {
+  const recentChartData = chartData.value.slice(-5)
+  const filteredChartData = takeRightWhile(recentChartData, x => x[item.key] != null)
 
-  get chartSelectedLegends (): ChartSelectedLegends {
-    return this.$typedState.charts.selectedLegends
-  }
+  let rateOfChange = 0
+  if (filteredChartData.length >= 2) {
+    const curr = filteredChartData[filteredChartData.length - 1]
+    const prev = filteredChartData[0]
 
-  get chartData (): Readonly<ChartData>[] {
-    return this.$typedState.charts.chart
-  }
+    rateOfChange = (+curr[item.key] - +prev[item.key]) / (+curr.date - +prev.date) * 1000
 
-  get showRateOfChange (): boolean {
-    return this.$typedState.config.uiSettings.general.showRateOfChange
-  }
-
-  get showRelativeHumidity (): boolean {
-    return this.$typedState.config.uiSettings.general.showRelativeHumidity
-  }
-
-  get showBarometricPressure (): boolean {
-    return this.$typedState.config.uiSettings.general.showBarometricPressure
-  }
-
-  get showGasResistance (): boolean {
-    return this.$typedState.config.uiSettings.general.showGasResistance
-  }
-
-  setHeaterTargetTemp (heater: string, target: number) {
-    this.sendGcode(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(heater)} TARGET=${target}`)
-  }
-
-  setFanTargetTemp (fan: string, target: number) {
-    this.sendGcode(`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(fan)} TARGET=${target}`)
-  }
-
-  getRateOfChange (item: Heater | Sensor) {
-    const recentChartData = this.chartData
-      .slice(-5)
-    const filteredChartData = takeRightWhile(recentChartData, x => x[item.key] != null)
-
-    let rateOfChange = 0
-    if (filteredChartData.length >= 2) {
-      const curr = filteredChartData[filteredChartData.length - 1]
-      const prev = filteredChartData[0]
-
-      rateOfChange = (+curr[item.key] - +prev[item.key]) / (+curr.date - +prev.date) * 1000
-
-      if (Math.abs(rateOfChange) < 0.05) {
-        rateOfChange = 0 // prevent constant change of sign
-      }
-    }
-
-    return `${rateOfChange < 0 ? '' : '+'}${rateOfChange.toFixed(1)}`
-  }
-
-  isLegendSelected (item: Heater | Fan | Sensor, subKey?: string) {
-    const key = `${item.key}${subKey ?? ''}`
-
-    return this.chartSelectedLegends[key] ?? (subKey !== '#power' && subKey !== '#speed')
-  }
-
-  legendClick (item: Heater | Fan | Sensor, subKey?: string) {
-    const value = !this.isLegendSelected(item, subKey)
-    const key = `${item.key}${subKey ?? ''}`
-
-    const chartSelectedLegends: ChartSelectedLegends = {
-      [key]: value
-    }
-
-    // If this has a target, toggle that too.
-    if (
-      !subKey &&
-      'target' in item
-    ) {
-      chartSelectedLegends[`${item.key}#target`] = value
-    }
-
-    this.$emit('updateChartSelectedLegends', chartSelectedLegends)
-  }
-
-  getNevermoreSensors (item: Record<string, number | undefined>) {
-    const sensors = [
-      {
-        key: 'gas',
-        unit: '',
-        digits: 0,
-        small: false
-      },
-      {
-        key: 'temperature',
-        unit: ' °C',
-        digits: 1,
-        small: true
-      }
-    ]
-
-    if (this.showRelativeHumidity) {
-      sensors.push({
-        key: 'humidity',
-        unit: ' %',
-        digits: 1,
-        small: true
-      })
-    }
-
-    if (this.showBarometricPressure) {
-      sensors.push({
-        key: 'pressure',
-        unit: ' hPa',
-        digits: 0,
-        small: true
-      })
-    }
-
-    return sensors
-      .map(sensor => {
-        const intake = item[`intake_${sensor.key}`]?.toFixed(sensor.digits)
-        const intake_min = item[`intake_${sensor.key}_min`]?.toFixed(sensor.digits)
-        const intake_max = item[`intake_${sensor.key}_max`]?.toFixed(sensor.digits)
-        const exhaust = item[`exhaust_${sensor.key}`]?.toFixed(sensor.digits)
-        const exhaust_min = item[`exhaust_${sensor.key}_min`]?.toFixed(sensor.digits)
-        const exhaust_max = item[`exhaust_${sensor.key}_max`]?.toFixed(sensor.digits)
-
-        return {
-          ...sensor,
-          intake,
-          intake_min,
-          intake_max,
-          exhaust,
-          exhaust_min,
-          exhaust_max,
-          disableTooltip: (
-            intake_min == null &&
-            intake_max == null &&
-            exhaust_min == null &&
-            exhaust_max == null
-          )
-        }
-      })
-  }
-
-  handleHeaterRowClick (item: Heater, event: MouseEvent) {
-    if (this.contextMenuState.open) {
-      this.contextMenuState.open = false
-
-      if (event.type !== 'contextmenu') {
-        return
-      }
-    }
-
-    // Open the context menu
-    this.contextMenuState.x = event.clientX
-    this.contextMenuState.y = event.clientY
-    this.contextMenuState.heater = item
-    this.$nextTick(() => {
-      this.contextMenuState.open = true
-    })
-  }
-
-  handleTurnOff (heater: Heater) {
-    this.setHeaterTargetTemp(heater.name, 0)
-  }
-
-  handlePidCalibrateDialog (heater: Heater) {
-    this.heaterPidCalibrateDialog = {
-      heater,
-      open: true
+    if (Math.abs(rateOfChange) < 0.05) {
+      rateOfChange = 0 // prevent constant change of sign
     }
   }
 
-  handlePidCalibrate (heater: Heater, targetTemperature: number) {
-    this.sendGcode(`PID_CALIBRATE HEATER=${encodeGcodeParamValue(heater.name)} TARGET=${targetTemperature}`)
+  return `${rateOfChange < 0 ? '' : '+'}${rateOfChange.toFixed(1)}`
+}
+
+function isLegendSelected (item: Heater | Fan | Sensor, subKey?: string) {
+  const key = `${item.key}${subKey ?? ''}`
+  return chartSelectedLegends.value[key] ?? (subKey !== '#power' && subKey !== '#speed')
+}
+
+function legendClick (item: Heater | Fan | Sensor, subKey?: string) {
+  const value = !isLegendSelected(item, subKey)
+  const key = `${item.key}${subKey ?? ''}`
+
+  const legends: ChartSelectedLegends = {
+    [key]: value
   }
 
-  handleMpcCalibrateDialog (heater: Heater) {
-    this.heaterMpcCalibrateDialog = {
-      heater,
-      open: true
+  // If this has a target, toggle that too.
+  if (!subKey && 'target' in item) {
+    legends[`${item.key}#target`] = value
+  }
+
+  emit('updateChartSelectedLegends', legends)
+}
+
+function getNevermoreSensors (item: Record<string, number | undefined>) {
+  const sensorDefs = [
+    { key: 'gas', unit: '', digits: 0, small: false },
+    { key: 'temperature', unit: ' °C', digits: 1, small: true }
+  ]
+
+  if (showRelativeHumidity.value) {
+    sensorDefs.push({ key: 'humidity', unit: ' %', digits: 1, small: true })
+  }
+
+  if (showBarometricPressure.value) {
+    sensorDefs.push({ key: 'pressure', unit: ' hPa', digits: 0, small: true })
+  }
+
+  return sensorDefs.map(sensor => {
+    const intake = item[`intake_${sensor.key}`]?.toFixed(sensor.digits)
+    const intake_min = item[`intake_${sensor.key}_min`]?.toFixed(sensor.digits)
+    const intake_max = item[`intake_${sensor.key}_max`]?.toFixed(sensor.digits)
+    const exhaust = item[`exhaust_${sensor.key}`]?.toFixed(sensor.digits)
+    const exhaust_min = item[`exhaust_${sensor.key}_min`]?.toFixed(sensor.digits)
+    const exhaust_max = item[`exhaust_${sensor.key}_max`]?.toFixed(sensor.digits)
+
+    return {
+      ...sensor,
+      intake,
+      intake_min,
+      intake_max,
+      exhaust,
+      exhaust_min,
+      exhaust_max,
+      disableTooltip: (
+        intake_min == null &&
+        intake_max == null &&
+        exhaust_min == null &&
+        exhaust_max == null
+      )
+    }
+  })
+}
+
+function handleHeaterRowClick (item: Heater, event: MouseEvent) {
+  if (contextMenuState.open) {
+    contextMenuState.open = false
+
+    if (event.type !== 'contextmenu') {
+      return
     }
   }
 
-  handleMpcCalibrate (heater: Heater, targetTemperature: number, fanBreakpoints: NullableOrEmpty<number>) {
-    this.sendGcode(`MPC_CALIBRATE HEATER=${encodeGcodeParamValue(heater.name)} TARGET=${targetTemperature}${!isNullOrEmpty(fanBreakpoints) ? ` FAN_BREAKPOINTS=${fanBreakpoints}` : ''}`)
-  }
+  // Open the context menu
+  contextMenuState.x = event.clientX
+  contextMenuState.y = event.clientY
+  contextMenuState.heater = item
+  nextTick(() => {
+    contextMenuState.open = true
+  })
+}
+
+function handleTurnOff (heater: Heater) {
+  setHeaterTargetTemp(heater.name, 0)
+}
+
+function handlePidCalibrateDialog (heater: Heater) {
+  heaterPidCalibrateDialog.heater = heater
+  heaterPidCalibrateDialog.open = true
+}
+
+function handlePidCalibrate (heater: Heater, targetTemperature: number) {
+  sendGcode(`PID_CALIBRATE HEATER=${encodeGcodeParamValue(heater.name)} TARGET=${targetTemperature}`)
+}
+
+function handleMpcCalibrateDialog (heater: Heater) {
+  heaterMpcCalibrateDialog.heater = heater
+  heaterMpcCalibrateDialog.open = true
+}
+
+function handleMpcCalibrate (heater: Heater, targetTemperature: number, fanBreakpoints: NullableOrEmpty<number>) {
+  sendGcode(`MPC_CALIBRATE HEATER=${encodeGcodeParamValue(heater.name)} TARGET=${targetTemperature}${!isNullOrEmpty(fanBreakpoints) ? ` FAN_BREAKPOINTS=${fanBreakpoints}` : ''}`)
 }
 </script>
 

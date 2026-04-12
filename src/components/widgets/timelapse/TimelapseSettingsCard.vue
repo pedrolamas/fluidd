@@ -50,51 +50,47 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import type { TimelapseLastFrame } from '@/store/timelapse/types'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import { defaultWritableSettings } from '@/store/timelapse/state'
 
-@Component({})
-export default class TimelapseSettingsCard extends Mixins(StateMixin) {
-  get enabledBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('enabled')
-  }
+defineEmits<{
+  (e: 'openRenderDialog', value: boolean): void
+}>()
 
-  get enabled () {
-    return this.settings.enabled
-  }
+const { typedState, typedGetters } = useStore()
+const { tc } = useI18n()
 
-  set enabled (value: boolean) {
+const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
+  typedState.timelapse.settings ?? defaultWritableSettings
+)
+
+const enabledBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('enabled')
+)
+
+const enabled = computed({
+  get: () => settings.value.enabled,
+  set: (value: boolean) => {
     SocketActions.machineTimelapsePostSettings({ enabled: value })
   }
+})
 
-  get autoRenderBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('autorender')
-  }
+const autoRenderBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('autorender')
+)
 
-  get autoRender () {
-    return this.settings.autorender
-  }
-
-  set autoRender (value: boolean) {
+const autoRender = computed({
+  get: () => settings.value.autorender,
+  set: (value: boolean) => {
     SocketActions.machineTimelapsePostSettings({ autorender: value })
   }
+})
 
-  get frameCount () {
-    const lastFrame: TimelapseLastFrame | null = this.$typedGetters['timelapse/getLastFrame']
-
-    return lastFrame?.count
-  }
-
-  get settings (): Moonraker.Timelapse.WriteableSettings {
-    return this.$typedState.timelapse.settings ?? defaultWritableSettings
-  }
-
-  subtitleIfBlocked (blocked: boolean): string {
-    return blocked ? this.$tc('app.general.tooltip.managed_by_moonraker') : ''
-  }
+function subtitleIfBlocked (blocked: boolean): string {
+  return blocked ? tc('app.general.tooltip.managed_by_moonraker') : ''
 }
 </script>

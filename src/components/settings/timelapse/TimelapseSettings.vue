@@ -51,9 +51,9 @@
         <app-text-field
           :value="delayComp"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(0)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(0)
           ]"
           :disabled="delayCompBlocked"
           hide-details="auto"
@@ -118,107 +118,92 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed, ref } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { Rules } from '@/plugins/filters'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { defaultWritableSettings } from '@/store/timelapse/state'
 import HyperlapseSettings from '@/components/settings/timelapse/subsettings/modes/HyperlapseSettings.vue'
 import ToolheadParkingSettings from '@/components/settings/timelapse/subsettings/ToolheadParkingSettings.vue'
-import { defaultWritableSettings } from '@/store/timelapse/state'
 import TimelapseRenderSettingsDialog from '@/components/widgets/timelapse/TimelapseRenderSettingsDialog.vue'
 
-@Component({
-  components: {
-    ToolheadParkingSettings,
-    HyperlapseSettings,
-    TimelapseRenderSettingsDialog
-  }
+const { typedState, typedGetters } = useStore()
+const { tc } = useI18n()
+
+const renderSettingsDialogOpen = ref(false)
+
+const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
+  typedState.timelapse.settings ?? defaultWritableSettings
+)
+
+const supportedModes = computed((): { text: string, value: Moonraker.Timelapse.TimelapseMode }[] => [
+  { text: tc('app.timelapse.setting.mode_layermacro'), value: 'layermacro' },
+  { text: tc('app.timelapse.setting.mode_hyperlapse'), value: 'hyperlapse' },
+])
+
+const cameras = computed((): Array<{ text?: string, value: string, disabled: boolean }> => {
+  const webcams: Moonraker.Webcam.Entry[] = typedGetters['webcams/getWebcams']
+
+  return webcams.map(cam => ({
+    text: cam.name,
+    value: cam.uid,
+    disabled: !cam.enabled
+  }))
 })
-export default class TimelapseSettings extends Mixins(StateMixin) {
-  renderSettingsDialogOpen = false
 
-  get supportedModes (): { text: string, value: Moonraker.Timelapse.TimelapseMode }[] {
-    return [{
-      text: this.$tc('app.timelapse.setting.mode_layermacro'),
-      value: 'layermacro'
-    }, {
-      text: this.$tc('app.timelapse.setting.mode_hyperlapse'),
-      value: 'hyperlapse'
-    }]
-  }
+const cameraBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('camera')
+)
 
-  get cameras (): Array<{ text?: string, value: string, disabled: boolean }> {
-    const cameras: Moonraker.Webcam.Entry[] = this.$typedGetters['webcams/getWebcams']
-
-    return cameras
-      .map(camera => ({
-        text: camera.name,
-        value: camera.uid,
-        disabled: !camera.enabled
-      }))
-  }
-
-  get cameraBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('camera')
-  }
-
-  get camera (): string {
-    return this.settings.camera
-  }
-
-  set camera (value: string) {
+const camera = computed({
+  get: (): string => settings.value.camera,
+  set: (value: string) => {
     SocketActions.machineTimelapsePostSettings({ camera: value })
   }
+})
 
-  get modeBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('mode')
-  }
+const modeBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('mode')
+)
 
-  get mode (): Moonraker.Timelapse.TimelapseMode {
-    return this.settings.mode
-  }
-
-  set mode (value: Moonraker.Timelapse.TimelapseMode) {
+const mode = computed({
+  get: (): Moonraker.Timelapse.TimelapseMode => settings.value.mode,
+  set: (value: Moonraker.Timelapse.TimelapseMode) => {
     SocketActions.machineTimelapsePostSettings({ mode: value })
   }
+})
 
-  get delayCompBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('stream_delay_compensation')
-  }
+const delayCompBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('stream_delay_compensation')
+)
 
-  get delayComp (): number {
-    return this.settings.stream_delay_compensation * 1000
-  }
+const delayComp = computed((): number => settings.value.stream_delay_compensation * 1000)
 
-  setDelayComp (value: number) {
-    SocketActions.machineTimelapsePostSettings({ stream_delay_compensation: value / 1000 })
-  }
+function setDelayComp (value: unknown) {
+  SocketActions.machineTimelapsePostSettings({ stream_delay_compensation: Number(value) / 1000 })
+}
 
-  get verboseGcodeBlocked (): boolean {
-    return this.$typedGetters['timelapse/isBlockedSetting']('gcode_verbose')
-  }
+const verboseGcodeBlocked = computed((): boolean =>
+  typedGetters['timelapse/isBlockedSetting']('gcode_verbose')
+)
 
-  get verboseGcode (): boolean {
-    return this.settings.gcode_verbose
-  }
-
-  set verboseGcode (value: boolean) {
+const verboseGcode = computed({
+  get: (): boolean => settings.value.gcode_verbose,
+  set: (value: boolean) => {
     SocketActions.machineTimelapsePostSettings({ gcode_verbose: value })
   }
+})
 
-  get settings (): Moonraker.Timelapse.WriteableSettings {
-    return this.$typedState.timelapse.settings ?? defaultWritableSettings
-  }
+function subtitleIfBlocked (blocked: boolean): string {
+  return blocked ? tc('app.general.tooltip.managed_by_moonraker') : ''
+}
 
-  subtitleIfBlocked (blocked: boolean): string {
-    return blocked ? this.$tc('app.general.tooltip.managed_by_moonraker') : ''
-  }
+function handleReset () {
+  const nonBlockedEntries = Object.entries(defaultWritableSettings)
+    .filter(([key]) => !typedGetters['timelapse/isBlockedSetting'](key))
 
-  handleReset () {
-    const nonBlockedEntries = Object.entries(defaultWritableSettings)
-      .filter(([key]) => !this.$typedGetters['timelapse/isBlockedSetting'](key))
-
-    SocketActions.machineTimelapsePostSettings(Object.fromEntries(nonBlockedEntries))
-  }
+  SocketActions.machineTimelapsePostSettings(Object.fromEntries(nonBlockedEntries))
 }
 </script>

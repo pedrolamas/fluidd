@@ -45,7 +45,7 @@
           class="pr-1"
         >
           <app-btn
-            :loading="hasWait($waits.onZAdjust)"
+            :loading="hasWait(Waits.onZAdjust)"
             :disabled="!klippyReady"
             small
             block
@@ -61,7 +61,7 @@
           class="pr-1"
         >
           <app-btn
-            :loading="hasWait($waits.onZAdjust)"
+            :loading="hasWait(Waits.onZAdjust)"
             :disabled="!klippyReady"
             small
             block
@@ -140,60 +140,61 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { Waits } from '@/globals'
 import type { GcodeCommands } from '@/store/printer/types'
 
-@Component({})
-export default class ZHeightAdjust extends Mixins(StateMixin) {
-  moveDistanceValue: number | null = null
+const { typedState, typedGetters } = useStore()
+const { klippyReady, printerPrinting, hasWait, sendGcode } = useStateMixin()
 
-  get zHomingOrigin (): number {
-    return this.$typedState.printer.printer.gcode_move.homing_origin[2]
+const moveDistanceValue = ref<number | null>(null)
+
+const zHomingOrigin = computed((): number =>
+  typedState.printer.printer.gcode_move.homing_origin[2]
+)
+
+const zAdjustValues = computed((): number[] =>
+  typedState.config.uiSettings.general.zAdjustDistances
+)
+
+const moveDistance = computed({
+  get: (): number => moveDistanceValue.value || zAdjustValues.value[0],
+  set: (value: number) => {
+    moveDistanceValue.value = value
+  }
+})
+
+const availableCommands = computed((): GcodeCommands =>
+  typedGetters['printer/getAvailableCommands']
+)
+
+const hasZOffsetApplyProbe = computed((): boolean =>
+  'Z_OFFSET_APPLY_PROBE' in availableCommands.value
+)
+
+const hasZOffsetApplyEndstop = computed((): boolean =>
+  'Z_OFFSET_APPLY_ENDSTOP' in availableCommands.value
+)
+
+/**
+ * Send a Z adjust gcode script.
+ */
+function sendZAdjustGcode (direction: '+' | '-') {
+  const zHomed: boolean = typedGetters['printer/getHomedAxes']('z')
+  const gcode = `SET_GCODE_OFFSET Z_ADJUST=${direction}${moveDistance.value} MOVE=${+zHomed}`
+  sendGcode(gcode, Waits.onZAdjust)
+}
+
+function handleZOffsetApply () {
+  if (hasZOffsetApplyProbe.value && !hasZOffsetApplyEndstop.value) {
+    sendGcode('Z_OFFSET_APPLY_PROBE')
   }
 
-  get zAdjustValues (): number[] {
-    return this.$typedState.config.uiSettings.general.zAdjustDistances
-  }
-
-  get moveDistance (): number {
-    return this.moveDistanceValue || this.zAdjustValues[0]
-  }
-
-  set moveDistance (value: number) {
-    this.moveDistanceValue = value
-  }
-
-  get availableCommands (): GcodeCommands {
-    return this.$typedGetters['printer/getAvailableCommands']
-  }
-
-  get hasZOffsetApplyProbe (): boolean {
-    return 'Z_OFFSET_APPLY_PROBE' in this.availableCommands
-  }
-
-  get hasZOffsetApplyEndstop (): boolean {
-    return 'Z_OFFSET_APPLY_ENDSTOP' in this.availableCommands
-  }
-
-  /**
-   * Send a Z adjust gcode script.
-   */
-  sendZAdjustGcode (direction: '+' | '-') {
-    const zHomed: boolean = this.$typedGetters['printer/getHomedAxes']('z')
-    const gcode = `SET_GCODE_OFFSET Z_ADJUST=${direction}${this.moveDistance} MOVE=${+zHomed}`
-    this.sendGcode(gcode, this.$waits.onZAdjust)
-  }
-
-  handleZOffsetApply () {
-    if (this.hasZOffsetApplyProbe && !this.hasZOffsetApplyEndstop) {
-      this.sendGcode('Z_OFFSET_APPLY_PROBE')
-    }
-
-    if (this.hasZOffsetApplyEndstop && !this.hasZOffsetApplyProbe) {
-      this.sendGcode('Z_OFFSET_APPLY_ENDSTOP')
-    }
+  if (hasZOffsetApplyEndstop.value && !hasZOffsetApplyProbe.value) {
+    sendGcode('Z_OFFSET_APPLY_ENDSTOP')
   }
 }
 </script>

@@ -57,35 +57,35 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Prop, VModel, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
 import type { Heater, KlippyApp } from '@/store/printer/types'
 
-@Component({})
-export default class HeaterContextMenu extends Mixins(StateMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value: boolean,
+  positionX: number,
+  positionY: number,
+  heater: Heater
+}>()
 
-  @Prop({ type: Number, required: true })
-  readonly positionX!: number
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'turn-off', heater: Heater): void
+  (e: 'pid-calibrate', heater: Heater): void
+  (e: 'mpc-calibrate', heater: Heater): void
+}>()
 
-  @Prop({ type: Number, required: true })
-  readonly positionY!: number
+const open = computed({
+  get: () => props.value,
+  set: (value) => emit('input', value)
+})
 
-  @Prop({ type: Object, required: true })
-  readonly heater!: Heater
+const { klippyReady, printerPrinting } = useStateMixin()
+const { typedGetters } = useStore()
 
-  get klippyApp (): KlippyApp {
-    return this.$typedGetters['printer/getKlippyApp']
-  }
-
-  get heaterIsOn () {
-    return this.heater.target > 0
-  }
-
-  get heaterUsesMpcControl () {
-    return this.heater.config?.control === 'mpc'
-  }
-}
+const klippyApp = computed((): KlippyApp => typedGetters['printer/getKlippyApp'])
+const heaterIsOn = computed(() => props.heater.target > 0)
+const heaterUsesMpcControl = computed(() => props.heater.config?.control === 'mpc')
 </script>

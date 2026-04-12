@@ -49,27 +49,26 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { Filters } from '@/plugins/filters'
 
-@Component({})
-export default class AppAnnouncementDismissMenu extends Mixins(StateMixin) {
-  get presets () {
-    return [
-      {
-        label: this.$filters.formatRelativeTime(1, 'hour', { numeric: 'always' }),
-        delay: 3600
-      },
-      {
-        label: this.$filters.formatRelativeTime(1, 'day', { numeric: 'always' }),
-        delay: 3600 * 24
-      },
-      {
-        label: this.$filters.formatRelativeTime(7, 'day', { numeric: 'always' }),
-        delay: 3600 * 24 * 7
-      }
-    ]
+defineEmits<{
+  (e: 'dismiss', delay: number): void
+}>()
+
+const presets = computed(() => [
+  {
+    label: Filters.formatRelativeTime(1, 'hour', { numeric: 'always' }),
+    delay: 3600
+  },
+  {
+    label: Filters.formatRelativeTime(1, 'day', { numeric: 'always' }),
+    delay: 3600 * 24
+  },
+  {
+    label: Filters.formatRelativeTime(7, 'day', { numeric: 'always' }),
+    delay: 3600 * 24 * 7
   }
-}
+])
 </script>

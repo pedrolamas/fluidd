@@ -38,47 +38,27 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
+import { useStore } from '@/composables/useStore'
 
-import SystemOverviewCard from '@/components/widgets/system/SystemOverviewCard.vue'
-import SystemUsageCard from '@/components/widgets/system/SystemUsageCard.vue'
-import DiskUsageCard from '@/components/widgets/system/DiskUsageCard.vue'
+const { typedState } = useStore()
 
-@Component({
-  components: {
-    FileSystem,
-    SystemOverviewCard,
-    SystemUsageCard,
-    DiskUsageCard
-  }
-})
-export default class Configure extends Mixins(StateMixin) {
-  get hasGraphData () {
-    return (
-      this.$typedState.charts.klipper !== undefined ||
-      this.$typedState.charts.moonraker !== undefined ||
-      this.$typedState.charts.memory !== undefined
-    )
-  }
+const roots = computed(() => {
+  const roots = ['logs', 'docs', 'config_examples']
+  const excludeRoots = ['gcodes', 'config', 'timelapse', 'timelapse_frames']
 
-  get roots () {
-    const roots = ['logs', 'docs', 'config_examples']
-    const excludeRoots = ['gcodes', 'config', 'timelapse', 'timelapse_frames']
+  const registeredDirectories: string[] = typedState.server.info.registered_directories || []
 
-    const registeredDirectories: string[] = this.$typedState.server.info.registered_directories || []
-
-    for (const root of registeredDirectories) {
-      if (!excludeRoots.includes(root) && !roots.includes(root)) {
-        roots.push(root)
-      }
+  for (const root of registeredDirectories) {
+    if (!excludeRoots.includes(root) && !roots.includes(root)) {
+      roots.push(root)
     }
-
-    return roots
   }
-}
+
+  return roots
+})
 </script>
 
 <style lang="scss" scoped>

@@ -16,7 +16,7 @@
       <app-btn
         v-if="scrollingPaused"
         icon
-        @click="consoleElement.scrollToLatest(true)"
+        @click="consoleElement?.scrollToLatest(true)"
       >
         <v-icon dense>
           {{ flipLayout ? '$up' : '$down' }}
@@ -84,7 +84,7 @@
             </v-list-item-content>
           </v-list-item>
 
-          <v-list-item @click="flipLayout = !flipLayout">
+          <v-list-item @click="setFlipLayout(!flipLayout)">
             <v-list-item-action class="my-0">
               <v-checkbox :input-value="flipLayout" />
             </v-list-item-action>
@@ -118,7 +118,7 @@
     </template>
 
     <console
-      ref="console"
+      ref="consoleElement"
       :scrolling-paused.sync="scrollingPaused"
       :items="items"
       :fullscreen="fullscreen"
@@ -126,96 +126,82 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, Watch, Ref } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useStore } from '@/composables/useStore'
 import Console from './Console.vue'
 import type { ConsoleEntry, ConsoleFilter } from '@/store/console/types'
 
-@Component({
-  components: {
-    Console
-  }
-})
-export default class ConsoleCard extends Vue {
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+defineProps<{
+  fullscreen?: boolean
+}>()
 
-  @Ref('console')
-  readonly consoleElement!: Console
+const { typedState, typedGetters, typedDispatch } = useStore()
 
-  scrollingPaused = false
+const consoleElement = ref<InstanceType<typeof Console>>()
+const scrollingPaused = ref(false)
 
-  get filters (): ConsoleFilter[] {
-    return this.$typedState.console.consoleFilters
-  }
+const filters = computed((): ConsoleFilter[] => typedState.console.consoleFilters)
 
-  get hideTempWaits (): boolean {
-    return this.$typedState.config.uiSettings.general.hideTempWaits
-  }
-
-  set hideTempWaits (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const hideTempWaits = computed({
+  get: (): boolean => typedState.config.uiSettings.general.hideTempWaits,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.hideTempWaits',
       value,
       server: true
     })
   }
+})
 
-  get flipLayout (): boolean {
-    return this.$typedState.config.uiSettings.general.flipConsoleLayout
-  }
+const flipLayout = computed((): boolean =>
+  typedState.config.uiSettings.general.flipConsoleLayout
+)
 
-  set flipLayout (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.flipConsoleLayout',
-      value,
-      server: true
-    })
+function setFlipLayout (value: boolean) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.flipConsoleLayout',
+    value,
+    server: true
+  })
 
-    this.consoleElement.flipLayout = value
-  }
+  consoleElement.value?.scrollToLatest(true)
+}
 
-  get items (): ConsoleEntry[] {
-    return this.$typedGetters['console/getConsoleEntries']
-  }
+const items = computed((): ConsoleEntry[] => typedGetters['console/getConsoleEntries'])
 
-  get inLayout (): boolean {
-    return (this.$typedState.config.layoutMode)
-  }
+const inLayout = computed((): boolean => typedState.config.layoutMode)
 
-  get autoScroll (): boolean {
-    return this.$typedState.console.autoScroll
-  }
-
-  set autoScroll (value: boolean) {
-    this.$typedDispatch('console/onUpdateAutoScroll', value)
+const autoScroll = computed({
+  get: (): boolean => typedState.console.autoScroll,
+  set: (value: boolean) => {
+    typedDispatch('console/onUpdateAutoScroll', value)
     if (value) {
-      this.consoleElement.scrollToLatest(true)
+      consoleElement.value?.scrollToLatest(true)
     }
   }
+})
 
-  @Watch('inLayout')
-  inLayoutChange (inLayout: boolean) {
-    if (!inLayout) {
-      this.consoleElement.scrollToLatest()
-    }
+watch(inLayout, (inLayout: boolean) => {
+  if (!inLayout) {
+    consoleElement.value?.scrollToLatest()
   }
+})
 
-  handleCollapseChange (collapsed: boolean) {
-    if (!collapsed) {
-      this.consoleElement.scrollToLatest()
-    }
+function handleCollapseChange (collapsed: boolean) {
+  if (!collapsed) {
+    consoleElement.value?.scrollToLatest()
   }
+}
 
-  handleClear () {
-    this.$typedDispatch('console/onClear')
-  }
+function handleClear () {
+  typedDispatch('console/onClear')
+}
 
-  handleToggleFilter (filter: ConsoleFilter) {
-    this.$typedDispatch('console/onSaveFilter', {
-      ...filter,
-      enabled: !filter.enabled
-    })
-  }
+function handleToggleFilter (filter: ConsoleFilter) {
+  typedDispatch('console/onSaveFilter', {
+    ...filter,
+    enabled: !filter.enabled
+  })
 }
 </script>

@@ -1,6 +1,6 @@
 <template>
   <collapsable-card
-    :title="$tc('app.spoolman.title.spoolman')"
+    :title="tc('app.spoolman.title.spoolman')"
     icon="$filament"
     draggable
     layout-path="dashboard.spoolman-card"
@@ -11,9 +11,9 @@
         small
         class="me-1 my-1"
         :disabled="!isConnected"
-        @click="handleSelectSpool"
+        @click="handleSelectSpool()"
       >
-        {{ $t('app.spoolman.label.change_spool') }}
+        {{ t('app.spoolman.label.change_spool') }}
       </app-btn>
 
       <v-menu
@@ -32,7 +32,7 @@
             :disabled="!isConnected"
             v-on="on"
           >
-            {{ $t('app.spoolman.label.change_spool') }}
+            {{ t('app.spoolman.label.change_spool') }}
             <v-icon
               small
               class="ml-1"
@@ -44,10 +44,10 @@
         </template>
 
         <v-list dense>
-          <v-list-item @click="handleSelectSpool">
+          <v-list-item @click="handleSelectSpool()">
             <v-list-item-content>
               <v-list-item-title>
-                {{ $t('app.spoolman.label.active_spool') }}
+                {{ t('app.spoolman.label.active_spool') }}
               </v-list-item-title>
             </v-list-item-content>
 
@@ -92,7 +92,7 @@
     </template>
 
     <v-progress-linear
-      v-if="activeSpool && $vuetify.breakpoint.lgAndDown"
+      v-if="activeSpool && vuetify.breakpoint.lgAndDown"
       :value="activeSpool.progress"
       :height="6"
       :color="getSpoolColor(activeSpool)"
@@ -159,18 +159,18 @@
           v-else-if="isConnected"
           align-self="center"
         >
-          {{ $t('app.spoolman.msg.tracking_inactive') }}
+          {{ t('app.spoolman.msg.tracking_inactive') }}
         </v-col>
 
         <v-col
           v-else
           align-self="center"
         >
-          {{ $t('app.spoolman.msg.not_connected') }}
+          {{ t('app.spoolman.msg.not_connected') }}
         </v-col>
 
         <v-col
-          v-if="$vuetify.breakpoint.xl"
+          v-if="vuetify.breakpoint.xl"
           cols="auto"
           align-self="center"
           class="pa-0"
@@ -220,9 +220,13 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useVuetify } from '@/composables/useVuetify'
+import { Filters } from '@/plugins/filters'
 import type { Spool } from '@/store/spoolman/types'
 import StatusLabel from '@/components/widgets/status/StatusLabel.vue'
 import type { Macro } from '@/store/macros/types'
@@ -234,140 +238,136 @@ type MacroWithSpoolId = Macro & {
   }
 }
 
-@Component({
-  components: { StatusLabel }
+const { typedState, typedGetters, typedCommit } = useStore()
+const { t, tc } = useI18n()
+const { klippyReady } = useStateMixin()
+const vuetify = useVuetify()
+
+function handleSelectSpool (targetMacro?: Macro) {
+  typedCommit('spoolman/setDialogState', {
+    show: true,
+    targetMacro: targetMacro?.name
+  })
+}
+
+const selectedCardFields = computed((): string[][] => {
+  const fields = typedState.config.uiSettings.spoolman.selectedCardFields
+  const columnCount = fields.length > 1 ? 2 : 1
+  const elementsPerColumn = Math.ceil(fields.length / columnCount)
+  return new Array(columnCount).fill(undefined).map((_, i) => fields.slice(i * elementsPerColumn, (i + 1) * elementsPerColumn))
 })
-export default class SpoolmanCard extends Mixins(StateMixin) {
-  handleSelectSpool (targetMacro?: Macro) {
-    this.$typedCommit('spoolman/setDialogState', {
-      show: true,
-      targetMacro: targetMacro?.name
-    })
+
+const activeSpool = computed((): Spool | undefined => {
+  if (!isConnected.value) return undefined
+  return typedGetters['spoolman/getActiveSpool']
+})
+
+const currency = computed((): string | null => typedState.spoolman.currency)
+
+const isConnected = computed((): boolean => typedState.spoolman.connected)
+
+const targetableMacros = computed(() => {
+  const macros: Macro[] = typedGetters['macros/getMacros']
+
+  return macros
+    .filter((macro): macro is MacroWithSpoolId => macro.variables != null && 'spool_id' in macro.variables)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+})
+
+const remainingFilamentUnit = computed((): SpoolmanRemainingFilamentUnit =>
+  typedState.config.uiSettings.spoolman.remainingFilamentUnit
+)
+
+function getSpoolById (id: number): Spool | undefined {
+  return typedGetters['spoolman/getSpoolById'](id)
+}
+
+function getSpoolColor (spool?: Spool) {
+  return spool?.filament.color_hex ?? (vuetify.theme.dark ? '#fff' : '#000')
+}
+
+function getFieldLabel (field: string) {
+  switch (field) {
+    case 'remaining_weight':
+      return t('app.spoolman.label.remaining')
+
+    case 'used_weight':
+      return t('app.spoolman.label.used')
+
+    default:
+      return t(`app.spoolman.label.${field}`)
   }
+}
 
-  get selectedCardFields (): string[][] {
-    const fields = this.$typedState.config.uiSettings.spoolman.selectedCardFields
-    const columnCount = fields.length > 1 ? 2 : 1
-    const elementsPerColumn = Math.ceil(fields.length / columnCount)
-    return new Array(columnCount).fill(undefined).map((_, i) => fields.slice(i * elementsPerColumn, (i + 1) * elementsPerColumn))
+function getFormattedField (field: string) {
+  if (!activeSpool.value) return '-'
+
+  switch (field) {
+    case 'vendor':
+      return activeSpool.value.filament.vendor?.name || '-'
+
+    case 'filament_name':
+      return activeSpool.value.filament.name
+
+    case 'material':
+      return activeSpool.value.filament.material || '-'
+
+    case 'first_used':
+      return activeSpool.value.first_used ? Filters.formatRelativeTimeToNow(activeSpool.value.first_used) : tc('app.setting.label.never')
+
+    case 'last_used':
+      return activeSpool.value.last_used ? Filters.formatRelativeTimeToNow(activeSpool.value.last_used) : tc('app.setting.label.never')
+
+    case 'price':
+      return activeSpool.value.price != null ? Filters.getReadableCurrencyString(activeSpool.value.price, currency.value ?? '') : '-'
+
+    case 'density':
+      return activeSpool.value.filament.density || '-'
+
+    case 'diameter':
+      return activeSpool.value.filament.diameter ? Filters.getReadableLengthString(activeSpool.value.filament.diameter) : '-'
+
+    case 'extruder_temp':
+      return activeSpool.value.filament.settings_extruder_temp || '-'
+
+    case 'bed_temp':
+      return activeSpool.value.filament.settings_bed_temp || '-'
+
+    case 'remaining_weight':
+      return activeSpool.value.remaining_weight != null ? Filters.getReadableWeightString(activeSpool.value.remaining_weight) : '-'
+
+    case 'remaining_length':
+      return activeSpool.value.remaining_length != null ? Filters.getReadableLengthString(activeSpool.value.remaining_length) : '-'
+
+    case 'used_weight':
+      return activeSpool.value.used_weight != null ? Filters.getReadableWeightString(activeSpool.value.used_weight) : '-'
+
+    case 'used_length':
+      return activeSpool.value.used_length != null ? Filters.getReadableLengthString(activeSpool.value.used_length) : '-'
+
+    case 'initial_weight':
+      return activeSpool.value.initial_weight != null ? Filters.getReadableWeightString(activeSpool.value.initial_weight) : '-'
+
+    case 'initial_length':
+      return activeSpool.value.initial_length != null ? Filters.getReadableLengthString(activeSpool.value.initial_length) : '-'
+
+    default:
+      return activeSpool.value[field as keyof Spool] || '-'
   }
+}
 
-  get activeSpool (): Spool | undefined {
-    if (!this.isConnected) return undefined
-    return this.$typedGetters['spoolman/getActiveSpool']
-  }
+function getTooltipField (field: string) {
+  if (!activeSpool.value) return null
 
-  get currency (): string | null {
-    return this.$typedState.spoolman.currency
-  }
+  switch (field) {
+    case 'first_used':
+      return activeSpool.value.first_used ? Filters.formatDateTime(activeSpool.value.first_used) : null
 
-  get isConnected (): boolean {
-    return this.$typedState.spoolman.connected
-  }
+    case 'last_used':
+      return activeSpool.value.last_used ? Filters.formatDateTime(activeSpool.value.last_used) : null
 
-  get targetableMacros () {
-    const macros: Macro[] = this.$typedGetters['macros/getMacros']
-
-    return macros
-      .filter((macro): macro is MacroWithSpoolId => macro.variables != null && 'spool_id' in macro.variables)
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-  }
-
-  get remainingFilamentUnit (): SpoolmanRemainingFilamentUnit {
-    return this.$typedState.config.uiSettings.spoolman.remainingFilamentUnit
-  }
-
-  getSpoolById (id: number): Spool | undefined {
-    return this.$typedGetters['spoolman/getSpoolById'](id)
-  }
-
-  getSpoolColor (spool?: Spool) {
-    return spool?.filament.color_hex ?? (this.$vuetify.theme.dark ? '#fff' : '#000')
-  }
-
-  getFieldLabel (field: string) {
-    switch (field) {
-      case 'remaining_weight':
-        return this.$t('app.spoolman.label.remaining')
-
-      case 'used_weight':
-        return this.$t('app.spoolman.label.used')
-
-      default:
-        return this.$t(`app.spoolman.label.${field}`)
-    }
-  }
-
-  getFormattedField (field: string) {
-    if (!this.activeSpool) return '-'
-
-    switch (field) {
-      case 'vendor':
-        return this.activeSpool.filament.vendor?.name || '-'
-
-      case 'filament_name':
-        return this.activeSpool.filament.name
-
-      case 'material':
-        return this.activeSpool.filament.material || '-'
-
-      case 'first_used':
-        return this.activeSpool.first_used ? this.$filters.formatRelativeTimeToNow(this.activeSpool.first_used) : this.$tc('app.setting.label.never')
-
-      case 'last_used':
-        return this.activeSpool.last_used ? this.$filters.formatRelativeTimeToNow(this.activeSpool.last_used) : this.$tc('app.setting.label.never')
-
-      case 'price':
-        return this.activeSpool.price != null ? this.$filters.getReadableCurrencyString(this.activeSpool.price, this.currency ?? '') : '-'
-
-      case 'density':
-        return this.activeSpool.filament.density || '-'
-
-      case 'diameter':
-        return this.activeSpool.filament.diameter ? this.$filters.getReadableLengthString(this.activeSpool.filament.diameter) : '-'
-
-      case 'extruder_temp':
-        return this.activeSpool.filament.settings_extruder_temp || '-'
-
-      case 'bed_temp':
-        return this.activeSpool.filament.settings_bed_temp || '-'
-
-      case 'remaining_weight':
-        return this.activeSpool.remaining_weight != null ? this.$filters.getReadableWeightString(this.activeSpool.remaining_weight) : '-'
-
-      case 'remaining_length':
-        return this.activeSpool.remaining_length != null ? this.$filters.getReadableLengthString(this.activeSpool.remaining_length) : '-'
-
-      case 'used_weight':
-        return this.activeSpool.used_weight != null ? this.$filters.getReadableWeightString(this.activeSpool.used_weight) : '-'
-
-      case 'used_length':
-        return this.activeSpool.used_length != null ? this.$filters.getReadableLengthString(this.activeSpool.used_length) : '-'
-
-      case 'initial_weight':
-        return this.activeSpool.initial_weight != null ? this.$filters.getReadableWeightString(this.activeSpool.initial_weight) : '-'
-
-      case 'initial_length':
-        return this.activeSpool.initial_length != null ? this.$filters.getReadableLengthString(this.activeSpool.initial_length) : '-'
-
-      default:
-        return this.activeSpool[field as keyof Spool] || '-'
-    }
-  }
-
-  getTooltipField (field: string) {
-    if (!this.activeSpool) return null
-
-    switch (field) {
-      case 'first_used':
-        return this.activeSpool.first_used ? this.$filters.formatDateTime(this.activeSpool.first_used) : null
-
-      case 'last_used':
-        return this.activeSpool.last_used ? this.$filters.formatDateTime(this.activeSpool.last_used) : null
-
-      default:
-        return null
-    }
+    default:
+      return null
   }
 }
 </script>
