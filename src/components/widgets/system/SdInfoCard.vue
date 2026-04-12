@@ -30,15 +30,15 @@
     </v-simple-table>
   </collapsable-card>
 </template>
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
 
-@Component({})
-export default class SdInfoCard extends Vue {
-  get sdInfo () {
-    const info: Moonraker.Machine.SystemInfo | null = this.$typedState.server.system_info
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 
-    return info?.sd_info
-  }
-}
+const { typedState } = useStore()
+
+const sdInfo = computed(() => {
+  const info: Moonraker.Machine.SystemInfo | null = typedState.server.system_info
+  return info?.sd_info
+})
 </script>

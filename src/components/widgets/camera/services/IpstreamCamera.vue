@@ -13,40 +13,54 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 import { consola } from 'consola'
 
-@Component({})
-export default class IpstreamCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraVideo!: HTMLVideoElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  cameraVideoSource = ''
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-  get autoRaiseFrameEvent () {
-    return false
-  }
+const {
+  cameraStyle,
+  updateStatus,
+  updateRawCameraUrl,
+  buildAbsoluteUrl,
+  menuItemClick,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-  startPlayback () {
-    try {
-      this.updateStatus('connecting')
+defineExpose({ menuItemClick })
 
-      const url = this.buildAbsoluteUrl(this.camera.stream_url || '').toString()
+const streamingElement = ref<HTMLVideoElement>()
 
-      this.cameraVideoSource = url
+const cameraVideoSource = ref('')
 
-      this.updateRawCameraUrl(url)
-    } catch (e) {
-      consola.error(`[IpstreamCamera] failed to start playback "${this.camera.name}"`, e)
-    }
-  }
+function startPlayback () {
+  try {
+    updateStatus('connecting')
 
-  stopPlayback () {
-    this.updateStatus('disconnected')
-    this.cameraVideoSource = ''
-    this.cameraVideo.src = ''
+    const url = buildAbsoluteUrl(props.camera.stream_url || '').toString()
+
+    cameraVideoSource.value = url
+
+    updateRawCameraUrl(url)
+  } catch (e) {
+    consola.error(`[IpstreamCamera] failed to start playback "${props.camera.name}"`, e)
   }
 }
+
+function stopPlayback () {
+  updateStatus('disconnected')
+  cameraVideoSource.value = ''
+  streamingElement.value!.src = ''
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
 </script>

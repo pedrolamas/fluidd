@@ -41,25 +41,27 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import AfcSettingsDialogHub from './AfcSettingsDialogHub.vue'
 import AfcSettingsDialogExtruder from './AfcSettingsDialogExtruder.vue'
 import AfcSettingsDialogLane from './AfcSettingsDialogLane.vue'
 
-@Component({
-  components: {
-    AfcSettingsDialogHub,
-    AfcSettingsDialogExtruder,
-    AfcSettingsDialogLane
-  }
+const props = defineProps<{
+  value?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
+
+const { afcHubs, afcExtruders, afcLanes } = useAfcMixin()
+
+const open = computed({
+  get: () => props.value ?? false,
+  set: (value: boolean) => emit('input', value)
 })
-export default class AfcSettingsDialog extends Mixins(StateMixin, AfcMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
-}
 </script>
 
 <style scoped>

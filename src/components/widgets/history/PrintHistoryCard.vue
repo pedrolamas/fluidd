@@ -38,33 +38,31 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import JobHistory from '@/components/widgets/history/JobHistory.vue'
 import { SocketActions } from '@/api/socketActions'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({
-  components: {
-    JobHistory
+defineProps<{
+  narrow?: boolean
+}>()
+
+const confirm = useConfirm()
+const { tc } = useI18n()
+
+async function handleRemoveAll () {
+  const result = await confirm(
+    tc('app.history.msg.confirm_jobs'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    SocketActions.serverHistoryDeleteJob('all')
   }
-})
-export default class PrinterHistoryCard extends Vue {
-  @Prop({ type: Boolean })
-  readonly narrow?: boolean
+}
 
-  async handleRemoveAll () {
-    const result = await this.$confirm(
-      this.$tc('app.history.msg.confirm_jobs'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      SocketActions.serverHistoryDeleteJob('all')
-    }
-  }
-
-  handleLoadAll () {
-    SocketActions.serverHistoryList({ limit: 0 })
-  }
+function handleLoadAll () {
+  SocketActions.serverHistoryList({ limit: 0 })
 }
 </script>

@@ -31,73 +31,53 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
 import AfcCardUnitHub from '@/components/widgets/afc/AfcCardUnitHub.vue'
 import AfcCardUnitLane from '@/components/widgets/afc/AfcCardUnitLane.vue'
 
-@Component({
-  components: {
-    AfcCardUnitHub,
-    AfcCardUnitLane
+const props = defineProps<{
+  name: string
+}>()
+
+const { afcShowUnitIcons } = useAfcMixin()
+const { typedState } = useStore()
+
+const unitType = computed(() =>
+  props.name.substring(0, props.name.indexOf(' ')).replace(/_/g, '')
+)
+
+const unitName = computed(() => props.name.substring(props.name.indexOf(' ') + 1))
+
+const unit = computed((): Klipper.AfcUnitState | undefined => {
+  const printer: Klipper.PrinterState = typedState.printer.printer
+  const unitObjectName = `AFC_${unitType.value} ${unitName.value}`.toLowerCase()
+  const unitObjectKey = Object.keys(printer)
+    .find((key): key is Klipper.AfcUnitKey => key.toLowerCase() === unitObjectName)
+  return unitObjectKey != null ? printer[unitObjectKey] : undefined
+})
+
+const hubs = computed(() => unit.value?.hubs ?? [])
+
+const lanes = computed(() => unit.value?.lanes ?? [])
+
+const unitIcon = computed((): string | null => {
+  if (!afcShowUnitIcons.value) return null
+  switch (unitType.value.toLowerCase()) {
+    case 'boxturtle':
+      return '$afcIconBoxTurtle'
+    case 'htlf':
+      return '$afcIconHtlf'
+    case 'nightowl':
+      return '$afcIconNightOwl'
+    case 'quattrobox':
+      return '$afcIconQuattroBox'
+    default:
+      return null
   }
 })
-export default class AfcCardUnit extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
-
-  get unitType (): string {
-    return this.name.substring(0, this.name.indexOf(' '))
-      .replace(/_/g, '')
-  }
-
-  get unitName (): string {
-    return this.name.substring(this.name.indexOf(' ') + 1)
-  }
-
-  get unit (): Klipper.AfcUnitState | undefined {
-    const printer: Klipper.PrinterState = this.$typedState.printer.printer
-
-    const unitObjectName = `AFC_${this.unitType} ${this.unitName}`
-      .toLowerCase()
-
-    const unitObjectKey = Object.keys(printer)
-      .find((key): key is Klipper.AfcUnitKey => key.toLowerCase() === unitObjectName)
-
-    if (unitObjectKey != null) {
-      return printer[unitObjectKey]
-    }
-  }
-
-  get hubs (): string[] {
-    return this.unit?.hubs ?? []
-  }
-
-  get lanes (): string[] {
-    return this.unit?.lanes ?? []
-  }
-
-  get unitIcon (): string | null {
-    if (!this.afcShowUnitIcons) {
-      return null
-    }
-
-    switch (this.unitType.toLowerCase()) {
-      case 'boxturtle':
-        return '$afcIconBoxTurtle'
-      case 'htlf':
-        return '$afcIconHtlf'
-      case 'nightowl':
-        return '$afcIconNightOwl'
-      case 'quattrobox':
-        return '$afcIconQuattroBox'
-      default:
-        return null
-    }
-  }
-}
 </script>
 
 <style scoped>

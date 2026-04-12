@@ -7,7 +7,7 @@
     <template v-if="cameraComponent">
       <component
         :is="cameraComponent"
-        ref="component-instance"
+        ref="componentInstance"
         :camera="camera"
         :crossorigin="crossorigin"
         class="camera-image"
@@ -110,78 +110,79 @@
   </v-sheet>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, Watch, Ref } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useStore } from '@/composables/useStore'
 import type { CameraFullscreenAction } from '@/store/config/types'
 import { CameraComponents } from '@/dynamicImports'
 import type CameraMixin from '@/mixins/camera'
 import type { CameraConnectionStatus, CameraNameMenuItem } from '@/types'
 import { startCase } from 'lodash-es'
 
-@Component({})
-export default class CameraItem extends Vue {
-  @Prop({ type: Object, required: true })
-  readonly camera!: Moonraker.Webcam.Entry
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  fullscreen?: boolean
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+defineEmits<{
+  (e: 'frame', event: unknown): void
+}>()
 
-  @Prop({ type: String })
-  readonly crossorigin?: 'anonymous' | 'use-credentials' | ''
+const { typedState } = useStore()
 
-  @Ref('component-instance')
-  readonly componentInstance!: CameraMixin
+const componentInstance = ref<CameraMixin>()
 
-  status: CameraConnectionStatus = 'disconnected'
-  rawCameraUrl = ''
-  framesPerSecond = ''
-  cameraName = ''
-  cameraNameMenuItems: CameraNameMenuItem[] = []
+const status = ref<CameraConnectionStatus>('disconnected')
+const rawCameraUrl = ref('')
+const framesPerSecond = ref('')
+const cameraName = ref('')
+const cameraNameMenuItems = ref<CameraNameMenuItem[]>([])
 
-  cameraNameMenuItemClick (item: CameraNameMenuItem) {
-    this.componentInstance.menuItemClick(item)
-  }
+watch(() => props.camera, () => {
+  status.value = 'disconnected'
+  rawCameraUrl.value = ''
+  framesPerSecond.value = ''
+  cameraName.value = ''
+  cameraNameMenuItems.value = []
+})
 
-  @Watch('camera')
-  onCamera () {
-    this.status = 'disconnected'
-    this.rawCameraUrl = ''
-    this.framesPerSecond = ''
-    this.cameraName = ''
-    this.cameraNameMenuItems = []
-  }
+const fullscreenMode = computed((): CameraFullscreenAction =>
+  typedState.config.uiSettings.general.cameraFullscreenAction
+)
 
-  get fullscreenMode (): CameraFullscreenAction {
-    return this.$typedState.config.uiSettings.general.cameraFullscreenAction
-  }
+const cameraComponent = computed(() => {
+  const cameraService = props.camera.service
 
-  get cameraComponent () {
-    const cameraService = this.camera.service
+  if (cameraService) {
+    const componentName = `${startCase(cameraService).replace(/ /g, '')}Camera`
 
-    if (cameraService) {
-      const componentName = `${startCase(cameraService).replace(/ /g, '')}Camera`
-
-      if (componentName in CameraComponents) {
-        return CameraComponents[componentName]
-      }
+    if (componentName in CameraComponents) {
+      return CameraComponents[componentName]
     }
   }
 
-  get cameraNameAndStatus () {
-    const cameraName = this.cameraName || this.camera.name
+  return undefined
+})
 
-    if (this.status !== 'connected') {
-      return `${cameraName} (${this.status})`
-    }
+const cameraNameAndStatus = computed(() => {
+  const name = cameraName.value || props.camera.name
 
-    return cameraName
+  if (status.value !== 'connected') {
+    return `${name} (${status.value})`
   }
 
-  handleFramesPerSecond (framesPerSecond : number) {
-    this.framesPerSecond = framesPerSecond >= 0
-      ? framesPerSecond.toString().padStart(2, '0')
-      : ''
-  }
+  return name
+})
+
+function cameraNameMenuItemClick (item: CameraNameMenuItem) {
+  componentInstance.value?.menuItemClick(item)
+}
+
+function handleFramesPerSecond (fps: number) {
+  framesPerSecond.value = fps >= 0
+    ? fps.toString().padStart(2, '0')
+    : ''
 }
 </script>
 

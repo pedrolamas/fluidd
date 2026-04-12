@@ -42,9 +42,9 @@
         <app-text-field
           :value="minLayerHeight"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(0.1)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(0.1)
           ]"
           filled
           dense
@@ -62,9 +62,9 @@
         <app-text-field
           :value="extrusionLineWidth"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThan(0)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThan(0)
           ]"
           filled
           dense
@@ -82,9 +82,9 @@
         <app-text-field
           :value="moveLineWidth"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThan(0)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThan(0)
           ]"
           filled
           dense
@@ -102,9 +102,9 @@
         <app-text-field
           :value="retractionIconSize"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThan(0)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThan(0)
           ]"
           filled
           dense
@@ -194,180 +194,146 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { defaultState } from '@/store/config/state'
+import { useStore } from '@/composables/useStore'
+import { Rules } from '@/plugins/filters'
 
-@Component({
-  components: {}
+const { typedState, typedDispatch } = useStore()
+
+const extrusionLineWidth = computed((): number => typedState.config.uiSettings.gcodePreview.extrusionLineWidth)
+
+function setExtrusionLineWidth (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.extrusionLineWidth',
+    value: +value,
+    server: true
+  })
+}
+
+const moveLineWidth = computed((): number => typedState.config.uiSettings.gcodePreview.moveLineWidth)
+
+function setMoveLineWidth (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.moveLineWidth',
+    value: +value,
+    server: true
+  })
+}
+
+const retractionIconSize = computed((): number => typedState.config.uiSettings.gcodePreview.retractionIconSize)
+
+function setRetractionIconSize (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.retractionIconSize',
+    value: +value,
+    server: true
+  })
+}
+
+const flipHorizontal = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.flip.horizontal,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.flip.horizontal',
+    value,
+    server: true
+  })
 })
-export default class GcodePreviewSettings extends Vue {
-  get extrusionLineWidth (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.extrusionLineWidth
-  }
 
-  setExtrusionLineWidth (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.extrusionLineWidth',
-      value: +value,
-      server: true
-    })
-  }
+const flipVertical = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.flip.vertical,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.flip.vertical',
+    value,
+    server: true
+  })
+})
 
-  get moveLineWidth (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.moveLineWidth
-  }
+const drawOrigin = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.drawOrigin,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.drawOrigin',
+    value,
+    server: true
+  })
+})
 
-  setMoveLineWidth (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.moveLineWidth',
-      value: +value,
-      server: true
-    })
-  }
+const drawBackground = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.drawBackground,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.drawBackground',
+    value,
+    server: true
+  })
+})
 
-  get retractionIconSize (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.retractionIconSize
-  }
+const showAnimations = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.showAnimations,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.showAnimations',
+    value,
+    server: true
+  })
+})
 
-  setRetractionIconSize (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.retractionIconSize',
-      value: +value,
-      server: true
-    })
-  }
+const minLayerHeight = computed((): number => typedState.config.uiSettings.gcodePreview.minLayerHeight)
 
-  get flipHorizontal (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.flip.horizontal
-  }
+function setMinLayerHeight (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.minLayerHeight',
+    value: +value,
+    server: true
+  })
+}
 
-  set flipHorizontal (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.flip.horizontal',
-      value,
-      server: true
-    })
-  }
+const autoLoadMobileOnPrintStart = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.autoLoadMobileOnPrintStart,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.autoLoadMobileOnPrintStart',
+    value,
+    server: true
+  })
+})
 
-  get flipVertical (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.flip.vertical
-  }
-
-  set flipVertical (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.flip.vertical',
-      value,
-      server: true
-    })
-  }
-
-  get drawOrigin (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.drawOrigin
-  }
-
-  set drawOrigin (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.drawOrigin',
-      value,
-      server: true
-    })
-  }
-
-  get drawBackground (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.drawBackground
-  }
-
-  set drawBackground (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.drawBackground',
-      value,
-      server: true
-    })
-  }
-
-  get showAnimations (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showAnimations
-  }
-
-  set showAnimations (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showAnimations',
-      value,
-      server: true
-    })
-  }
-
-  get minLayerHeight (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.minLayerHeight
-  }
-
-  setMinLayerHeight (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.minLayerHeight',
-      value: +value,
-      server: true
-    })
-  }
-
-  get autoLoadOnPrintStart (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.autoLoadOnPrintStart
-  }
-
-  set autoLoadOnPrintStart (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const autoLoadOnPrintStart = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.autoLoadOnPrintStart,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.gcodePreview.autoLoadOnPrintStart',
       value,
       server: true
     })
 
     if (!value) {
-      this.autoLoadMobileOnPrintStart = false
+      autoLoadMobileOnPrintStart.value = false
     }
   }
+})
 
-  get autoLoadMobileOnPrintStart (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.autoLoadMobileOnPrintStart
-  }
+const autoFollowOnFileLoad = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.autoFollowOnFileLoad,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.autoFollowOnFileLoad',
+    value,
+    server: true
+  })
+})
 
-  set autoLoadMobileOnPrintStart (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.autoLoadMobileOnPrintStart',
-      value,
-      server: true
-    })
-  }
+const hideSinglePartBoundingBox = computed({
+  get: (): boolean => typedState.config.uiSettings.gcodePreview.hideSinglePartBoundingBox,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview.hideSinglePartBoundingBox',
+    value,
+    server: true
+  })
+})
 
-  get autoFollowOnFileLoad (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.autoFollowOnFileLoad
-  }
-
-  set autoFollowOnFileLoad (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.autoFollowOnFileLoad',
-      value,
-      server: true
-    })
-  }
-
-  get hideSinglePartBoundingBox (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.hideSinglePartBoundingBox
-  }
-
-  set hideSinglePartBoundingBox (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.hideSinglePartBoundingBox',
-      value,
-      server: true
-    })
-  }
-
-  handleReset () {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview',
-      value: defaultState().uiSettings.gcodePreview,
-      server: true
-    })
-  }
+function handleReset () {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.gcodePreview',
+    value: defaultState().uiSettings.gcodePreview,
+    server: true
+  })
 }
 </script>

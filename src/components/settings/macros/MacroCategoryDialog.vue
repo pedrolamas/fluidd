@@ -12,7 +12,7 @@
         outlined
         :label="label"
         :rules="[
-          $rules.required,
+          Rules.required,
           customRules.uniqueName
         ]"
         required
@@ -21,43 +21,46 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
 import type { MacroCategory } from '@/store/macros/types'
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 
-@Component({})
-export default class MacroCategoryDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  title: string
+  label: string
+  name: string
+}>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+  (e: 'save', name: string): void
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly title!: string
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  @Prop({ type: String, required: true })
-  readonly label!: string
+const { typedGetters } = useStore()
+const { t } = useI18n()
 
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const newName = ref('')
 
-  newName = ''
+const categories = computed((): MacroCategory[] => typedGetters['macros/getCategories'])
 
-  get customRules () {
-    return {
-      uniqueName: (v: string) => this.categories.findIndex(c => c.name.toLowerCase() === v.toLowerCase()) < 0 || this.$t('app.general.simple_form.error.exists')
-    }
-  }
+const customRules = computed(() => ({
+  uniqueName: (v: string) => categories.value.findIndex(c => c.name.toLowerCase() === v.toLowerCase()) < 0 || t('app.general.simple_form.error.exists')
+}))
 
-  mounted () {
-    this.newName = this.name
-  }
+onMounted(() => {
+  newName.value = props.name
+})
 
-  get categories (): MacroCategory[] {
-    return this.$typedGetters['macros/getCategories']
-  }
-
-  handleSave () {
-    this.$emit('save', this.newName)
-    this.open = false
-  }
+function handleSave () {
+  emit('save', newName.value)
+  open.value = false
 }
 </script>

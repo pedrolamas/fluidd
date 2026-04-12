@@ -9,15 +9,6 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import Macros from '@/components/widgets/macros/Macros.vue'
-
-@Component({
-  components: {
-    Macros
-  }
-})
-export default class MacrosCard extends Vue {
-}
 </script>

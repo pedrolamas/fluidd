@@ -34,30 +34,34 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { ref, onMounted, computed } from 'vue'
 
-@Component({})
-export default class SaveModelDialog extends Mixins(StateMixin, ToolheadMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  existingName: string
+}>()
 
-  @Prop({ type: String })
-  readonly existingName!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'save', config: { name: string; removeDefault: boolean }): void
+}>()
 
-  mounted () {
-    this.name = 'default'
-    this.removeDefault = false
-  }
+const open = computed({
+  get: () => props.value,
+  set: (value: boolean) => emit('input', value)
+})
 
-  name = 'default'
-  removeDefault = false
+const name = ref('default')
+const removeDefault = ref(false)
 
-  handleSubmit () {
-    this.$emit('save', { name: this.name, removeDefault: this.removeDefault })
-    this.open = false
-  }
+onMounted(() => {
+  name.value = 'default'
+  removeDefault.value = false
+})
+
+function handleSubmit () {
+  emit('save', { name: name.value, removeDefault: removeDefault.value })
+  open.value = false
 }
 </script>

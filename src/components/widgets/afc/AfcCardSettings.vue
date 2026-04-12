@@ -82,70 +82,52 @@
     </v-list>
   </v-menu>
 </template>
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
 import AfcCardSettingsExtruder from '@/components/widgets/afc/AfcCardSettingsExtruder.vue'
 import AfcCardSettingsUnit from '@/components/widgets/afc/AfcCardSettingsUnit.vue'
 
-@Component({
-  components: {
-    AfcCardSettingsExtruder,
-    AfcCardSettingsUnit
-  }
+const { afc, afcExtruders, afcUnits, afcShowFilamentName, afcShowLaneInfinite, afcShowUnitIcons, afcShowTd1Color } = useAfcMixin()
+const { typedDispatch } = useStore()
+
+const td1Present = computed(() => afc.value?.td1_present === true)
+
+const showFilamentName = computed({
+  get: () => afcShowFilamentName.value,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.afc.showFilamentName',
+    value,
+    server: true
+  })
 })
-export default class AfcCardSettings extends Mixins(StateMixin, AfcMixin) {
-  get showFilamentName (): boolean {
-    return this.afcShowFilamentName
-  }
 
-  set showFilamentName (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.afc.showFilamentName',
-      value,
-      server: true
-    })
-  }
+const showLaneInfinite = computed({
+  get: () => afcShowLaneInfinite.value,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.afc.showLaneInfinite',
+    value,
+    server: true
+  })
+})
 
-  get showLaneInfinite (): boolean {
-    return this.afcShowLaneInfinite
-  }
+const showUnitIcons = computed({
+  get: () => afcShowUnitIcons.value,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.afc.showUnitIcons',
+    value,
+    server: true
+  })
+})
 
-  set showLaneInfinite (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.afc.showLaneInfinite',
-      value,
-      server: true
-    })
-  }
-
-  get showUnitIcons (): boolean {
-    return this.afcShowUnitIcons
-  }
-
-  set showUnitIcons (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.afc.showUnitIcons',
-      value,
-      server: true
-    })
-  }
-
-  get td1Present (): boolean {
-    return this.afc?.td1_present === true
-  }
-
-  get showTd1Color (): boolean {
-    return this.afcShowTd1Color
-  }
-
-  set showTd1Color (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.afc.showTd1Color',
-      value,
-      server: true
-    })
-  }
-}
+const showTd1Color = computed({
+  get: () => afcShowTd1Color.value,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.afc.showTd1Color',
+    value,
+    server: true
+  })
+})
 </script>

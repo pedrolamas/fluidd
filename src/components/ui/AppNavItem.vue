@@ -31,69 +31,65 @@
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from '@/util/event-helpers'
 import { Globals } from '@/globals'
 import isKeyOf from '@/util/is-key-of'
+import { useRoute, useRouter } from 'vue-router/composables'
 
-@Component({})
-export default class AppNavItem extends Mixins(StateMixin, BrowserMixin) {
-  @Prop({ type: String })
-  readonly title!: string
+const props = defineProps<{
+  title?: string
+  to: string
+  exact?: boolean
+  icon?: string
+}>()
 
-  @Prop({ type: String })
-  readonly to!: string
+const { isMobileViewport } = useBrowserMixin()
+const { typedState } = useStore()
+const route = useRoute()
+const router = useRouter()
 
-  @Prop({ type: Boolean })
-  readonly exact?: boolean
+const accelerator = computed<string | undefined>(() =>
+  isKeyOf(props.to, Globals.KEYBOARD_SHORTCUTS)
+    ? Globals.KEYBOARD_SHORTCUTS[props.to]
+    : undefined
+)
 
-  @Prop({ type: String })
-  readonly icon?: string
+const enableKeyboardShortcuts = computed<boolean>(
+  () => typedState.config.uiSettings.general.enableKeyboardShortcuts
+)
 
-  get accelerator (): string | undefined {
-    return isKeyOf(this.to, Globals.KEYBOARD_SHORTCUTS)
-      ? Globals.KEYBOARD_SHORTCUTS[this.to]
-      : undefined
+function handleKeyDown (event: KeyboardEvent) {
+  if (
+    !enableKeyboardShortcuts.value ||
+    !accelerator.value
+  ) {
+    return
   }
 
-  get enableKeyboardShortcuts (): boolean {
-    return this.$typedState.config.uiSettings.general.enableKeyboardShortcuts
-  }
+  const shortcut = keyboardEventToKeyboardShortcut(event)
 
-  handleKeyDown (event: KeyboardEvent) {
-    if (
-      !this.enableKeyboardShortcuts ||
-      !this.accelerator
-    ) {
-      return
-    }
+  if (
+    shortcut === accelerator.value &&
+    !eventTargetIsContentEditable(event) &&
+    route.name !== props.to
+  ) {
+    event.preventDefault()
 
-    const shortcut = keyboardEventToKeyboardShortcut(event)
-
-    if (
-      shortcut === this.accelerator &&
-      !eventTargetIsContentEditable(event) &&
-      this.$route.name !== this.to
-    ) {
-      event.preventDefault()
-
-      this.$router.push({ name: this.to })
-    }
-  }
-
-  mounted () {
-    window.addEventListener('keydown', this.handleKeyDown, false)
-  }
-
-  beforeDestroy () {
-    window.removeEventListener('keydown', this.handleKeyDown)
+    router.push({ name: props.to })
   }
 }
 
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown, false)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
 </script>
 
 <style lang="scss" scoped>

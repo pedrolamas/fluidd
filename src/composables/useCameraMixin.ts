@@ -111,13 +111,21 @@ export function useCameraMixin (
     emit('update:raw-camera-url', url)
   }
 
-  // To be overridden by camera service components
+  // Overrideable by camera service components via setPlaybackHandlers()
+  let _startPlayback: () => void = () => {}
+  let _stopPlayback: () => void = () => {}
+
   function startPlayback () {
-    // noop
+    _startPlayback()
   }
 
   function stopPlayback () {
-    // noop
+    _stopPlayback()
+  }
+
+  function setPlaybackHandlers (start: () => void, stop: () => void) {
+    _startPlayback = start
+    _stopPlayback = stop
   }
 
   function menuItemClick (item: CameraNameMenuItem) {
@@ -167,6 +175,7 @@ export function useCameraMixin (
     updateRawCameraUrl,
     startPlayback,
     stopPlayback,
+    setPlaybackHandlers,
     menuItemClick,
   }
 }

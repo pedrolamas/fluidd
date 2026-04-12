@@ -20,37 +20,19 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import SystemLoadChart from './SystemLoadChart.vue'
 import SystemMemoryChart from './SystemMemoryChart.vue'
 import KlipperLoadChart from './KlipperLoadChart.vue'
 import MoonrakerLoadChart from './MoonrakerLoadChart.vue'
 import McuLoadChart from './McuLoadChart.vue'
 import type { MCU } from '@/store/printer/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({
-  components: {
-    SystemLoadChart,
-    SystemMemoryChart,
-    KlipperLoadChart,
-    MoonrakerLoadChart,
-    McuLoadChart
-  }
-})
-export default class PrinterStatsCard extends Vue {
-  get procStats (): Moonraker.ProcStats.MoonrakerStats[] {
-    return this.$typedState.server.moonraker_stats
-  }
+const { typedGetters } = useStore()
 
-  get systemStats (): Klipper.SystemStatsState {
-    return this.$typedState.printer.printer.system_stats
-  }
-
-  get mcus (): MCU[] {
-    return this.$typedGetters['printer/getMcus']
-  }
-}
+const mcus = computed((): MCU[] => typedGetters['printer/getMcus'])
 </script>
 
 <style lang="scss">

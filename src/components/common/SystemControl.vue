@@ -102,27 +102,29 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import FilesMixin from '@/mixins/files'
-import StateMixin from '@/mixins/state'
-import ServicesMixin from '@/mixins/services'
+<script setup lang="ts">
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useServicesMixin } from '@/composables/useServicesMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useStore } from '@/composables/useStore'
 import { SocketActions } from '@/api/socketActions'
 
-@Component({})
-export default class SystemControl extends Mixins(StateMixin, FilesMixin, ServicesMixin) {
-  getKlippyLog () {
-    this.downloadFile('klippy.log', '')
-  }
+const { klippyConnected, printerPrinting, printerPoweredOff } = useStateMixin()
+const { serviceRestartKlipper, restartKlippy, firmwareRestartKlippy } = useServicesMixin()
+const { downloadFile } = useFilesMixin()
+const { typedState } = useStore()
 
-  getMoonrakerLog () {
-    this.downloadFile('moonraker.log', '')
-  }
+function getKlippyLog () {
+  downloadFile('klippy.log', '')
+}
 
-  printerPowerOn () {
-    const printerPowerDevice: string = this.$typedState.config.uiSettings.general.printerPowerDevice ?? 'printer'
+function getMoonrakerLog () {
+  downloadFile('moonraker.log', '')
+}
 
-    SocketActions.machineDevicePowerSetDevice(printerPowerDevice, 'on')
-  }
+function printerPowerOn () {
+  const printerPowerDevice: string = typedState.config.uiSettings.general.printerPowerDevice ?? 'printer'
+
+  SocketActions.machineDevicePowerSetDevice(printerPowerDevice, 'on')
 }
 </script>

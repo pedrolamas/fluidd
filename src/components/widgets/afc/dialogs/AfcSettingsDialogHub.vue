@@ -19,35 +19,34 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class AfcSettingsDialogHub extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  get afcSettingsHub (): Klipper.AfcHubSettings | undefined {
-    return this.getAfcHubSettings(this.name)
-  }
+const { sendGcode } = useStateMixin()
+const { getAfcHubSettings } = useAfcMixin()
+const { typedState } = useStore()
 
-  get settingsLength (): number {
-    return this.afcSettingsHub?.afc_bowden_length || 0
-  }
+const afcSettingsHub = computed((): Klipper.AfcHubSettings | undefined =>
+  getAfcHubSettings(props.name)
+)
 
-  get hubObject (): Klipper.AfcHubState | undefined {
-    return this.$typedState.printer.printer[`AFC_hub ${this.name}`]
-  }
+const settingsLength = computed(() => afcSettingsHub.value?.afc_bowden_length || 0)
 
-  get currentLength (): number {
-    return this.hubObject?.afc_bowden_length || 0
-  }
+const hubObject = computed((): Klipper.AfcHubState | undefined =>
+  typedState.printer.printer[`AFC_hub ${props.name}`]
+)
 
-  setBowdenLength (value: number) {
-    this.sendGcode(`SET_BOWDEN_LENGTH HUB=${encodeGcodeParamValue(this.name)} LENGTH=${value}`)
-  }
+const currentLength = computed(() => hubObject.value?.afc_bowden_length || 0)
+
+function setBowdenLength (value: number) {
+  sendGcode(`SET_BOWDEN_LENGTH HUB=${encodeGcodeParamValue(props.name)} LENGTH=${value}`)
 }
 </script>

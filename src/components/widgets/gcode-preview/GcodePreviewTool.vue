@@ -15,21 +15,14 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import type { Tool } from '@/store/gcodePreview/types'
 
-@Component({})
-export default class GcodePreviewTool extends Vue {
-  @Prop({ type: String, required: true })
-  readonly tool!: Tool
-
-  @Prop({ type: String, required: true })
-  readonly color!: string
-
-  @Prop({ type: Boolean })
-  readonly active?: boolean
-}
+defineProps<{
+  tool: Tool
+  color: string
+  active?: boolean
+}>()
 </script>
 
 <style lang="scss" scoped>

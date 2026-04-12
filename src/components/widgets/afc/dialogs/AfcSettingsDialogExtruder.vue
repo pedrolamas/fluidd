@@ -88,120 +88,99 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useI18n } from '@/composables/useI18n'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class AfcSettingsDialogExtruder extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  changedValue = false
+const { sendGcode } = useStateMixin()
+const { getAfcExtruderSettings, getAfcExtruderObject, getAfcLaneObject } = useAfcMixin()
+const { t } = useI18n()
 
-  get afcSettingsExtruder (): Klipper.AfcExtruderSettings | undefined {
-    return this.getAfcExtruderSettings(this.name)
-  }
+const changedValue = ref(false)
 
-  get settingsToolStn (): number {
-    return this.afcSettingsExtruder?.tool_stn || 0
-  }
+const afcSettingsExtruder = computed((): Klipper.AfcExtruderSettings | undefined =>
+  getAfcExtruderSettings(props.name)
+)
 
-  get settingsToolStnUnload (): number {
-    return this.afcSettingsExtruder?.tool_stn_unload || 0
-  }
+const settingsToolStn = computed(() => afcSettingsExtruder.value?.tool_stn || 0)
 
-  get settingsToolSensorAfterExtruder (): number {
-    return this.afcSettingsExtruder?.tool_sensor_after_extruder || 0
-  }
+const settingsToolStnUnload = computed(() => afcSettingsExtruder.value?.tool_stn_unload || 0)
 
-  get printerObject (): Klipper.AfcExtruderState | undefined {
-    return this.getAfcExtruderObject(this.name)
-  }
+const settingsToolSensorAfterExtruder = computed(() =>
+  afcSettingsExtruder.value?.tool_sensor_after_extruder || 0
+)
 
-  get currentToolStn (): number {
-    return this.printerObject?.tool_stn || 0
-  }
+const printerObject = computed((): Klipper.AfcExtruderState | undefined =>
+  getAfcExtruderObject(props.name)
+)
 
-  get currentToolStnUnload (): number {
-    return this.printerObject?.tool_stn_unload || 0
-  }
+const currentToolStn = computed(() => printerObject.value?.tool_stn || 0)
 
-  get currentToolSensorAfterExtruder (): number {
-    return this.printerObject?.tool_sensor_after_extruder || 0
-  }
+const currentToolStnUnload = computed(() => printerObject.value?.tool_stn_unload || 0)
 
-  get lanes (): string[] {
-    return this.printerObject?.lanes ?? []
-  }
+const currentToolSensorAfterExtruder = computed(() =>
+  printerObject.value?.tool_sensor_after_extruder || 0
+)
 
-  get lane_loaded (): string {
-    return this.printerObject?.lane_loaded ?? ''
-  }
+const lanes = computed(() => printerObject.value?.lanes ?? [])
 
-  get filledLanes (): string[] {
-    const filledLanes: string[] = []
+const lane_loaded = computed(() => printerObject.value?.lane_loaded ?? '')
 
-    for (const lane of this.lanes) {
-      const laneObject = this.getAfcLaneObject(lane)
-
-      if (laneObject?.load && laneObject.prep) {
-        filledLanes.push(lane)
-      }
+const filledLanes = computed(() => {
+  const filled: string[] = []
+  for (const lane of lanes.value) {
+    const laneObject = getAfcLaneObject(lane)
+    if (laneObject?.load && laneObject.prep) {
+      filled.push(lane)
     }
-
-    return filledLanes
   }
+  return filled
+})
 
-  get existsToolEndSensor (): boolean {
-    return (
-      this.afcSettingsExtruder != null &&
-      'pin_tool_end' in this.afcSettingsExtruder
-    )
+const existsToolEndSensor = computed(() =>
+  afcSettingsExtruder.value != null && 'pin_tool_end' in afcSettingsExtruder.value
+)
+
+const toolStnSubTitle = computed(() => {
+  if (existsToolEndSensor.value) {
+    return t('app.afc.SettingsDialog.ToolStnDescriptionWithEndSensor')
   }
-
-  get toolStnSubTitle (): string {
-    if (this.existsToolEndSensor) {
-      return this.$t('app.afc.SettingsDialog.ToolStnDescriptionWithEndSensor').toString()
-    }
-
-    if (this.afcSettingsExtruder?.pin_tool_start === 'buffer') {
-      return this.$t('app.afc.SettingsDialog.ToolStnDescriptionWithRamming').toString()
-    }
-
-    return this.$t('app.afc.SettingsDialog.ToolStnDescriptionWithoutEndSensor').toString()
+  if (afcSettingsExtruder.value?.pin_tool_start === 'buffer') {
+    return t('app.afc.SettingsDialog.ToolStnDescriptionWithRamming')
   }
+  return t('app.afc.SettingsDialog.ToolStnDescriptionWithoutEndSensor')
+})
 
-  get enableSaveButton (): boolean {
-    return (
-      this.changedValue && (
-        this.currentToolStn !== this.settingsToolStn ||
-        this.currentToolStnUnload !== this.settingsToolStnUnload ||
-        this.currentToolSensorAfterExtruder !== this.settingsToolSensorAfterExtruder
-      )
-    )
+const enableSaveButton = computed(() =>
+  changedValue.value && (
+    currentToolStn.value !== settingsToolStn.value ||
+    currentToolStnUnload.value !== settingsToolStnUnload.value ||
+    currentToolSensorAfterExtruder.value !== settingsToolSensorAfterExtruder.value
+  )
+)
+
+function toggleLane (lane: string) {
+  if (lane_loaded.value === lane) {
+    sendGcode(`TOOL_UNLOAD LANE=${encodeGcodeParamValue(lane)}`)
+    return
   }
+  sendGcode(`CHANGE_TOOL LANE=${encodeGcodeParamValue(lane)}`)
+}
 
-  toggleLane (lane: string) {
-    if (this.lane_loaded === lane) {
-      this.sendGcode(`TOOL_UNLOAD LANE=${encodeGcodeParamValue(lane)}`)
+function updateToolheadSensors (name: string, value: number) {
+  changedValue.value = true
+  sendGcode(`UPDATE_TOOLHEAD_SENSORS EXTRUDER=${encodeGcodeParamValue(props.name)} ${name}=${value}`)
+}
 
-      return
-    }
-
-    this.sendGcode(`CHANGE_TOOL LANE=${encodeGcodeParamValue(lane)}`)
-  }
-
-  updateToolheadSensors (name: string, value: number) {
-    this.changedValue = true
-    this.sendGcode(`UPDATE_TOOLHEAD_SENSORS EXTRUDER=${encodeGcodeParamValue(this.name)} ${name}=${value}`)
-  }
-
-  saveExtruderValues () {
-    this.changedValue = false
-    this.sendGcode(`SAVE_EXTRUDER_VALUES EXTRUDER=${encodeGcodeParamValue(this.name)}`)
-  }
+function saveExtruderValues () {
+  changedValue.value = false
+  sendGcode(`SAVE_EXTRUDER_VALUES EXTRUDER=${encodeGcodeParamValue(props.name)}`)
 }
 </script>

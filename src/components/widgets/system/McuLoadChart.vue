@@ -24,78 +24,76 @@
   </v-col>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import type { MCU } from '@/store/printer/types'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class McuLoadChart extends Vue {
-  ready = false
+const props = defineProps<{
+  mcu: MCU
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly mcu!: MCU
+const { typedState, typedGetters } = useStore()
+const { t } = useI18n()
 
-  get chartData () {
-    return this.$typedState.charts[this.mcu.key] || []
-  }
+const ready = ref(false)
 
-  get options (): EChartsOption {
-    const options: EChartsOption = {
-      ...this.$typedGetters['charts/getBaseChartOptions']({
-        load: '%',
-        awake: '%',
-        bw: 'b'
-      }),
-      series: this.series
+const chartData = computed(() => typedState.charts[props.mcu.key] || [])
+
+const series = computed((): LineSeriesOption[] => [
+  {
+    ...typedGetters['charts/getBaseSeries'],
+    name: t('app.system_info.label.load').toString(),
+    encode: {
+      x: 'date',
+      y: 'load'
     }
-
-    if (
-      options.yAxis &&
-      !Array.isArray(options.yAxis)
-    ) {
-      options.yAxis.max = (value) => {
-        // Grab the max, and add some buffer.
-        if (value.max <= 10) return 15
-        if (value.max <= 20) return 25
-        if (value.max <= 30) return 35
-        if (value.max <= 40) return 45
-        if (value.max <= 50) return 55
-        if (value.max <= 50) return 55
-        if (value.max <= 60) return 65
-        if (value.max <= 70) return 75
-        if (value.max <= 80) return 85
-        return value.max
-      }
+  },
+  {
+    ...typedGetters['charts/getBaseSeries'],
+    name: t('app.system_info.label.awake_time').toString(),
+    encode: {
+      x: 'date',
+      y: 'awake'
     }
+  }
+])
 
-    return options
+const options = computed((): EChartsOption => {
+  const opts: EChartsOption = {
+    ...typedGetters['charts/getBaseChartOptions']({
+      load: '%',
+      awake: '%',
+      bw: 'b'
+    }),
+    series: series.value
   }
 
-  get series (): LineSeriesOption[] {
-    return [
-      {
-        ...this.$typedGetters['charts/getBaseSeries'],
-        name: this.$t('app.system_info.label.load').toString(),
-        encode: {
-          x: 'date',
-          y: 'load'
-        }
-      },
-      {
-        ...this.$typedGetters['charts/getBaseSeries'],
-        name: this.$t('app.system_info.label.awake_time').toString(),
-        encode: {
-          x: 'date',
-          y: 'awake'
-        }
-      }
-    ]
+  if (
+    opts.yAxis &&
+    !Array.isArray(opts.yAxis)
+  ) {
+    opts.yAxis.max = (value) => {
+      // Grab the max, and add some buffer.
+      if (value.max <= 10) return 15
+      if (value.max <= 20) return 25
+      if (value.max <= 30) return 35
+      if (value.max <= 40) return 45
+      if (value.max <= 50) return 55
+      if (value.max <= 50) return 55
+      if (value.max <= 60) return 65
+      if (value.max <= 70) return 75
+      if (value.max <= 80) return 85
+      return value.max
+    }
   }
 
-  @Watch('chartData', { immediate: true })
-  onChartData (data: any) {
-    if (data && data.length > 0) this.ready = true
-  }
-}
+  return opts
+})
+
+watch(chartData, (data) => {
+  if (data && data.length > 0) ready.value = true
+}, { immediate: true })
 </script>

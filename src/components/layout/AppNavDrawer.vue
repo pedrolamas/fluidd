@@ -146,49 +146,47 @@
   </v-navigation-drawer>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { useRoute } from 'vue-router/composables'
 
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+const props = defineProps<{
+  value?: boolean
+}>()
 
-@Component({})
-export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  get supportsHistory (): boolean {
-    return this.$typedGetters['server/componentSupport']('history')
-  }
+const open = computed({
+  get: () => props.value,
+  set: (value: boolean) => emit('input', value)
+})
 
-  get supportsTimelapse (): boolean {
-    return this.$typedGetters['server/componentSupport']('timelapse')
-  }
+const { socketConnected, authenticated } = useStateMixin()
+const { isMobileViewport } = useBrowserMixin()
+const { typedGetters, typedState, typedCommit } = useStore()
+const route = useRoute()
 
-  get enableDiagnostics (): boolean {
-    return this.$typedState.config.uiSettings.general.enableDiagnostics
-  }
+const supportsHistory = computed<boolean>(() => typedGetters['server/componentSupport']('history'))
 
-  get hasSubNavigation () {
-    return this.$route.meta?.hasSubNavigation ?? false
-  }
+const supportsTimelapse = computed<boolean>(() => typedGetters['server/componentSupport']('timelapse'))
 
-  get showSubNavigation () {
-    return this.hasSubNavigation && this.socketConnected && this.authenticated
-  }
+const enableDiagnostics = computed<boolean>(() => typedState.config.uiSettings.general.enableDiagnostics)
 
-  get canEditLayout () {
-    return this.$route.meta?.dashboard ?? false
-  }
+const hasSubNavigation = computed(() => route.meta?.hasSubNavigation ?? false)
 
-  get layoutMode (): boolean {
-    return this.$typedState.config.layoutMode
-  }
+const showSubNavigation = computed(() => hasSubNavigation.value && socketConnected.value && authenticated.value)
 
-  set layoutMode (val: boolean) {
-    this.$typedCommit('config/setLayoutMode', val)
-  }
-}
+const canEditLayout = computed(() => route.meta?.dashboard ?? false)
+
+const layoutMode = computed({
+  get: (): boolean => typedState.config.layoutMode,
+  set: (val: boolean) => typedCommit('config/setLayoutMode', val)
+})
 </script>
 
 <style lang="scss" scoped>

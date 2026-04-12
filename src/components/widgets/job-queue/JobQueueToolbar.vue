@@ -42,21 +42,19 @@
   </v-toolbar>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 import type { AppDataTableHeader } from '@/types'
 
-@Component({})
-export default class JobQueueToolbar extends Vue {
-  @Prop({ type: Array })
-  readonly headers?: AppDataTableHeader[]
+defineProps<{
+  headers?: AppDataTableHeader[]
+}>()
 
-  get thumbnailSize (): number {
-    return this.$typedState.config.uiSettings.thumbnailSizes.jobQueue ?? 32
-  }
+const { typedState, typedDispatch } = useStore()
 
-  set thumbnailSize (value: number) {
-    this.$typedDispatch('config/updateThumbnailSizes', { name: 'jobQueue', size: value })
-  }
-}
+const thumbnailSize = computed({
+  get: () => typedState.config.uiSettings.thumbnailSizes.jobQueue ?? 32,
+  set: (value: number) => typedDispatch('config/updateThumbnailSizes', { name: 'jobQueue', size: value })
+})
 </script>

@@ -4,7 +4,7 @@
     :title="$t('app.tool.title.manual_probe')"
     :cancel-button-text="$t('app.general.btn.abort')"
     :save-button-text="$t('app.general.btn.accept')"
-    :save-button-loading="hasWait($waits.onManualProbe)"
+    :save-button-loading="hasWait(Waits.onManualProbe)"
     max-width="450"
     @cancel="sendAbort"
     @save="sendAccept"
@@ -133,67 +133,61 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed, watch } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 
-@Component({})
-export default class ManualProbeDialog extends Mixins(StateMixin, ToolheadMixin) {
-  get offsets (): number[] {
-    return [
-      1,
-      0.1,
-      ...this.$typedState.config.uiSettings.general.zAdjustDistances
-    ].sort((a, b) => b - a)
-  }
+const { hasWait, sendGcode, klippyReady, printerPrinting } = useStateMixin()
+const { isManualProbeActive, manualProbeDialogOpen } = useToolheadMixin()
+const { typedState } = useStore()
 
-  get manualProbe (): Klipper.ManualProbeState | undefined {
-    return this.$typedState.printer.printer.manual_probe
-  }
+const offsets = computed<number[]>(() =>
+  [
+    1,
+    0.1,
+    ...typedState.config.uiSettings.general.zAdjustDistances
+  ].sort((a, b) => b - a)
+)
 
-  get zPositionLower (): string {
-    return this.manualProbe?.z_position_lower?.toFixed(3) ?? ''
-  }
+const manualProbe = computed<Klipper.ManualProbeState | undefined>(
+  () => typedState.printer.printer.manual_probe
+)
 
-  get zPosition (): string {
-    return this.manualProbe?.z_position?.toFixed(3) ?? ''
-  }
+const zPositionLower = computed(() => manualProbe.value?.z_position_lower?.toFixed(3) ?? '')
+const zPosition = computed(() => manualProbe.value?.z_position?.toFixed(3) ?? '')
+const zPositionUpper = computed(() => manualProbe.value?.z_position_upper?.toFixed(3) ?? '')
 
-  get zPositionUpper (): string {
-    return this.manualProbe?.z_position_upper?.toFixed(3) ?? ''
-  }
+const showManualProbeDialogAutomatically = computed<boolean>(
+  () => typedState.config.uiSettings.general.showManualProbeDialogAutomatically
+)
 
-  get showManualProbeDialogAutomatically (): boolean {
-    return this.$typedState.config.uiSettings.general.showManualProbeDialogAutomatically
+watch(isManualProbeActive, (value) => {
+  if (
+    !value ||
+    (
+      showManualProbeDialogAutomatically.value &&
+      klippyReady.value &&
+      !printerPrinting.value
+    )
+  ) {
+    manualProbeDialogOpen.value = value
   }
+})
 
-  @Watch('isManualProbeActive')
-  onIsManualProbeActive (value: boolean) {
-    if (
-      !value ||
-      (
-        this.showManualProbeDialogAutomatically &&
-        this.klippyReady &&
-        !this.printerPrinting
-      )
-    ) {
-      this.manualProbeDialogOpen = value
-    }
-  }
+function sendTestZ (zValue: string) {
+  sendGcode(`TESTZ Z=${zValue}`)
+}
 
-  sendTestZ (zValue: string) {
-    this.sendGcode(`TESTZ Z=${zValue}`)
-  }
+function sendAbort () {
+  sendGcode('ABORT', Waits.onManualProbe)
+  manualProbeDialogOpen.value = false
+}
 
-  sendAbort () {
-    this.sendGcode('ABORT', this.$waits.onManualProbe)
-    this.manualProbeDialogOpen = false
-  }
-
-  sendAccept () {
-    this.sendGcode('ACCEPT', this.$waits.onManualProbe)
-  }
+function sendAccept () {
+  sendGcode('ACCEPT', Waits.onManualProbe)
 }
 </script>
 

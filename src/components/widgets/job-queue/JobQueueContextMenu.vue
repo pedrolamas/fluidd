@@ -34,21 +34,24 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({})
-export default class JobQueueContextMenu extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  positionX: number
+  positionY: number
+  job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]
+}>()
 
-  @Prop({ type: Number, required: true })
-  readonly positionX!: number
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'multiply', job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]): void
+  (e: 'remove', job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]): void
+}>()
 
-  @Prop({ type: Number, required: true })
-  readonly positionY!: number
-
-  @Prop({ type: [Object, Array], required: true })
-  readonly job!: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]
-}
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v ?? false)
+})
 </script>

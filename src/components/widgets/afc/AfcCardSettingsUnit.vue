@@ -11,39 +11,34 @@
   </v-list-item>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
 
-@Component
-export default class AfcCardSettingsUnit extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  get unitName (): string {
-    return this.name.substring(this.name.indexOf(' ') + 1)
-  }
+const { afcHiddenUnits } = useAfcMixin()
+const { typedDispatch } = useStore()
 
-  get showUnit () {
-    return !this.afcHiddenUnits
-      .includes(this.name)
-  }
+const unitName = computed(() => props.name.substring(props.name.indexOf(' ') + 1))
 
-  set showUnit (value: boolean) {
-    const values = new Set(this.afcHiddenUnits)
-
+const showUnit = computed({
+  get: () => !afcHiddenUnits.value.includes(props.name),
+  set: (value: boolean) => {
+    const values = new Set(afcHiddenUnits.value)
     if (value) {
-      values.delete(this.name)
+      values.delete(props.name)
     } else {
-      values.add(this.name)
+      values.add(props.name)
     }
-
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.afc.hiddenUnits',
       value: [...values],
       server: true
     })
   }
-}
+})
 </script>

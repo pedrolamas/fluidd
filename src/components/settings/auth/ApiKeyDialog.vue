@@ -41,20 +41,25 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class ApiKeyDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{ value?: boolean }>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+}>()
 
-  get apiKey (): string {
-    return this.$typedState.auth.apiKey
-  }
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  handleRefreshApiKey () {
-    this.$typedDispatch('auth/refreshApiKey')
-  }
+const { typedState, typedDispatch } = useStore()
+
+const apiKey = computed((): string => typedState.auth.apiKey)
+
+function handleRefreshApiKey () {
+  typedDispatch('auth/refreshApiKey')
 }
 </script>

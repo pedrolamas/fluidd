@@ -37,19 +37,12 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
 
-@Component({
-  components: {
-    FileSystem
-  }
-})
-export default class JobsCard extends Vue {
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
-}
+defineProps<{
+  fullscreen?: boolean
+}>()
 </script>
 
 <style lang="scss" scoped>

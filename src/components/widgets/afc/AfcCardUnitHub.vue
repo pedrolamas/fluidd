@@ -18,37 +18,33 @@
     </span>
   </div>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
 
-@Component
-export default class AfcCardUnitHub extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useI18n } from '@/composables/useI18n'
+import { Filters } from '@/plugins/filters'
 
-  get hub () {
-    return this.getAfcHubObject(this.name)
-  }
+const props = defineProps<{
+  name: string
+}>()
 
-  get sensorStatus (): boolean {
-    return this.hub?.state === true
-  }
+const { getAfcHubObject } = useAfcMixin()
+const { t } = useI18n()
 
-  get sensorOutput (): string {
-    const status = this.sensorStatus ? this.$t('app.afc.Detected') : this.$t('app.afc.Empty')
+const hub = computed(() => getAfcHubObject(props.name))
 
-    return `${this.$filters.prettyCase(this.name)} ${this.$t('app.afc.HubLoad')} - ${status}`
-  }
+const sensorStatus = computed(() => hub.value?.state === true)
 
-  get sensorClass () {
-    return {
-      success: this.sensorStatus,
-      error: !this.sensorStatus,
-    }
-  }
-}
+const sensorOutput = computed(() => {
+  const status = sensorStatus.value ? t('app.afc.Detected') : t('app.afc.Empty')
+  return `${Filters.prettyCase(props.name)} ${t('app.afc.HubLoad')} - ${status}`
+})
+
+const sensorClass = computed(() => ({
+  success: sensorStatus.value,
+  error: !sensorStatus.value,
+}))
 </script>
 
 <style scoped>

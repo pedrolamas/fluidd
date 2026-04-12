@@ -19,56 +19,53 @@
   </v-col>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import type { EChartsOption, LineSeriesOption } from 'echarts'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class SystemLoadChart extends Vue {
-  ready = false
+const { typedState, typedGetters } = useStore()
+const { t } = useI18n()
 
-  get chartData () {
-    return this.$typedState.charts.klipper || []
+const ready = ref(false)
+
+const chartData = computed(() => typedState.charts.klipper || [])
+
+const cores = computed((): number =>
+  typedState.server.system_info?.cpu_info?.cpu_count || 1
+)
+
+const series = computed((): LineSeriesOption => ({
+  ...typedGetters['charts/getBaseSeries'],
+  name: t('app.system_info.label.load').toString(),
+  encode: {
+    x: 'date',
+    y: 'load'
+  }
+}))
+
+const options = computed((): EChartsOption => {
+  const opts: EChartsOption = {
+    ...typedGetters['charts/getBaseChartOptions'](),
+    series: series.value
   }
 
-  get cores (): number {
-    return this.$typedState.server.system_info?.cpu_info?.cpu_count || 1
+  if (
+    opts.yAxis &&
+    !Array.isArray(opts.yAxis)
+  ) {
+    opts.yAxis.max = (value) => (
+      value.max <= cores.value
+        ? cores.value
+        : value.max
+    )
   }
 
-  get options (): EChartsOption {
-    const options: EChartsOption = {
-      ...this.$typedGetters['charts/getBaseChartOptions'](),
-      series: this.series
-    }
+  return opts
+})
 
-    if (
-      options.yAxis &&
-      !Array.isArray(options.yAxis)
-    ) {
-      options.yAxis.max = (value) => (
-        value.max <= this.cores
-          ? this.cores
-          : value.max
-      )
-    }
-
-    return options
-  }
-
-  get series (): LineSeriesOption {
-    return {
-      ...this.$typedGetters['charts/getBaseSeries'],
-      name: this.$t('app.system_info.label.load').toString(),
-      encode: {
-        x: 'date',
-        y: 'load'
-      }
-    }
-  }
-
-  @Watch('chartData', { immediate: true })
-  onChartData (data: any) {
-    if (data && data.length > 0) this.ready = true
-  }
-}
+watch(chartData, (data) => {
+  if (data && data.length > 0) ready.value = true
+}, { immediate: true })
 </script>

@@ -7,7 +7,7 @@
     :close-on-content-click="false"
     :close-delay="300"
   >
-    <template #activator="{ on: menu, attrs }">
+    <template #activator="{ on: menuOn, attrs }">
       <v-tooltip bottom>
         <template #activator="{ on: tooltip }">
           <v-badge
@@ -24,7 +24,7 @@
               icon
               text
               :color="color"
-              v-on="{ ...tooltip, ...menu }"
+              v-on="{ ...tooltip, ...menuOn }"
             >
               <v-icon :class="{ 'wiggle': color === 'error'}">
                 $bell
@@ -160,100 +160,75 @@
   </v-menu>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import AppAnnouncementDismissMenu from './AppAnnouncementDismissMenu.vue'
 import type { AppNotification } from '@/store/notifications/types'
 import isSetAppBadgeSupported from '@/util/is-set-app-badge-supported'
-import { Component, Watch, Mixins } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
-import AppAnnouncementDismissMenu from './AppAnnouncementDismissMenu.vue'
 
-@Component({
-  components: {
-    AppAnnouncementDismissMenu
+const { isMobileViewport } = useBrowserMixin()
+const { typedGetters, typedDispatch } = useStore()
+
+const menu = ref(false)
+
+const notifications = computed<AppNotification[]>(() => typedGetters['notifications/getNotifications'])
+
+const notificationsCounter = computed<number>(() => {
+  const filtered: AppNotification[] = notifications.value.filter(n => !n.noCount)
+  return filtered.length
+})
+
+watch(notificationsCounter, (value) => {
+  if (isSetAppBadgeSupported(navigator)) {
+    navigator.setAppBadge(value)
   }
 })
-export default class AppNotificationMenu extends Mixins(BrowserMixin) {
-  menu = false
 
-  get notifications (): AppNotification[] {
-    return this.$typedGetters['notifications/getNotifications']
-  }
+const clearableNotifications = computed<AppNotification[]>(() => {
+  const all: AppNotification[] = typedGetters['notifications/getNotifications']
+  return all.filter(n => n.clear)
+})
 
-  get notificationsCounter (): number {
-    const notifications: AppNotification[] = this.notifications.filter(n => !n.noCount)
-    return notifications.length
-  }
-
-  @Watch('notificationsCounter')
-  onNotificationsCounter (value: number) {
-    if (isSetAppBadgeSupported(navigator)) {
-      navigator.setAppBadge(value)
+const color = computed(() => {
+  if (notifications.value.length <= 0) return undefined
+  let c: string | undefined
+  for (const n of notifications.value) {
+    if (n.type === 'warning' && c !== 'error') c = 'warning'
+    if (n.type === 'error' && c !== 'error') {
+      c = 'error'
+      break
     }
   }
+  return c
+})
 
-  get clearableNotifications (): AppNotification[] {
-    const notifications: AppNotification[] = this.$typedGetters['notifications/getNotifications']
-    return notifications.filter(n => n.clear)
-  }
+const badgeColor = computed(() => {
+  if (color.value === 'transparent') return 'info'
+  return color.value
+})
 
-  /**
-   * Color is determined by type. Pull the highest weighted type.
-   */
-  get color () {
-    if (this.notifications.length <= 0) return undefined
-    let c: string | undefined
-    for (const n of this.notifications) {
-      if (n.type === 'warning' && c !== 'error') c = 'warning'
-      if (n.type === 'error' && c !== 'error') {
-        c = 'error'
-        break
-      }
-    }
-    return c
-  }
+function classes (n: AppNotification) {
+  return `notification-${n.type}`
+}
 
-  get badgeColor () {
-    if (this.color === 'transparent') return 'info'
-    return this.color
-  }
+function handleClear (n: AppNotification) {
+  typedDispatch('notifications/clearNotification', n)
+}
 
-  /**
-   * If no defined icon, pull from a standard set based on notification type.
-   */
-  icon (n: AppNotification) {
-    if (n.icon) return n.icon
-    switch (n.type) {
-      case 'info':
-      case 'success':
-      case 'announcement':
-        return '$info'
-      case 'warning':
-        return '$warning'
-    }
-    return '$error'
-  }
+function handleClearAll () {
+  typedDispatch('notifications/clearAll')
+}
 
-  classes (n: AppNotification) {
-    return `notification-${n.type}`
-  }
+function handleAnnouncementDismiss (n: AppNotification, wake_time: number) {
+  if (n && wake_time) {
+    typedDispatch('announcements/dismiss', {
+      entry_id: n.id,
+      wake_time
+    })
 
-  handleClear (n: AppNotification) {
-    this.$typedDispatch('notifications/clearNotification', n)
-  }
-
-  handleClearAll () {
-    this.$typedDispatch('notifications/clearAll')
-  }
-
-  handleAnnouncementDismiss (n: AppNotification, wake_time: number) {
-    if (n && wake_time) {
-      this.$typedDispatch('announcements/dismiss', {
-        entry_id: n.id,
-        wake_time
-      })
-
-      this.menu = false
-    }
+    menu.value = false
   }
 }
 </script>

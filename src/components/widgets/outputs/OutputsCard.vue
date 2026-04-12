@@ -10,15 +10,6 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import Outputs from '@/components/widgets/outputs/Outputs.vue'
-
-@Component({
-  components: {
-    Outputs
-  }
-})
-export default class OutputsCard extends Vue {
-}
 </script>

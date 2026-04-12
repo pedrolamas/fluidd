@@ -7,7 +7,7 @@
       :color="(disabled) ? 'grey darken-2' : 'success'"
       class="ml-1"
     >
-      {{ $t('app.version.label.up_to_date') }}
+      {{ t('app.version.label.up_to_date') }}
     </v-chip>
     <v-tooltip
       v-if="dirty && valid"
@@ -23,10 +23,10 @@
           class="ml-1"
           v-on="on"
         >
-          {{ $t('app.version.label.dirty') }}
+          {{ t('app.version.label.dirty') }}
         </v-chip>
       </template>
-      <span>{{ $t('app.version.tooltip.dirty') }}</span>
+      <span>{{ t('app.version.tooltip.dirty') }}</span>
     </v-tooltip>
 
     <v-tooltip
@@ -42,10 +42,10 @@
           class="ml-1"
           v-on="on"
         >
-          {{ $t('app.version.label.invalid') }}
+          {{ t('app.version.label.invalid') }}
         </v-chip>
       </template>
-      <span>{{ $t('app.version.tooltip.invalid') }}</span>
+      <span>{{ t('app.version.tooltip.invalid') }}</span>
     </v-tooltip>
 
     <app-btn
@@ -57,7 +57,7 @@
       class="ml-1"
       @click="$emit('on-update')"
     >
-      {{ $t('app.version.btn.update') }}
+      {{ t('app.version.btn.update') }}
     </app-btn>
 
     <app-btn
@@ -68,30 +68,28 @@
       class="ml-1"
       @click="$emit('on-recover')"
     >
-      {{ $t('app.general.btn.recover') }}
+      {{ t('app.general.btn.recover') }}
     </app-btn>
   </div>
 </template>
 
-<script lang="ts">
-import Vue from 'vue'
-import { Component, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class VersionStatus extends Vue {
-  @Prop({ type: Boolean })
-  readonly hasUpdate?: boolean
+withDefaults(defineProps<{
+  hasUpdate?: boolean
+  disabled?: boolean
+  loading?: boolean
+  dirty?: boolean
+  valid?: boolean
+}>(), {
+  valid: true
+})
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+defineEmits<{
+  (e: 'on-update'): void
+  (e: 'on-recover'): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-
-  @Prop({ type: Boolean })
-  readonly dirty?: boolean
-
-  @Prop({ type: Boolean, default: true })
-  readonly valid?: boolean
-}
+const { t } = useI18n()
 </script>

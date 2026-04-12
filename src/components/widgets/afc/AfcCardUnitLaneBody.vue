@@ -92,136 +92,106 @@
     </v-row>
   </div>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import type { Spool, SpoolSelectionDialogState } from '@/store/spoolman/types'
 import AfcUnitLaneInfiniteDialog from '@/components/widgets/afc/dialogs/AfcUnitLaneInfiniteDialog.vue'
 import AfcUnitLaneFilamentDialog from '@/components/widgets/afc/dialogs/AfcUnitLaneFilamentDialog.vue'
 import AfcFilamentReel from './AfcFilamentReel.vue'
 
-@Component({
-  components: {
-    AfcUnitLaneFilamentDialog,
-    AfcUnitLaneInfiniteDialog,
-    AfcFilamentReel
-  },
+const props = defineProps<{
+  name: string
+}>()
+
+const { sendGcode } = useStateMixin()
+const { afc, afcShowLaneInfinite, afcShowFilamentName, afcShowTd1Color, afcExistsSpoolman, getAfcLaneObject } = useAfcMixin()
+const { typedState, typedGetters, typedCommit } = useStore()
+const { t } = useI18n()
+
+const showInfintiyDialog = ref(false)
+const showFilamentDialog = ref(false)
+const spoolmanSelection = ref(false)
+
+const lane = computed((): Klipper.AfcLaneState | undefined => getAfcLaneObject(props.name))
+
+const runoutLane = computed(() => lane.value?.runout_lane ?? 'NONE')
+
+const spoolId = computed(() => lane.value?.spool_id ?? undefined)
+
+const spool = computed((): Spool | null => {
+  if (!spoolId.value) return null
+  return typedGetters['spoolman/getSpoolById'](spoolId.value) ?? null
 })
-export default class AfcCardUnitLaneBody extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
 
-  showInfintiyDialog = false
-  showSpoolmanDialog = false
-  showFilamentDialog = false
-  spoolmanSelection = false
-
-  get lane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
+const spoolColor = computed(() => {
+  if (
+    afc.value?.td1_present &&
+    lane.value?.td1_color &&
+    afcShowTd1Color.value
+  ) {
+    return `#${lane.value.td1_color}`
   }
+  return lane.value?.color || '#000000'
+})
 
-  get runoutLane (): string {
-    return this.lane?.runout_lane ?? 'NONE'
-  }
+const spoolRemainingWeight = computed(() => Math.round(lane.value?.weight ?? 0))
 
-  get spoolId (): number | undefined {
-    return this.lane?.spool_id ?? undefined
-  }
+const spoolRemainingWeightOutput = computed(() => `${spoolRemainingWeight.value} g`)
 
-  get spool (): Spool | null {
-    if (!this.spoolId) return null
+const spoolFullWeight = computed(() => spool.value?.initial_weight ?? 1000)
 
-    return this.$typedGetters['spoolman/getSpoolById'](this.spoolId) ?? null
-  }
+const spoolPercent = computed(() => {
+  if (spoolFullWeight.value === 0) return 100
+  return Math.round((spoolRemainingWeight.value / spoolFullWeight.value) * 100)
+})
 
-  get spoolColor (): string {
-    if (
-      this.afc?.td1_present &&
-      this.lane?.td1_color &&
-      this.afcShowTd1Color
-    ) {
-      return `#${this.lane.td1_color}`
-    }
+const spoolMaterial = computed(() => lane.value?.material || '--')
 
-    return this.lane?.color || '#000000'
-  }
+const spoolVendor = computed(() =>
+  spool.value?.filament?.vendor?.name ?? t('app.afc.Unknown')
+)
 
-  get spoolRemainingWeight (): number {
-    return Math.round(this.lane?.weight ?? 0)
-  }
+const spoolFilamentName = computed(() =>
+  afcExistsSpoolman.value
+    ? spool.value?.filament?.name ?? t('app.afc.Unknown')
+    : ''
+)
 
-  get spoolRemainingWeightOutput (): string {
-    return `${this.spoolRemainingWeight} g`
-  }
+const tdPresent = computed(() => !!lane.value?.td1_td)
 
-  get spoolFullWeight (): number {
-    return this.spool?.initial_weight ?? 1000
-  }
+const td = computed(() => lane.value?.td1_td || '')
 
-  get spoolPercent (): number {
-    if (this.spoolFullWeight === 0) return 100
+const tdColor = computed(() => lane.value?.td1_color || '')
 
-    return Math.round((this.spoolRemainingWeight / this.spoolFullWeight) * 100)
-  }
+function handleSelectSpool () {
+  spoolmanSelection.value = true
+  typedCommit('spoolman/setDialogState', {
+    show: true,
+    spoolSelectionOnly: true,
+    selectedSpoolId: spoolId.value
+  })
+}
 
-  get spoolMaterial (): string {
-    return this.lane?.material || '--'
-  }
-
-  get spoolVendor (): string {
-    return this.spool?.filament?.vendor?.name ?? this.$t('app.afc.Unknown').toString()
-  }
-
-  get spoolFilamentName (): string {
-    return this.afcExistsSpoolman
-      ? this.spool?.filament?.name ?? this.$t('app.afc.Unknown').toString()
-      : ''
-  }
-
-  get tdPresent (): boolean {
-    return !!this.lane?.td1_td
-  }
-
-  get td (): string {
-    return this.lane?.td1_td || ''
-  }
-
-  get tdColor (): string {
-    return this.lane?.td1_color || ''
-  }
-
-  handleSelectSpool () {
-    this.spoolmanSelection = true
-    this.$typedCommit('spoolman/setDialogState', {
-      show: true,
-      spoolSelectionOnly: true,
-      selectedSpoolId: this.spoolId
-    })
-  }
-
-  @Watch('$typedState.spoolman.dialog')
-  onSpoolmanChanged (dialog: SpoolSelectionDialogState) {
-    if (
-      !dialog.show &&
-      this.spoolmanSelection
-    ) {
-      this.spoolmanSelection = false
-
-      if (dialog.selectedSpoolId !== this.spoolId) {
-        this.sendGcode(`SET_SPOOL_ID LANE=${this.name} SPOOL_ID=${dialog.selectedSpoolId ?? ''}`)
-      }
+watch(() => typedState.spoolman.dialog, (dialog: SpoolSelectionDialogState) => {
+  if (!dialog.show && spoolmanSelection.value) {
+    spoolmanSelection.value = false
+    if (dialog.selectedSpoolId !== spoolId.value) {
+      sendGcode(`SET_SPOOL_ID LANE=${props.name} SPOOL_ID=${dialog.selectedSpoolId ?? ''}`)
     }
   }
+})
 
-  onFilamentClick () {
-    if (this.afcExistsSpoolman) {
-      this.handleSelectSpool()
-      return
-    }
-
-    this.showFilamentDialog = true
+function onFilamentClick () {
+  if (afcExistsSpoolman.value) {
+    handleSelectSpool()
+    return
   }
+  showFilamentDialog.value = true
 }
 </script>
 

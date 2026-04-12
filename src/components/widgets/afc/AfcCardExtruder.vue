@@ -52,164 +52,130 @@
     </v-row>
   </div>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
 
-@Component({})
-export default class AfcCardExtruder extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useVuetify } from '@/composables/useVuetify'
+import { useI18n } from '@/composables/useI18n'
 
-  get afcExtruder () {
-    return this.getAfcExtruderObject(this.name)
-  }
+const props = defineProps<{
+  name: string
+}>()
 
-  get settings () {
-    return this.getAfcExtruderSettings(this.name)
-  }
+const { printerPrinting } = useStateMixin()
+const {
+  afcCurrentLane, afcCurrentBuffer, afcCurrentState, afcErrorState,
+  getAfcExtruderObject, getAfcExtruderSettings
+} = useAfcMixin()
+const vuetify = useVuetify()
+const { t } = useI18n()
 
-  get useRamming (): boolean {
-    return this.afcExtruder?.tool_start === 'buffer'
-  }
+const afcExtruder = computed(() => getAfcExtruderObject(props.name))
 
-  get hasActiveLane (): boolean {
-    const currentLane = this.afcCurrentLane
+const settings = computed(() => getAfcExtruderSettings(props.name))
 
-    if (currentLane == null) {
-      return false
-    }
+const useRamming = computed(() => afcExtruder.value?.tool_start === 'buffer')
 
-    const lanes = this.afcExtruder?.lanes ?? []
+const hasActiveLane = computed(() => {
+  const currentLane = afcCurrentLane.value
+  if (currentLane == null) return false
+  const lanes = afcExtruder.value?.lanes ?? []
+  return lanes.includes(currentLane.name)
+})
 
-    return lanes.includes(currentLane.name)
-  }
+const containerClasses = computed(() => ({
+  'border-primary': hasActiveLane.value,
+  'border-error': hasActiveLane.value && afcErrorState.value,
+  'darken-3': vuetify.theme.dark,
+  'lighten-2': !vuetify.theme.dark,
+}))
 
-  get containerClasses () {
+const rammingState = computed(() => {
+  if (!useRamming.value) return false
+  const extruder = afcCurrentLane.value?.extruder ?? ''
+  const bufferState = (afcCurrentBuffer.value?.state ?? '').toLowerCase()
+  return extruder === props.name && bufferState === 'trailing'
+})
+
+const laneLoaded = computed(() => afcExtruder.value?.lane_loaded ?? '')
+
+const preSensorStatus = computed(() => afcExtruder.value?.tool_start_status === true)
+
+const preSensorClasses = computed(() => {
+  if (useRamming.value) {
     return {
-      'border-primary': this.hasActiveLane,
-      'border-error': this.hasActiveLane && this.afcErrorState,
-      'darken-3': this.$vuetify.theme.dark,
-      'lighten-2': !this.$vuetify.theme.dark,
+      success: !laneLoaded.value && rammingState.value,
+      error: !laneLoaded.value && !rammingState.value,
+      'grey lighten4': laneLoaded.value,
     }
   }
-
-  get rammingState (): boolean {
-    if (!this.useRamming) return false
-
-    const extruder = this.afcCurrentLane?.extruder ?? ''
-    const bufferState = (this.afcCurrentBuffer?.state ?? '').toLowerCase()
-
-    return (
-      extruder === this.name &&
-      bufferState === 'trailing'
-    )
+  return {
+    success: preSensorStatus.value,
+    error: !preSensorStatus.value,
   }
+})
 
-  get laneLoaded (): string {
-    return this.afcExtruder?.lane_loaded ?? ''
+const preSensorOutput = computed(() => {
+  if (useRamming.value) {
+    if (laneLoaded.value) return `${t('app.afc.RammingSensor')}`
+    const status = rammingState.value ? t('app.afc.Detected') : t('app.afc.Empty')
+    return `${t('app.afc.RammingSensor')} - ${status}`
   }
+  const status = preSensorStatus.value ? t('app.afc.Detected') : t('app.afc.Empty')
+  return `${t('app.afc.PreExtruderSensor')} - ${status}`
+})
 
-  get preSensorStatus (): boolean {
-    return this.afcExtruder?.tool_start_status === true
+const hasPostSensor = computed(() =>
+  settings.value != null && 'pin_tool_end' in settings.value
+)
+
+const postSensorStatus = computed(() => afcExtruder.value?.tool_end_status === true)
+
+const postSensorClasses = computed(() => ({
+  success: postSensorStatus.value,
+  error: !postSensorStatus.value,
+}))
+
+const postSensorOutput = computed(() => {
+  const status = postSensorStatus.value ? t('app.afc.Detected') : t('app.afc.Empty')
+  return `${t('app.afc.PostExtruderSensor')} - ${status}`
+})
+
+const bufferOutput = computed(() => {
+  const extruder = afcCurrentLane.value?.extruder
+  if (extruder !== props.name) {
+    return t('app.afc.BufferDisabled')
   }
+  return `${afcCurrentLane.value?.buffer ?? '--'}: ${afcCurrentBuffer.value?.state ?? '--'}`
+})
 
-  get preSensorClasses () {
-    if (this.useRamming) {
-      return {
-        success: !this.laneLoaded && this.rammingState,
-        error: !this.laneLoaded && !this.rammingState,
-        'grey lighten4': this.laneLoaded,
-      }
+const state = computed(() => {
+  const extruder = afcCurrentLane.value?.extruder
+  if (extruder === props.name) {
+    if (printerPrinting.value) {
+      return t('app.afc.Printing')
     }
-
-    return {
-      success: this.preSensorStatus,
-      error: !this.preSensorStatus,
-    }
+    return t(`app.afc.${afcCurrentState.value}`)
   }
+  return t('app.afc.Idle')
+})
 
-  get preSensorOutput (): string {
-    if (this.useRamming) {
-      if (this.laneLoaded) return `${this.$t('app.afc.RammingSensor')}`
-
-      const status = this.rammingState ? this.$t('app.afc.Detected') : this.$t('app.afc.Empty')
-      return `${this.$t('app.afc.RammingSensor')} - ${status}`
-    }
-
-    const status = this.preSensorStatus ? this.$t('app.afc.Detected') : this.$t('app.afc.Empty')
-
-    return `${this.$t('app.afc.PreExtruderSensor')} - ${status}`
+const stateLane = computed(() => {
+  if (afcExtruder.value?.lane_loaded) {
+    return afcExtruder.value.lane_loaded
   }
-
-  get hasPostSensor (): boolean {
-    return (
-      this.settings != null &&
-      'pin_tool_end' in this.settings
-    )
+  if (afcCurrentLane.value) {
+    return afcCurrentLane.value.name
   }
+  return t('app.afc.LaneLoadedNone')
+})
 
-  get postSensorStatus (): boolean {
-    return this.afcExtruder?.tool_end_status === true
-  }
-
-  get postSensorClasses () {
-    return {
-      success: this.postSensorStatus,
-      error: !this.postSensorStatus,
-    }
-  }
-
-  get postSensorOutput (): string {
-    const status = this.postSensorStatus ? this.$t('app.afc.Detected') : this.$t('app.afc.Empty')
-
-    return `${this.$t('app.afc.PostExtruderSensor')} - ${status}`
-  }
-
-  get bufferOutput (): string {
-    const extruder = this.afcCurrentLane?.extruder
-
-    if (extruder !== this.name) {
-      return this.$t('app.afc.BufferDisabled').toString()
-    }
-
-    return `${this.afcCurrentLane?.buffer ?? '--'}: ${this.afcCurrentBuffer?.state ?? '--'}`
-  }
-
-  get state (): string {
-    const extruder = this.afcCurrentLane?.extruder
-
-    if (extruder === this.name) {
-      if (this.printerPrinting) {
-        return this.$t('app.afc.Printing').toString()
-      }
-
-      return this.$t(`app.afc.${this.afcCurrentState}`).toString()
-    }
-
-    return this.$t('app.afc.Idle').toString()
-  }
-
-  get stateLane (): string {
-    if (this.afcExtruder?.lane_loaded) {
-      return this.afcExtruder.lane_loaded
-    }
-
-    if (this.afcCurrentLane) {
-      return this.afcCurrentLane.name
-    }
-
-    return this.$t('app.afc.LaneLoadedNone').toString()
-  }
-
-  get stateLaneClasses () {
-    return {
-      'primary--text': this.hasActiveLane,
-      'error--text': this.hasActiveLane && this.afcErrorState,
-    }
-  }
-}
+const stateLaneClasses = computed(() => ({
+  'primary--text': hasActiveLane.value,
+  'error--text': hasActiveLane.value && afcErrorState.value,
+}))
 </script>
 
 <style scoped>

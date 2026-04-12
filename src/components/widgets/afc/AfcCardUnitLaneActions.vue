@@ -69,48 +69,40 @@
     </v-col>
   </v-row>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
-import ToolheadMixIn from '@/mixins/toolhead'
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class AfcCardUnitLaneActions extends Mixins(StateMixin, AfcMixin, ToolheadMixIn) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  get lane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
-  }
+const { klippyReady, printerPrinting, sendGcode } = useStateMixin()
+const { afcCurrentLane, getAfcLaneObject } = useAfcMixin()
 
-  get laneActive (): boolean {
-    return this.name === this.afcCurrentLane?.name
-  }
+const lane = computed((): Klipper.AfcLaneState | undefined => getAfcLaneObject(props.name))
 
-  get laneRunout (): boolean {
-    return (
-      this.laneActive &&
-      this.lane?.prep !== true
-    )
-  }
+const laneActive = computed(() => props.name === afcCurrentLane.value?.name)
 
-  get toolLoaded (): boolean {
-    return this.lane?.tool_loaded === true
-  }
+const laneRunout = computed(() =>
+  laneActive.value && lane.value?.prep !== true
+)
 
-  loadLane () {
-    this.sendGcode(`CHANGE_TOOL LANE=${encodeGcodeParamValue(this.name)}`)
-  }
+const toolLoaded = computed(() => lane.value?.tool_loaded === true)
 
-  unloadLane () {
-    this.sendGcode(`TOOL_UNLOAD LANE=${encodeGcodeParamValue(this.name)}`)
-  }
+function loadLane () {
+  sendGcode(`CHANGE_TOOL LANE=${encodeGcodeParamValue(props.name)}`)
+}
 
-  ejectLane () {
-    this.sendGcode(`LANE_UNLOAD LANE=${encodeGcodeParamValue(this.name)}`)
-  }
+function unloadLane () {
+  sendGcode(`TOOL_UNLOAD LANE=${encodeGcodeParamValue(props.name)}`)
+}
+
+function ejectLane () {
+  sendGcode(`LANE_UNLOAD LANE=${encodeGcodeParamValue(props.name)}`)
 }
 </script>
 

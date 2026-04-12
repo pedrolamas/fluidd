@@ -12,61 +12,78 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Ref, Mixins } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 import Hls from 'hls.js'
 import { consola } from 'consola'
 
-@Component({})
-export default class HlsstreamCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraVideo!: HTMLVideoElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  hls: Hls | null = null
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-  startPlayback () {
-    try {
-      this.updateStatus('connecting')
+const {
+  cameraStyle,
+  updateStatus,
+  buildAbsoluteUrl,
+  menuItemClick,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-      const url = this.buildAbsoluteUrl(this.camera.stream_url || '').toString()
+defineExpose({ menuItemClick })
 
-      if (Hls.isSupported()) {
-        this.hls?.destroy()
+const streamingElement = ref<HTMLVideoElement>()
 
-        this.hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-          maxLiveSyncPlaybackRate: 2,
-          liveSyncDuration: 0.5,
-          liveMaxLatencyDuration: 2,
-          backBufferLength: 5
-        })
-        this.hls.loadSource(url)
-        this.hls.attachMedia(this.cameraVideo)
-        this.hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-          this.cameraVideo.play()
-        })
-        this.hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            this.updateStatus('error')
-          }
-        })
-      } else if (this.cameraVideo.canPlayType('application/vnd.apple.mpegurl')) {
-        this.cameraVideo.src = url
-      }
-    } catch (e) {
-      consola.error(`[HlsstreamCamera] failed to start playback "${this.camera.name}"`, e)
+const hls = ref<Hls | null>(null)
 
-      this.updateStatus('error')
+function startPlayback () {
+  try {
+    updateStatus('connecting')
+
+    const url = buildAbsoluteUrl(props.camera.stream_url || '').toString()
+
+    if (Hls.isSupported()) {
+      hls.value?.destroy()
+
+      hls.value = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        maxLiveSyncPlaybackRate: 2,
+        liveSyncDuration: 0.5,
+        liveMaxLatencyDuration: 2,
+        backBufferLength: 5
+      })
+      hls.value.loadSource(url)
+      hls.value.attachMedia(streamingElement.value!)
+      hls.value.on(Hls.Events.MEDIA_ATTACHED, () => {
+        streamingElement.value!.play()
+      })
+      hls.value.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          updateStatus('error')
+        }
+      })
+    } else if (streamingElement.value!.canPlayType('application/vnd.apple.mpegurl')) {
+      streamingElement.value!.src = url
     }
-  }
+  } catch (e) {
+    consola.error(`[HlsstreamCamera] failed to start playback "${props.camera.name}"`, e)
 
-  stopPlayback () {
-    this.updateStatus('disconnected')
-    this.hls?.destroy()
-    this.hls = null
-    this.cameraVideo.src = ''
+    updateStatus('error')
   }
 }
+
+function stopPlayback () {
+  updateStatus('disconnected')
+  hls.value?.destroy()
+  hls.value = null
+  streamingElement.value!.src = ''
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
 </script>

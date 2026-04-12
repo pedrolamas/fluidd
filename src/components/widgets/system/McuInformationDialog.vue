@@ -12,11 +12,11 @@
         <v-simple-table dense>
           <tbody>
             <tr
-              v-for="(value, key) in mcu.mcu_constants"
+              v-for="(mcuValue, key) in mcu.mcu_constants"
               :key="key"
             >
               <th>{{ key }}</th>
-              <td>{{ value }}</td>
+              <td>{{ mcuValue }}</td>
             </tr>
           </tbody>
         </v-simple-table>
@@ -28,11 +28,11 @@
         <v-simple-table dense>
           <tbody>
             <tr
-              v-for="(value, key) in mcu.last_stats"
+              v-for="(mcuValue, key) in mcu.last_stats"
               :key="key"
             >
               <th>{{ key }}</th>
-              <td>{{ value }}</td>
+              <td>{{ mcuValue }}</td>
             </tr>
           </tbody>
         </v-simple-table>
@@ -41,16 +41,21 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { MCU } from '@/store/printer/types'
-import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
 
-@Component({})
-export default class McuInformationDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  mcu: MCU
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly mcu!: MCU
-}
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
+
+const open = computed({
+  get: () => props.value,
+  set: (value: boolean) => emit('input', value)
+})
 </script>

@@ -107,14 +107,13 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
-import MacroSettingsDialog from './MacroSettingsDialog.vue'
-import type { Macro, MacroCategory } from '@/store/macros/types'
-import store from '@/store'
+// beforeRouteEnter must be in an Options API block because <script setup> macros
+// like defineOptions are hoisted and cannot reference setup-scoped variables.
 import type { NavigationGuardNext, Route, Location } from 'vue-router'
+import type { MacroCategory } from '@/store/macros/types'
+import store from '@/store'
 
-const routeGuard = (to: Route): Parameters<NavigationGuardNext>[0] => {
-  // No need to translate here, these are just used for the route.
+function routeGuard (to: Route): Parameters<NavigationGuardNext>[0] {
   const id = to.params.categoryId
   const categories: MacroCategory[] = store.getters['macros/getCategories']
   const i = categories.findIndex(c => c.id === id)
@@ -123,90 +122,90 @@ const routeGuard = (to: Route): Parameters<NavigationGuardNext>[0] => {
   }
 }
 
-@Component({
-  components: {
-    MacroSettingsDialog
+export default {
+  beforeRouteEnter (to: Route, _from: Route, next: NavigationGuardNext) {
+    next(routeGuard(to))
+  }
+}
+</script>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import MacroSettingsDialog from './MacroSettingsDialog.vue'
+import type { Macro, MacroCategory } from '@/store/macros/types'
+import type { Route } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router/composables'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+
+const route = useRoute()
+const router = useRouter()
+const { typedGetters, typedDispatch } = useStore()
+const { tc } = useI18n()
+
+const search = ref('')
+const categoryId = ref<string | undefined>(route.params.categoryId)
+
+const dialogState = ref<any>({
+  open: false,
+  macro: null
+})
+
+onBeforeRouteUpdate((to, _from, next) => {
+  next(routeGuard(to as Route))
+})
+
+const categories = computed((): MacroCategory[] => typedGetters['macros/getCategories'])
+
+const macrosForCategory = computed((): Macro[] => typedGetters['macros/getMacrosByCategory'](categoryId.value))
+
+const macros = computed({
+  get: () => {
+    if (!search.value) {
+      return macrosForCategory.value
+    }
+
+    const searchLower = search.value.toLowerCase()
+
+    return macrosForCategory.value
+      .filter(macro => macro.name.toLowerCase().includes(searchLower))
+  },
+  set: (macros: Macro[]) => {
+    typedDispatch('macros/saveAllOrder', macros)
   }
 })
-export default class MacroCategorySettings extends Vue {
-  search = ''
-  categoryId?: string = undefined
 
-  dialogState: any = {
-    open: false,
-    macro: null
+const category = computed(() => {
+  const cat = categoryId.value !== '0' && categories.value.find(c => c.id === categoryId.value)
+
+  return cat || {
+    id: '0', name: tc('app.general.label.uncategorized')
   }
+})
 
-  get macrosForCategory (): Macro[] {
-    const id = this.categoryId
+function handleBack () {
+  router.go(-1)
+}
 
-    return this.$typedGetters['macros/getMacrosByCategory'](id)
+function handleSettingsDialog (macro: Macro) {
+  dialogState.value = {
+    open: true,
+    macro: { ...macro }
   }
+}
 
-  get macros () {
-    if (!this.search) {
-      return this.macrosForCategory
-    }
+function handleAllOn () {
+  typedDispatch('macros/saveAllOn', macros.value)
+}
 
-    const search = this.search.toLowerCase()
+function handleAllOff () {
+  typedDispatch('macros/saveAllOff', macros.value)
+}
 
-    return this.macrosForCategory
-      .filter(macro => macro.name.toLowerCase().includes(search))
+function handleMacroVisible (macro: Macro, value: boolean) {
+  const newMacro = {
+    ...macro, visible: value
   }
-
-  set macros (macros: Macro[]) {
-    this.$typedDispatch('macros/saveAllOrder', macros)
-  }
-
-  get categories (): MacroCategory[] {
-    return this.$typedGetters['macros/getCategories']
-  }
-
-  get category () {
-    const category = this.categoryId !== '0' && this.categories.find(category => category.id === this.categoryId)
-
-    return category || {
-      id: '0', name: this.$tc('app.general.label.uncategorized')
-    }
-  }
-
-  beforeRouteEnter (to: Route, from: Route, next: NavigationGuardNext) {
-    next(routeGuard(to))
-  }
-
-  beforeRouteUpdate (to: Route, from: Route, next: NavigationGuardNext) {
-    next(routeGuard(to))
-  }
-
-  created () {
-    this.search = ''
-    this.categoryId = this.$route.params.categoryId
-  }
-
-  handleBack () {
-    this.$router.go(-1)
-  }
-
-  handleSettingsDialog (macro: Macro) {
-    this.dialogState = {
-      open: true,
-      macro: { ...macro }
-    }
-  }
-
-  handleAllOn () {
-    this.$typedDispatch('macros/saveAllOn', this.macros)
-  }
-
-  handleAllOff () {
-    this.$typedDispatch('macros/saveAllOff', this.macros)
-  }
-
-  handleMacroVisible (macro: Macro, value: boolean) {
-    const newMacro = {
-      ...macro, visible: value
-    }
-    this.$typedDispatch('macros/saveMacro', newMacro)
-  }
+  typedDispatch('macros/saveMacro', newMacro)
 }
 </script>

@@ -29,47 +29,48 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class AfcUnitLaneMappingToolDialog extends Mixins(StateMixin, AfcMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  name: string
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  get lane () {
-    return this.getAfcLaneObject(this.name)
-  }
+const { sendGcode } = useStateMixin()
+const { afcLanes, getAfcLaneObject } = useAfcMixin()
 
-  get mappedTool (): string {
-    return this.lane?.map ?? '--'
-  }
+const open = computed({
+  get: () => props.value ?? false,
+  set: (value: boolean) => emit('input', value)
+})
 
-  get mapList (): string[] {
-    const mapList: string[] = []
+const lane = computed(() => getAfcLaneObject(props.name))
 
-    for (const laneName of this.afcLanes) {
-      const lane = this.getAfcLaneObject(laneName)
+const mappedTool = computed(() => lane.value?.map ?? '--')
 
-      if (lane?.map != null) {
-        mapList.push(lane.map)
-      }
+const mapList = computed(() => {
+  const list: string[] = []
+
+  for (const laneName of afcLanes.value) {
+    const l = getAfcLaneObject(laneName)
+    if (l?.map != null) {
+      list.push(l.map)
     }
-
-    return mapList
-      .sort((a, b) => a.localeCompare(b))
   }
 
-  mapTool (newTool: string) {
-    this.sendGcode(`SET_MAP LANE=${encodeGcodeParamValue(this.name)} MAP=${encodeGcodeParamValue(newTool)}`)
+  return list.sort((a, b) => a.localeCompare(b))
+})
 
-    this.open = false
-  }
+function mapTool (newTool: string) {
+  sendGcode(`SET_MAP LANE=${encodeGcodeParamValue(props.name)} MAP=${encodeGcodeParamValue(newTool)}`)
+  open.value = false
 }
 </script>

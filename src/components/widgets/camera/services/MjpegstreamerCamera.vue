@@ -9,120 +9,139 @@
   >
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 import { consola } from 'consola'
 
 import type { MjpegWorkerResponseMessage, MjpegWorkerRequestMessage } from '@/workers/mjpegStream.worker'
 
 import MjpegWorker from '@/workers/mjpegStream.worker?ts?worker'
 
-@Component({})
-export default class MjpegstreamerCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraImage!: HTMLImageElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  startTime = 0
-  time = 0
-  timeSmoothing = 0.6
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-  worker: Worker | null = null
-  imageObjectUrl: string | null = null
+const {
+  cameraStyle,
+  status,
+  updateStatus,
+  updateFramesPerSecond,
+  buildAbsoluteUrl,
+  menuItemClick,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-  handleImageLoad () {
-    this.updateStatus('connected')
+defineExpose({ menuItemClick })
 
-    this.revokeImageObjectURL()
-  }
+const streamingElement = ref<HTMLImageElement>()
 
-  handleImageError () {
-    this.updateStatus('error')
+const startTime = ref(0)
+const time = ref(0)
+const timeSmoothing = 0.6
 
-    this.revokeImageObjectURL()
-  }
+const worker = ref<Worker | null>(null)
+const imageObjectUrl = ref<string | null>(null)
 
-  revokeImageObjectURL () {
-    const imageObjectUrl = this.imageObjectUrl
+function handleImageLoad () {
+  updateStatus('connected')
 
-    if (imageObjectUrl != null) {
-      URL.revokeObjectURL(imageObjectUrl)
+  revokeImageObjectURL()
+}
 
-      this.imageObjectUrl = null
-    }
-  }
+function handleImageError () {
+  updateStatus('error')
 
-  startPlayback () {
-    try {
-      this.updateStatus('connecting')
+  revokeImageObjectURL()
+}
 
-      const url = this.buildAbsoluteUrl(this.camera.stream_url || '')
+function revokeImageObjectURL () {
+  const url = imageObjectUrl.value
 
-      url.searchParams.set('cacheBust', Date.now().toString())
+  if (url != null) {
+    URL.revokeObjectURL(url)
 
-      const worker = this.worker = new MjpegWorker()
-
-      worker.onmessage = (event: MessageEvent<MjpegWorkerResponseMessage>) => {
-        const message = event.data
-
-        switch (message.action) {
-          case 'frame': {
-            const endTime = performance.now()
-            const currentTime = endTime - this.startTime
-
-            this.time = (this.time * this.timeSmoothing) + (currentTime * (1.0 - this.timeSmoothing))
-
-            this.startTime = endTime
-
-            if (this.time !== 0) {
-              this.updateFramesPerSecond(Math.round(1000 / this.time))
-            }
-
-            this.revokeImageObjectURL()
-
-            const blob = new Blob([message.data.buffer], { type: 'image/jpeg' })
-
-            this.cameraImage.src = this.imageObjectUrl = URL.createObjectURL(blob)
-
-            break
-          }
-
-          case 'done':
-            this.stopPlayback()
-
-            break
-
-          case 'error':
-            this.updateStatus('error')
-
-            this.stopPlayback()
-
-            break
-        }
-      }
-
-      const message: MjpegWorkerRequestMessage = {
-        action: 'start',
-        url: url.toString()
-      }
-
-      this.time = 0
-      this.startTime = performance.now()
-
-      worker.postMessage(message)
-    } catch (e) {
-      consola.error(`[MjpegstreamerCamera] failed to start playback "${this.camera.name}"`, e)
-
-      this.updateStatus('error')
-    }
-  }
-
-  stopPlayback () {
-    this.worker?.terminate()
-    this.worker = null
-    this.revokeImageObjectURL()
-    this.updateStatus('disconnected')
-    this.cameraImage.src = ''
+    imageObjectUrl.value = null
   }
 }
+
+function startPlayback () {
+  try {
+    updateStatus('connecting')
+
+    const url = buildAbsoluteUrl(props.camera.stream_url || '')
+
+    url.searchParams.set('cacheBust', Date.now().toString())
+
+    const w = worker.value = new MjpegWorker()
+
+    w.onmessage = (event: MessageEvent<MjpegWorkerResponseMessage>) => {
+      const message = event.data
+
+      switch (message.action) {
+        case 'frame': {
+          const endTime = performance.now()
+          const currentTime = endTime - startTime.value
+
+          time.value = (time.value * timeSmoothing) + (currentTime * (1.0 - timeSmoothing))
+
+          startTime.value = endTime
+
+          if (time.value !== 0) {
+            updateFramesPerSecond(Math.round(1000 / time.value))
+          }
+
+          revokeImageObjectURL()
+
+          const blob = new Blob([message.data.buffer], { type: 'image/jpeg' })
+
+          streamingElement.value!.src = imageObjectUrl.value = URL.createObjectURL(blob)
+
+          break
+        }
+
+        case 'done':
+          stopPlayback()
+
+          break
+
+        case 'error':
+          updateStatus('error')
+
+          stopPlayback()
+
+          break
+      }
+    }
+
+    const message: MjpegWorkerRequestMessage = {
+      action: 'start',
+      url: url.toString()
+    }
+
+    time.value = 0
+    startTime.value = performance.now()
+
+    w.postMessage(message)
+  } catch (e) {
+    consola.error(`[MjpegstreamerCamera] failed to start playback "${props.camera.name}"`, e)
+
+    updateStatus('error')
+  }
+}
+
+function stopPlayback () {
+  worker.value?.terminate()
+  worker.value = null
+  revokeImageObjectURL()
+  updateStatus('disconnected')
+  streamingElement.value!.src = ''
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
 </script>

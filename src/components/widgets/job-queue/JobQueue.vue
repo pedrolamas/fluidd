@@ -56,10 +56,10 @@
   </v-card>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed, watch, nextTick } from 'vue'
 import { SocketActions } from '@/api/socketActions'
 import type { QueuedJobWithAppFile } from '@/store/jobQueue/types'
-import { Component, Prop, Vue } from 'vue-property-decorator'
 import JobQueueToolbar from './JobQueueToolbar.vue'
 import JobQueueBulkActions from './JobQueueBulkActions.vue'
 import JobQueueBrowser from './JobQueueBrowser.vue'
@@ -68,189 +68,182 @@ import JobQueueMultiplyJobDialog from './JobQueueMultiplyJobDialog.vue'
 import type { AppDataTableHeader } from '@/types'
 import { getFileDataTransferDataFromDataTransfer, hasFileDataTransferTypeInDataTransfer } from '@/util/file-data-transfer'
 import type { DataTableHeader } from 'vuetify'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({
-  components: {
-    JobQueueToolbar,
-    JobQueueBulkActions,
-    JobQueueBrowser,
-    JobQueueMultiplyJobDialog,
-    JobQueueContextMenu
-  }
+const props = defineProps<{
+  dense?: boolean
+  bulkActions?: boolean
+}>()
+
+const { typedGetters } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
+
+const contextMenuState = ref<any>({
+  open: false,
+  x: 0,
+  y: 0,
+  job: null
 })
-export default class JobQueue extends Vue {
-  contextMenuState: any = {
-    open: false,
-    x: 0,
-    y: 0,
-    job: null
-  }
 
-  multiplyJobDialogState: any = {
-    open: false,
-    job: null
-  }
+const multiplyJobDialogState = ref<any>({
+  open: false,
+  job: null
+})
 
-  selected: QueuedJobWithAppFile[] = []
-  overlay = false
+const selected = ref<QueuedJobWithAppFile[]>([])
+const overlay = ref(false)
 
-  @Prop({ type: Boolean })
-  readonly dense?: boolean
+const jobs = computed((): QueuedJobWithAppFile[] => typedGetters['jobQueue/getQueuedJobsWithFiles'])
 
-  @Prop({ type: Boolean })
-  readonly bulkActions?: boolean
+watch(jobs, () => {
+  selected.value = []
+})
 
-  get jobs (): QueuedJobWithAppFile[] {
-    this.selected = []
-
-    return this.$typedGetters['jobQueue/getQueuedJobsWithFiles']
-  }
-
-  get configurableHeaders (): AppDataTableHeader[] {
-    const headers: AppDataTableHeader[] = [
-      {
-        text: this.$tc('app.general.table.header.time_added'),
-        value: 'time_added',
-        sortable: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.time_in_queue'),
-        value: 'time_in_queue',
-        visible: false,
-        sortable: false,
-        cellClass: 'text-no-wrap'
-      }
-    ]
-
-    const mergedTableHeaders: AppDataTableHeader[] = this.$typedGetters['config/getMergedTableHeaders'](headers, 'job_queue')
-
-    return mergedTableHeaders
-  }
-
-  get headers (): DataTableHeader[] {
-    return [
-      {
-        text: '',
-        value: 'handle',
-        sortable: false,
-        width: 24
-      },
-      {
-        text: '',
-        value: 'data-table-icons',
-        sortable: false,
-        width: this.dense ? 28 : 56
-      },
-      {
-        text: this.$tc('app.general.table.header.name'),
-        value: 'filename',
-        sortable: false
-      },
-      ...this.configurableHeaders
-        .filter(header => header.visible !== false)
-    ]
-  }
-
-  handleRowClick (item: QueuedJobWithAppFile, event: MouseEvent) {
-    if (this.contextMenuState.open) {
-      this.contextMenuState.open = false
-
-      if (event.type !== 'contextmenu') {
-        return
-      }
+const configurableHeaders = computed((): AppDataTableHeader[] => {
+  const headers: AppDataTableHeader[] = [
+    {
+      text: tc('app.general.table.header.time_added'),
+      value: 'time_added',
+      sortable: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.time_in_queue'),
+      value: 'time_in_queue',
+      visible: false,
+      sortable: false,
+      cellClass: 'text-no-wrap'
     }
+  ]
 
-    if (
-      this.selected.length !== 0 &&
-      !this.selected.some(x => x.filename === item.filename)
-    ) {
+  const mergedTableHeaders: AppDataTableHeader[] = typedGetters['config/getMergedTableHeaders'](headers, 'job_queue')
+
+  return mergedTableHeaders
+})
+
+const headers = computed((): DataTableHeader[] => [
+  {
+    text: '',
+    value: 'handle',
+    sortable: false,
+    width: 24
+  },
+  {
+    text: '',
+    value: 'data-table-icons',
+    sortable: false,
+    width: props.dense ? 28 : 56
+  },
+  {
+    text: tc('app.general.table.header.name'),
+    value: 'filename',
+    sortable: false
+  },
+  ...configurableHeaders.value
+    .filter(header => header.visible !== false)
+])
+
+function handleRowClick (item: QueuedJobWithAppFile, event: MouseEvent) {
+  if (contextMenuState.value.open) {
+    contextMenuState.value.open = false
+
+    if (event.type !== 'contextmenu') {
       return
     }
-
-    // Open the context menu
-    this.contextMenuState.x = event.clientX
-    this.contextMenuState.y = event.clientY
-    this.contextMenuState.job = this.selected.length > 1
-      ? this.selected
-      : item
-    this.$nextTick(() => {
-      this.contextMenuState.open = true
-    })
   }
 
-  async handleRemoveAll () {
-    const result = await this.$confirm(
-      this.$tc('app.job_queue.msg.confirm'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      SocketActions.serverJobQueueDeleteJobs(['all'])
-    }
+  if (
+    selected.value.length !== 0 &&
+    !selected.value.some(x => x.filename === item.filename)
+  ) {
+    return
   }
 
-  handleRefresh () {
-    SocketActions.serverJobQueueStatus()
+  // Open the context menu
+  contextMenuState.value.x = event.clientX
+  contextMenuState.value.y = event.clientY
+  contextMenuState.value.job = selected.value.length > 1
+    ? selected.value
+    : item
+  nextTick(() => {
+    contextMenuState.value.open = true
+  })
+}
+
+async function handleRemoveAll () {
+  const result = await confirm(
+    tc('app.job_queue.msg.confirm'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    SocketActions.serverJobQueueDeleteJobs(['all'])
   }
+}
 
-  handleRemove (jobs: QueuedJobWithAppFile | QueuedJobWithAppFile[]) {
-    const jobIds = Array.isArray(jobs)
-      ? jobs.map(job => job.job_id)
-      : [jobs.job_id]
+function handleRefresh () {
+  SocketActions.serverJobQueueStatus()
+}
 
-    SocketActions.serverJobQueueDeleteJobs(jobIds)
+function handleRemove (jobs: QueuedJobWithAppFile | QueuedJobWithAppFile[]) {
+  const jobIds = Array.isArray(jobs)
+    ? jobs.map(job => job.job_id)
+    : [jobs.job_id]
+
+  SocketActions.serverJobQueueDeleteJobs(jobIds)
+}
+
+function handleMultiplyDialog (jobs: QueuedJobWithAppFile | QueuedJobWithAppFile[]) {
+  multiplyJobDialogState.value = {
+    open: true,
+    job: jobs
   }
+}
 
-  handleMultiplyDialog (jobs: QueuedJobWithAppFile | QueuedJobWithAppFile[]) {
-    this.multiplyJobDialogState = {
-      open: true,
-      job: jobs
-    }
+function handleMultiply (jobs: QueuedJobWithAppFile | QueuedJobWithAppFile[], copies: number) {
+  const filenames = Array.isArray(jobs)
+    ? jobs.map(job => job.filename)
+    : [jobs.filename]
+
+  const multipliedFilenames = Array.from({ length: copies })
+    .flatMap(() => filenames)
+
+  SocketActions.serverJobQueuePostJob(multipliedFilenames)
+}
+
+function handleDragOver (event: DragEvent) {
+  if (
+    event.dataTransfer &&
+    hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
+  ) {
+    event.preventDefault()
+
+    event.dataTransfer.dropEffect = 'link'
+
+    overlay.value = true
   }
+}
 
-  handleMultiply (jobs: QueuedJobWithAppFile | QueuedJobWithAppFile[], copies: number) {
-    const filenames = Array.isArray(jobs)
-      ? jobs.map(job => job.filename)
-      : [jobs.filename]
+function handleDragLeave () {
+  overlay.value = false
+}
 
-    const multipliedFilenames = Array.from({ length: copies })
-      .flatMap(() => filenames)
+function handleDrop (event: DragEvent) {
+  overlay.value = false
 
-    SocketActions.serverJobQueuePostJob(multipliedFilenames)
-  }
+  if (
+    event.dataTransfer &&
+    hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
+  ) {
+    const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'jobs')
+    const filePath = files.path ? `${files.path}/` : ''
+    const filenames = files.items
+      .map(file => `${filePath}${file}`)
 
-  handleDragOver (event: DragEvent) {
-    if (
-      event.dataTransfer &&
-      hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
-    ) {
-      event.preventDefault()
-
-      event.dataTransfer.dropEffect = 'link'
-
-      this.overlay = true
-    }
-  }
-
-  handleDragLeave () {
-    this.overlay = false
-  }
-
-  handleDrop (event: DragEvent) {
-    this.overlay = false
-
-    if (
-      event.dataTransfer &&
-      hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
-    ) {
-      const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'jobs')
-      const filePath = files.path ? `${files.path}/` : ''
-      const filenames = files.items
-        .map(file => `${filePath}${file}`)
-
-      SocketActions.serverJobQueuePostJob(filenames)
-    }
+    SocketActions.serverJobQueuePostJob(filenames)
   }
 }
 </script>

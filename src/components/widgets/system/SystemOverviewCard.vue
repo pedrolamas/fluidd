@@ -119,68 +119,58 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class PrinterStatsCard extends Vue {
-  rolloverLogsDialogOpen = false
-  peripheralsDialogOpen = false
+const { typedState, typedGetters } = useStore()
 
-  get systemInfo (): Moonraker.Machine.SystemInfo | null {
-    return this.$typedState.server.system_info
+const rolloverLogsDialogOpen = ref(false)
+const peripheralsDialogOpen = ref(false)
+
+const systemInfo = computed((): Moonraker.Machine.SystemInfo | null => typedState.server.system_info)
+
+const cpuInfo = computed(() => systemInfo.value?.cpu_info)
+
+const distribution = computed(() => systemInfo.value?.distribution)
+
+const distributionName = computed((): string | undefined => {
+  if (!distribution.value) {
+    return undefined
   }
 
-  get cpuInfo () {
-    return this.systemInfo?.cpu_info
-  }
+  const { name, id } = distribution.value
 
-  get distribution () {
-    return this.systemInfo?.distribution
-  }
-
-  get distributionName (): string | undefined {
-    if (!this.distribution) {
+  if (name) {
+    if (name.startsWith('0.')) {
       return undefined
     }
 
-    const { name, id } = this.distribution
-
-    if (name) {
-      if (name.startsWith('0.')) {
-        return undefined
-      }
-
-      return `${(
-        name.startsWith('#')
-          ? id
-          : name
-      )} ${this.distribution.release_info?.version_id ?? ''}`
-    }
+    return `${(
+      name.startsWith('#')
+        ? id
+        : name
+    )} ${distribution.value.release_info?.version_id ?? ''}`
   }
 
-  get virtualization () {
-    return this.systemInfo?.virtualization
-  }
+  return undefined
+})
 
-  get network () {
-    return Object.entries(this.systemInfo?.network || {})
-      .map(([key, entry]) => {
-        const ipAddresses = entry.ip_addresses?.filter(x => x.family === 'ipv4') || entry.ip_addresses?.filter(x => x.family === 'ipv6')
+const virtualization = computed(() => systemInfo.value?.virtualization)
 
-        return ipAddresses
-          ? `${key} (${ipAddresses.map(x => x.address).join(', ')})`
-          : key
-      })
-      .join(', ')
-  }
+const network = computed(() =>
+  Object.entries(systemInfo.value?.network || {})
+    .map(([key, entry]) => {
+      const ipAddresses = entry.ip_addresses?.filter(x => x.family === 'ipv4') || entry.ip_addresses?.filter(x => x.family === 'ipv6')
 
-  get printerInfo (): Moonraker.KlippyApis.Info | null {
-    return this.$typedState.printer.info
-  }
+      return ipAddresses
+        ? `${key} (${ipAddresses.map(x => x.address).join(', ')})`
+        : key
+    })
+    .join(', ')
+)
 
-  get canRolloverLogs (): boolean {
-    return this.$typedGetters['server/getIsMinApiVersion']('1.0.5')
-  }
-}
+const printerInfo = computed((): Moonraker.KlippyApis.Info | null => typedState.printer.info)
+
+const canRolloverLogs = computed((): boolean => typedGetters['server/getIsMinApiVersion']('1.0.5'))
 </script>

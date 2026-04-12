@@ -10,103 +10,119 @@
   >
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref, nextTick } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 import { consola } from 'consola'
 
-@Component({})
-export default class MjpegstreamerAdaptiveCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraImage!: HTMLImageElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  cameraImageSource = ''
-  cameraImageSourceUrl: URL | null = null
-  requestStartTime = 0
-  startTime = 0
-  time = 0
-  requestTime = 0
-  timeSmoothing = 0.6
-  requestTimeSmoothing = 0.1
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-  get autoRaiseFrameEvent () {
-    return false
-  }
+const {
+  cameraStyle,
+  status,
+  updateStatus,
+  updateFramesPerSecond,
+  updateRawCameraUrl,
+  buildAbsoluteUrl,
+  menuItemClick,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-  handleImageLoad () {
-    this.updateStatus('connected')
-    this.$emit('frame', this.streamingElement)
+defineExpose({ menuItemClick })
 
-    const fpsTarget = (!document.hasFocus() && this.camera.target_fps_idle) || this.camera.target_fps || 10
-    const endTime = performance.now()
-    const currentTime = endTime - this.startTime
+const streamingElement = ref<HTMLImageElement>()
 
-    this.time = (this.time * this.timeSmoothing) + (currentTime * (1.0 - this.timeSmoothing))
+const cameraImageSource = ref('')
+const cameraImageSourceUrl = ref<URL | null>(null)
+const requestStartTime = ref(0)
+const startTime = ref(0)
+const time = ref(0)
+const requestTime = ref(0)
+const timeSmoothing = 0.6
+const requestTimeSmoothing = 0.1
 
-    this.startTime = endTime
+function handleImageLoad () {
+  updateStatus('connected')
+  emit('frame', streamingElement.value)
 
-    const targetTime = 1000 / fpsTarget
+  const fpsTarget = (!document.hasFocus() && props.camera.target_fps_idle) || props.camera.target_fps || 10
+  const endTime = performance.now()
+  const currentTime = endTime - startTime.value
 
-    const currentRequestTime = performance.now() - this.requestStartTime
+  time.value = (time.value * timeSmoothing) + (currentTime * (1.0 - timeSmoothing))
 
-    this.requestTime = (this.requestTime * this.requestTimeSmoothing) + (currentRequestTime * (1.0 - this.requestTimeSmoothing))
+  startTime.value = endTime
 
-    const timeout = Math.max(0, targetTime - this.requestTime)
+  const targetTime = 1000 / fpsTarget
 
-    this.$nextTick(() => {
-      setTimeout(this.handleRefresh, timeout)
-    })
-  }
+  const currentRequestTime = performance.now() - requestStartTime.value
 
-  handleRefresh () {
-    if (!document.hidden) {
-      if (this.time !== 0) {
-        this.updateFramesPerSecond(Math.round(1000 / this.time))
-      }
-      this.$nextTick(() => this.updateCameraImageSource())
-    } else {
-      this.stopPlayback()
+  requestTime.value = (requestTime.value * requestTimeSmoothing) + (currentRequestTime * (1.0 - requestTimeSmoothing))
+
+  const timeout = Math.max(0, targetTime - requestTime.value)
+
+  nextTick(() => {
+    setTimeout(handleRefresh, timeout)
+  })
+}
+
+function handleRefresh () {
+  if (!document.hidden) {
+    if (time.value !== 0) {
+      updateFramesPerSecond(Math.round(1000 / time.value))
     }
-  }
-
-  updateCameraImageSource () {
-    const url = this.cameraImageSourceUrl
-
-    if (url) {
-      url.searchParams.set('cacheBust', Date.now().toString())
-
-      this.requestStartTime = performance.now()
-
-      this.cameraImageSource = url.toString()
-    }
-  }
-
-  startPlayback () {
-    try {
-      this.updateStatus('connecting')
-
-      this.cameraImageSourceUrl = this.buildAbsoluteUrl(this.camera.snapshot_url || '')
-
-      this.time = 0
-      this.startTime = performance.now()
-
-      this.updateCameraImageSource()
-
-      const rawUrl = this.buildAbsoluteUrl(this.camera.stream_url || '')
-
-      rawUrl.searchParams.set('cacheBust', Date.now().toString())
-
-      this.updateRawCameraUrl(rawUrl.toString())
-    } catch (e) {
-      consola.error(`[MjpegstreamerAdaptiveCamera] failed to start playback "${this.camera.name}"`, e)
-    }
-  }
-
-  stopPlayback () {
-    this.updateStatus('disconnected')
-    this.cameraImageSourceUrl = null
-    this.cameraImageSource = ''
-    this.cameraImage.src = ''
+    nextTick(() => updateCameraImageSource())
+  } else {
+    stopPlayback()
   }
 }
+
+function updateCameraImageSource () {
+  const url = cameraImageSourceUrl.value
+
+  if (url) {
+    url.searchParams.set('cacheBust', Date.now().toString())
+
+    requestStartTime.value = performance.now()
+
+    cameraImageSource.value = url.toString()
+  }
+}
+
+function startPlayback () {
+  try {
+    updateStatus('connecting')
+
+    cameraImageSourceUrl.value = buildAbsoluteUrl(props.camera.snapshot_url || '')
+
+    time.value = 0
+    startTime.value = performance.now()
+
+    updateCameraImageSource()
+
+    const rawUrl = buildAbsoluteUrl(props.camera.stream_url || '')
+
+    rawUrl.searchParams.set('cacheBust', Date.now().toString())
+
+    updateRawCameraUrl(rawUrl.toString())
+  } catch (e) {
+    consola.error(`[MjpegstreamerAdaptiveCamera] failed to start playback "${props.camera.name}"`, e)
+  }
+}
+
+function stopPlayback () {
+  updateStatus('disconnected')
+  cameraImageSourceUrl.value = null
+  cameraImageSource.value = ''
+  streamingElement.value!.src = ''
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
 </script>

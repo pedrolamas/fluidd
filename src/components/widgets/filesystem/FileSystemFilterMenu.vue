@@ -31,7 +31,7 @@
             </app-btn>
           </v-badge>
         </template>
-        <span>{{ $t('app.general.btn.filter') }}</span>
+        <span>{{ t('app.general.btn.filter') }}</span>
       </v-tooltip>
     </template>
 
@@ -64,9 +64,11 @@
   </v-menu>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import type { FileFilterType, RootProperties } from '@/store/files/types'
-import { Component, Vue, Prop } from 'vue-property-decorator'
 
 type FileFilter = {
   type: FileFilterType,
@@ -74,52 +76,54 @@ type FileFilter = {
   desc?: string,
 }
 
-@Component({})
-export default class FileSystemFilterMenu extends Vue {
-  @Prop({ type: String, required: true })
-  readonly root!: string
+const props = defineProps<{
+  root: string
+  disabled?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+const emit = defineEmits<{
+  (e: 'change', value: FileFilterType[]): void
+}>()
 
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.root)
+const { typedGetters, typedState } = useStore()
+const { t, tc } = useI18n()
+
+const rootProperties = computed((): RootProperties =>
+  typedGetters['files/getRootProperties'](props.root)
+)
+
+const supportsHistoryComponent = computed((): boolean =>
+  typedGetters['server/componentSupport']('history')
+)
+
+const filters = computed((): FileFilter[] =>
+  rootProperties.value.filterTypes
+    .filter(filterType => {
+      switch (filterType) {
+        case 'print_start_time':
+          return supportsHistoryComponent.value
+
+        default:
+          return true
+      }
+    })
+    .map((filterType): FileFilter => ({
+      type: filterType,
+      text: tc(`app.file_system.filters.label.${filterType}`)
+    }))
+)
+
+const selectedFilterTypes = computed({
+  get: (): FileFilterType[] => {
+    const selectedFilters: FileFilterType[] = typedState.config.uiSettings.fileSystem.activeFilters[props.root] ?? []
+    const filterSet = new Set(filters.value.map(filter => filter.type))
+
+    return selectedFilters.filter(selectedFilter => filterSet.has(selectedFilter))
+  },
+  set: (value: FileFilterType[]) => {
+    emit('change', value)
   }
-
-  get filters (): FileFilter[] {
-    return this.rootProperties.filterTypes
-      .filter(filterType => {
-        switch (filterType) {
-          case 'print_start_time':
-            return this.supportsHistoryComponent
-
-          default:
-            return true
-        }
-      })
-      .map((filterType): FileFilter => ({
-        type: filterType,
-        text: this.$tc(`app.file_system.filters.label.${filterType}`)
-      }))
-  }
-
-  get selectedFilterTypes (): FileFilterType[] {
-    const selectedFilters: FileFilterType[] = this.$typedState.config.uiSettings.fileSystem.activeFilters[this.root] ?? []
-    const filters = new Set(this.filters
-      .map(filter => filter.type))
-
-    return selectedFilters
-      .filter(selectedFilter => filters.has(selectedFilter))
-  }
-
-  set selectedFilterTypes (value: FileFilterType[]) {
-    this.$emit('change', value)
-  }
-
-  get supportsHistoryComponent (): boolean {
-    return this.$typedGetters['server/componentSupport']('history')
-  }
-}
+})
 </script>
 
 <style lang="scss" scoped>

@@ -8,7 +8,7 @@
           :disabled="disabled"
           v-bind="attrs"
           v-on="on"
-          @click="uploadFile.click()"
+          @click="uploadFileInput.click()"
         >
           <v-icon>
             $progressUpload
@@ -19,7 +19,7 @@
     </v-tooltip>
 
     <input
-      ref="uploadFile"
+      ref="uploadFileInput"
       type="file"
       :accept="accepts"
       style="display: none"
@@ -28,37 +28,40 @@
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
 import type { RootProperties } from '@/store/files/types'
-import { Component, Ref, Prop, Mixins } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
 
-@Component({})
-export default class AppUploadAndPrintBtn extends Mixins(BrowserMixin) {
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+defineProps<{
+  disabled?: boolean
+}>()
 
-  @Ref('uploadFile')
-  readonly uploadFile!: HTMLInputElement
+const emit = defineEmits<{
+  (e: 'upload', file: File): void
+}>()
 
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties']('gcodes')
-  }
+const { isIOS } = useBrowserMixin()
+const { typedGetters } = useStore()
 
-  get accepts () {
-    return this.isIOS
-      ? undefined
-      : this.rootProperties.accepts.join(',')
-  }
+const uploadFileInput = ref<HTMLInputElement>()
 
-  fileChanged (event: Event) {
-    if (event.target instanceof HTMLInputElement) {
-      if (event.target.files?.length === 1) {
-        this.$emit('upload', event.target.files[0])
-      }
+const rootProperties = computed<RootProperties>(() => typedGetters['files/getRootProperties']('gcodes'))
 
-      event.target.value = ''
+const accepts = computed(() =>
+  isIOS.value
+    ? undefined
+    : rootProperties.value.accepts.join(',')
+)
+
+function fileChanged (event: Event) {
+  if (event.target instanceof HTMLInputElement) {
+    if (event.target.files?.length === 1) {
+      emit('upload', event.target.files[0])
     }
+
+    event.target.value = ''
   }
 }
 </script>

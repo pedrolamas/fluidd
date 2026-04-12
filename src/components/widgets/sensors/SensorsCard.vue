@@ -9,15 +9,6 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import Sensors from './Sensors.vue'
-
-@Component({
-  components: {
-    Sensors
-  }
-})
-export default class SensorsCard extends Vue {
-}
 </script>

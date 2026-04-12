@@ -10,38 +10,57 @@
   >
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 import { consola } from 'consola'
 
-@Component({})
-export default class Uv4LMjpegCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraImage!: HTMLImageElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  cameraImageSource = ''
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-  startPlayback () {
-    try {
-      this.updateStatus('connecting')
+const {
+  cameraStyle,
+  status,
+  updateStatus,
+  updateRawCameraUrl,
+  buildAbsoluteUrl,
+  menuItemClick,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-      const url = this.buildAbsoluteUrl(this.camera.stream_url || '')
+defineExpose({ menuItemClick })
 
-      url.searchParams.set('cacheBust', Date.now().toString())
+const streamingElement = ref<HTMLImageElement>()
 
-      this.cameraImageSource = url.toString()
+const cameraImageSource = ref('')
 
-      this.updateRawCameraUrl(this.cameraImageSource)
-    } catch (e) {
-      consola.error(`[Uv4LMjpegCamera] failed to start playback "${this.camera.name}"`, e)
-    }
-  }
+function startPlayback () {
+  try {
+    updateStatus('connecting')
 
-  stopPlayback () {
-    this.updateStatus('disconnected')
-    this.cameraImageSource = ''
-    this.cameraImage.src = ''
+    const url = buildAbsoluteUrl(props.camera.stream_url || '')
+
+    url.searchParams.set('cacheBust', Date.now().toString())
+
+    cameraImageSource.value = url.toString()
+
+    updateRawCameraUrl(cameraImageSource.value)
+  } catch (e) {
+    consola.error(`[Uv4LMjpegCamera] failed to start playback "${props.camera.name}"`, e)
   }
 }
+
+function stopPlayback () {
+  updateStatus('disconnected')
+  cameraImageSource.value = ''
+  streamingElement.value!.src = ''
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
 </script>

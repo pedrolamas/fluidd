@@ -95,78 +95,73 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import CameraConfigDialog from './CameraConfigDialog.vue'
 import { Globals } from '@/globals'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
 
-@Component({
-  components: {
-    CameraConfigDialog
-  }
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+
+const dialogState = ref<any>({
+  active: false,
+  camera: null
 })
-export default class CameraSettings extends Vue {
-  dialogState: any = {
-    active: false,
-    camera: null
+
+const cameras = computed((): Moonraker.Webcam.Entry[] => typedGetters['webcams/getWebcams'])
+
+const defaultFullscreenAction = computed({
+  get: (): string => typedState.config.uiSettings.general.cameraFullscreenAction,
+  set: (value: string) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.cameraFullscreenAction',
+    value,
+    server: true
+  })
+})
+
+function handleEditDialog (camera: Moonraker.Webcam.Entry) {
+  dialogState.value = {
+    active: true,
+    camera: { ...camera }
+  }
+}
+
+function handleAddDialog () {
+  const camera: Omit<Moonraker.Webcam.Entry, 'uid' | 'source'> = {
+    enabled: true,
+    flip_horizontal: false,
+    flip_vertical: false,
+    name: '',
+    rotation: 0,
+    service: 'mjpegstreamer-adaptive',
+    target_fps: 15,
+    target_fps_idle: 5,
+    stream_url: Globals.DEFAULTS.CAMERA_URL_STREAM,
+    snapshot_url: Globals.DEFAULTS.CAMERA_URL_SNAPSHOT
   }
 
-  get cameras (): Moonraker.Webcam.Entry[] {
-    return this.$typedGetters['webcams/getWebcams']
+  dialogState.value = {
+    active: true,
+    camera
   }
+}
 
-  handleEditDialog (camera: Moonraker.Webcam.Entry) {
-    this.dialogState = {
-      active: true,
-      camera: { ...camera }
-    }
-  }
+function handleSaveCamera (camera: Moonraker.Webcam.Entry) {
+  typedDispatch('webcams/updateWebcam', camera)
+}
 
-  handleAddDialog () {
-    const camera: Omit<Moonraker.Webcam.Entry, 'uid' | 'source'> = {
-      enabled: true,
-      flip_horizontal: false,
-      flip_vertical: false,
-      name: '',
-      rotation: 0,
-      service: 'mjpegstreamer-adaptive',
-      target_fps: 15,
-      target_fps_idle: 5,
-      stream_url: Globals.DEFAULTS.CAMERA_URL_STREAM,
-      snapshot_url: Globals.DEFAULTS.CAMERA_URL_SNAPSHOT
-    }
+async function handleRemoveCamera (camera: Moonraker.Webcam.Entry) {
+  const result = await confirm(
+    t('app.general.simple_form.msg.confirm_remove_camera', { name: camera.name }),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
 
-    this.dialogState = {
-      active: true,
-      camera
-    }
-  }
-
-  handleSaveCamera (camera: Moonraker.Webcam.Entry) {
-    this.$typedDispatch('webcams/updateWebcam', camera)
-  }
-
-  async handleRemoveCamera (camera: Moonraker.Webcam.Entry) {
-    const result = await this.$confirm(
-      this.$t('app.general.simple_form.msg.confirm_remove_camera', { name: camera.name }).toString(),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$typedDispatch('webcams/removeWebcam', camera.uid)
-    }
-  }
-
-  get defaultFullscreenAction (): string {
-    return this.$typedState.config.uiSettings.general.cameraFullscreenAction
-  }
-
-  set defaultFullscreenAction (value: string) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.cameraFullscreenAction',
-      value,
-      server: true
-    })
+  if (result) {
+    typedDispatch('webcams/removeWebcam', camera.uid)
   }
 }
 </script>

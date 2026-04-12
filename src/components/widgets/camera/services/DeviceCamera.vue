@@ -11,145 +11,166 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Ref, Mixins } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 import { consola } from 'consola'
+import { useI18n } from '@/composables/useI18n'
 import type { CameraNameMenuItem } from '@/types'
 
-@Component({})
-export default class DeviceCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraVideo!: HTMLVideoElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  async startPlayback () {
-    this.updateStatus('connecting')
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-    try {
-      const stream = await this.getUserMedia()
+const {
+  cameraStyle,
+  cameraNameMenuItems,
+  updateStatus,
+  updateCameraName,
+  updateCameraNameMenuItems,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-      this.cameraVideo.srcObject = stream
+const { tc } = useI18n()
 
-      this.updateCameraName(await this.getDeviceLabel() ?? '')
-    } catch (e) {
-      consola.error(`[DeviceCamera] failed to start playback "${this.getSelectedDeviceCamera()}"`, e)
+const streamingElement = ref<HTMLVideoElement>()
 
-      this.updateStatus('error')
-    }
-  }
+async function startPlayback () {
+  updateStatus('connecting')
 
-  stopPlayback () {
-    this.updateStatus('disconnected')
+  try {
+    const stream = await getUserMedia()
 
-    try {
-      const stream = this.cameraVideo.srcObject as MediaStream | null
+    streamingElement.value!.srcObject = stream
 
-      if (stream) {
-        for (const track of stream.getTracks()) {
-          track.stop()
-          stream.removeTrack(track)
-        }
-      }
-    } catch (e) {
-      consola.error('[DeviceCamera] failed to stop and remove all tracks', e)
-    }
+    updateCameraName(await getDeviceLabel() ?? '')
+  } catch (e) {
+    consola.error(`[DeviceCamera] failed to start playback "${getSelectedDeviceCamera()}"`, e)
 
-    this.cameraVideo.srcObject = null
-  }
-
-  async getUserMedia () {
-    const selectedDeviceCamera = this.getSelectedDeviceCamera()
-
-    try {
-      const key: keyof MediaTrackConstraints = ['environment', 'user'].includes(selectedDeviceCamera)
-        ? 'facingMode'
-        : 'deviceId'
-
-      return await navigator.mediaDevices.getUserMedia({
-        video: {
-          [key]: selectedDeviceCamera
-        }
-      })
-    } catch (e) {
-      consola.error(`[DeviceCamera] failed to select device "${selectedDeviceCamera}"`, e)
-
-      this.setSelectedDeviceCamera(null)
-
-      return await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment'
-        }
-      })
-    }
-  }
-
-  async enumerateDevices () {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-
-      return devices
-        .filter(device => device.kind === 'videoinput')
-    } catch (e) {
-      consola.error('[DeviceCamera] failed to enumerate devices', e)
-
-      return []
-    }
-  }
-
-  async getDeviceLabel () {
-    if (this.cameraNameMenuItems.length === 0) {
-      const devices = await this.enumerateDevices()
-
-      const cameraNameMenuItems = [
-        {
-          icon: '$camera',
-          text: this.$tc('app.general.label.environment_facing'),
-          value: 'environment'
-        },
-        {
-          icon: '$camera',
-          text: this.$tc('app.general.label.user_facing'),
-          value: 'user'
-        },
-        ...devices
-          .map(device => ({
-            icon: '$camera',
-            text: device.label,
-            value: device.deviceId
-          }))
-      ]
-
-      this.updateCameraNameMenuItems(cameraNameMenuItems)
-    }
-
-    const selectedDeviceCamera = this.getSelectedDeviceCamera()
-
-    return this.cameraNameMenuItems
-      .find(item => item.value === selectedDeviceCamera)?.text
-  }
-
-  getSelectedDeviceCamera () {
-    return localStorage.getItem('deviceCamera.selectedCamera') ?? 'environment'
-  }
-
-  setSelectedDeviceCamera (value?: string | null) {
-    if (value) {
-      localStorage.setItem('deviceCamera.selectedCamera', value)
-    } else {
-      localStorage.removeItem('deviceCamera.selectedCamera')
-    }
-  }
-
-  menuItemClick (item: CameraNameMenuItem) {
-    if (this.getSelectedDeviceCamera() !== item.value) {
-      this.setSelectedDeviceCamera(item.value)
-
-      this.stopPlayback()
-
-      this.updateCameraName(item.text)
-
-      this.startPlayback()
-    }
+    updateStatus('error')
   }
 }
+
+function stopPlayback () {
+  updateStatus('disconnected')
+
+  try {
+    const stream = streamingElement.value!.srcObject as MediaStream | null
+
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        track.stop()
+        stream.removeTrack(track)
+      }
+    }
+  } catch (e) {
+    consola.error('[DeviceCamera] failed to stop and remove all tracks', e)
+  }
+
+  streamingElement.value!.srcObject = null
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
+
+async function getUserMedia () {
+  const selectedDeviceCamera = getSelectedDeviceCamera()
+
+  try {
+    const key: keyof MediaTrackConstraints = ['environment', 'user'].includes(selectedDeviceCamera)
+      ? 'facingMode'
+      : 'deviceId'
+
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        [key]: selectedDeviceCamera
+      }
+    })
+  } catch (e) {
+    consola.error(`[DeviceCamera] failed to select device "${selectedDeviceCamera}"`, e)
+
+    setSelectedDeviceCamera(null)
+
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment'
+      }
+    })
+  }
+}
+
+async function enumerateDevices () {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+
+    return devices
+      .filter(device => device.kind === 'videoinput')
+  } catch (e) {
+    consola.error('[DeviceCamera] failed to enumerate devices', e)
+
+    return []
+  }
+}
+
+async function getDeviceLabel () {
+  if (cameraNameMenuItems.value.length === 0) {
+    const devices = await enumerateDevices()
+
+    const items = [
+      {
+        icon: '$camera',
+        text: tc('app.general.label.environment_facing'),
+        value: 'environment'
+      },
+      {
+        icon: '$camera',
+        text: tc('app.general.label.user_facing'),
+        value: 'user'
+      },
+      ...devices
+        .map(device => ({
+          icon: '$camera',
+          text: device.label,
+          value: device.deviceId
+        }))
+    ]
+
+    updateCameraNameMenuItems(items)
+  }
+
+  const selectedDeviceCamera = getSelectedDeviceCamera()
+
+  return cameraNameMenuItems.value
+    .find(item => item.value === selectedDeviceCamera)?.text
+}
+
+function getSelectedDeviceCamera () {
+  return localStorage.getItem('deviceCamera.selectedCamera') ?? 'environment'
+}
+
+function setSelectedDeviceCamera (value?: string | null) {
+  if (value) {
+    localStorage.setItem('deviceCamera.selectedCamera', value)
+  } else {
+    localStorage.removeItem('deviceCamera.selectedCamera')
+  }
+}
+
+function menuItemClick (item: CameraNameMenuItem) {
+  if (getSelectedDeviceCamera() !== item.value) {
+    setSelectedDeviceCamera(item.value)
+
+    stopPlayback()
+
+    updateCameraName(item.text)
+
+    startPlayback()
+  }
+}
+
+defineExpose({ menuItemClick })
 </script>

@@ -45,7 +45,7 @@
       <app-btn
         v-if="!fullscreen"
         icon
-        @click="$filters.routeTo({ name: 'jobs' })"
+        @click="Filters.routeTo({ name: 'jobs' })"
       >
         <v-icon dense>
           $fullScreen
@@ -64,34 +64,28 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import JobQueue from '@/components/widgets/job-queue/JobQueue.vue'
 import { SocketActions } from '@/api/socketActions'
+import { useStore } from '@/composables/useStore'
+import { Filters } from '@/plugins/filters'
 
-@Component({
-  components: {
-    JobQueue
-  }
-})
-export default class JobQueueCard extends Vue {
-  @Prop({ type: Boolean })
-  readonly narrow?: boolean
+defineProps<{
+  narrow?: boolean
+  fullscreen?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+const { typedState } = useStore()
 
-  get queueState (): Moonraker.JobQueue.QueueState {
-    return this.$typedState.jobQueue.queueState
-  }
+const queueState = computed((): Moonraker.JobQueue.QueueState => typedState.jobQueue.queueState)
 
-  handlePause () {
-    SocketActions.serverJobQueuePause()
-  }
+function handlePause () {
+  SocketActions.serverJobQueuePause()
+}
 
-  handleResume () {
-    SocketActions.serverJobQueueStart()
-  }
+function handleResume () {
+  SocketActions.serverJobQueueStart()
 }
 </script>
 

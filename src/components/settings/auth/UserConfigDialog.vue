@@ -18,8 +18,8 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required,
-            $rules.lengthLessThanOrEqual(60)
+            Rules.required,
+            Rules.lengthLessThanOrEqual(60)
           ]"
         />
       </app-setting>
@@ -36,9 +36,9 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required,
-            $rules.lengthGreaterThanOrEqual(4),
-            $rules.passwordNotEqualUsername(user.username)
+            Rules.required,
+            Rules.lengthGreaterThanOrEqual(4),
+            Rules.passwordNotEqualUsername(user.username)
           ]"
         />
       </app-setting>
@@ -46,21 +46,29 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { AppUser } from '@/store/auth/types'
+import { Rules } from '@/plugins/filters'
 
-@Component({})
-export default class UserConfigDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  user: AppUser
+}>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+  (e: 'save', user: AppUser): void
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly user!: AppUser
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  handleSave () {
-    this.$emit('save', this.user)
-    this.open = false
-  }
+const user = computed(() => props.user)
+
+function handleSave () {
+  emit('save', props.user)
+  open.value = false
 }
 </script>

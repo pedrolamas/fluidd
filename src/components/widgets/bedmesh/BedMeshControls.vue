@@ -124,7 +124,7 @@
                 small
                 block
                 class="mb-2"
-                :loading="hasWait($waits.onMeshCalibrate)"
+                :loading="hasWait(Waits.onMeshCalibrate)"
                 :disabled="printerBusy || !allHomed"
                 v-on="on"
                 @click="calibrate()"
@@ -157,7 +157,7 @@
             block
             small
             class="mb-2"
-            :loading="hasWait($waits.onHomeAll)"
+            :loading="hasWait(Waits.onHomeAll)"
             :disabled="printerBusy"
             :color="(!allHomed) ? 'primary' : undefined"
             @click="homeAll"
@@ -172,12 +172,12 @@
 
           <app-btn
             v-if="printerSupportsQgl"
-            :loading="hasWait($waits.onQGL)"
+            :loading="hasWait(Waits.onQGL)"
             :disabled="printerBusy"
             block
             class="mb-2"
             small
-            @click="sendGcode('QUAD_GANTRY_LEVEL', $waits.onQGL)"
+            @click="sendGcode('QUAD_GANTRY_LEVEL', Waits.onQGL)"
           >
             {{ $t('app.general.btn.quad_gantry_level') }}
           </app-btn>
@@ -267,11 +267,15 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import SaveMeshDialog from './SaveMeshDialog.vue'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import type {
   MeshState,
   MatrixType,
@@ -279,148 +283,120 @@ import type {
 } from '@/store/mesh/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({
-  components: {
-    SaveMeshDialog
-  }
+const mapScaleLabels = ['min', '0.1', '0.2']
+const boxScaleLabels = ['1.0', '1.5', '2.0']
+
+const saveDialogState = ref({
+  open: false,
+  existingName: 'default',
+  adaptive: false
 })
-export default class BedMesh extends Mixins(StateMixin, ToolheadMixin) {
-  mapScaleLabels = ['min', '0.1', '0.2']
-  boxScaleLabels = ['1.0', '1.5', '2.0']
 
-  saveDialogState = {
-    open: false,
-    existingName: 'default',
-    adaptive: false
-  }
+const { hasWait, sendGcode, printerBusy, printerPrinting, klippyReady, homeAll } = useStateMixin()
+const { allHomed, isManualProbeActive, manualProbeDialogOpen } = useToolheadMixin()
+const { typedGetters, typedState, typedDispatch } = useStore()
+const confirm = useConfirm()
+const { t, tc } = useI18n()
 
-  get matrix () {
-    return this.mesh.matrix
-  }
+const meshState = computed<MeshState>(() => typedState.mesh)
 
-  set matrix (val: MatrixType) {
-    this.$typedDispatch('mesh/onMatrix', val)
-  }
+const matrix = computed({
+  get: (): MatrixType => meshState.value.matrix,
+  set: (val: MatrixType) => typedDispatch('mesh/onMatrix', val)
+})
 
-  get mapScale () {
-    return this.mesh.scale
-  }
+const mapScale = computed({
+  get: () => meshState.value.scale,
+  set: (val: number) => typedDispatch('mesh/onScale', val)
+})
 
-  set mapScale (val: number) {
-    this.$typedDispatch('mesh/onScale', val)
-  }
+const boxScale = computed({
+  get: () => meshState.value.boxScale,
+  set: (val: number) => typedDispatch('mesh/onBoxScale', val)
+})
 
-  get boxScale () {
-    return this.mesh.boxScale
-  }
+const wireframe = computed({
+  get: () => meshState.value.wireframe,
+  set: (val: boolean) => typedDispatch('mesh/onWireframe', val)
+})
 
-  set boxScale (val: number) {
-    this.$typedDispatch('mesh/onBoxScale', val)
-  }
+const flatSurface = computed({
+  get: () => meshState.value.flatSurface,
+  set: (val: boolean) => typedDispatch('mesh/onFlatSurface', val)
+})
 
-  get wireframe () {
-    return this.mesh.wireframe
-  }
+const bedMeshProfiles = computed<BedMeshProfileListEntry[]>(() => typedGetters['mesh/getBedMeshProfiles'])
 
-  set wireframe (val: boolean) {
-    this.$typedDispatch('mesh/onWireframe', val)
-  }
+const currentMesh = computed<Klipper.BedMeshState | undefined>(() => typedState.printer.printer.bed_mesh)
 
-  get flatSurface () {
-    return this.mesh.flatSurface
-  }
+const meshLoaded = computed<boolean>(() => !!currentMesh.value?.profile_name)
 
-  set flatSurface (val: boolean) {
-    this.$typedDispatch('mesh/onFlatSurface', val)
-  }
+const printerSupportsQgl = computed<boolean>(() => {
+  const printerSettings: Klipper.SettingsState = typedGetters['printer/getPrinterSettings']
 
-  get mesh (): MeshState {
-    return this.$typedState.mesh
-  }
+  return 'quad_gantry_level' in printerSettings
+})
 
-  // The available meshes.
-  get bedMeshProfiles (): BedMeshProfileListEntry[] {
-    return this.$typedGetters['mesh/getBedMeshProfiles']
-  }
+function calibrate () {
+  sendGcode('BED_MESH_CALIBRATE', Waits.onMeshCalibrate)
+}
 
-  // The current mesh, unprocessed.
-  get currentMesh (): Klipper.BedMeshState | undefined {
-    return this.$typedState.printer.printer.bed_mesh
-  }
-
-  // If we have a mesh loaded.
-  get meshLoaded (): boolean {
-    return !!this.currentMesh?.profile_name
-  }
-
-  // If the printer supports QGL
-  get printerSupportsQgl (): boolean {
-    const printerSettings: Klipper.SettingsState = this.$typedGetters['printer/getPrinterSettings']
-
-    return 'quad_gantry_level' in printerSettings
-  }
-
-  calibrate () {
-    this.sendGcode('BED_MESH_CALIBRATE', this.$waits.onMeshCalibrate)
-  }
-
-  async clearMesh () {
-    const result = (
-      !this.printerPrinting ||
-      await this.$confirm(
-        this.$t('app.general.simple_form.msg.confirm_load_bedmesh_profile', { name }).toString(),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-      )
+async function clearMesh () {
+  const result = (
+    !printerPrinting.value ||
+    await confirm(
+      t('app.general.simple_form.msg.confirm_load_bedmesh_profile', { name }).toString(),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
-    if (result) {
-      this.sendGcode('BED_MESH_CLEAR')
-    }
+  )
+  if (result) {
+    sendGcode('BED_MESH_CLEAR')
   }
+}
 
-  async loadProfile (name: string) {
-    const result = (
-      !this.printerPrinting ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_clear_mesh'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-      )
+async function loadProfile (name: string) {
+  const result = (
+    !printerPrinting.value ||
+    await confirm(
+      tc('app.general.simple_form.msg.confirm_clear_mesh'),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
+  )
 
-    if (result) {
-      this.sendGcode(`BED_MESH_PROFILE LOAD=${encodeGcodeParamValue(name)}`)
-    }
+  if (result) {
+    sendGcode(`BED_MESH_PROFILE LOAD=${encodeGcodeParamValue(name)}`)
+  }
+}
+
+function removeProfile (name: string) {
+  sendGcode(`BED_MESH_PROFILE REMOVE=${encodeGcodeParamValue(name)}`)
+}
+
+function handleMeshSave (config: { name: string; removeDefault: boolean }) {
+  const profileName = currentMesh.value?.profile_name
+
+  if (config.name !== profileName) {
+    sendGcode(`BED_MESH_PROFILE SAVE=${encodeGcodeParamValue(config.name)}`)
   }
 
-  removeProfile (name: string) {
-    this.sendGcode(`BED_MESH_PROFILE REMOVE=${encodeGcodeParamValue(name)}`)
+  if (config.removeDefault && profileName) {
+    sendGcode(`BED_MESH_PROFILE REMOVE=${encodeGcodeParamValue(profileName)}`)
+  }
+}
+
+function handleOpenSaveDialog () {
+  const profileName = currentMesh.value?.profile_name
+
+  if (!profileName) {
+    return
   }
 
-  handleMeshSave (config: { name: string; removeDefault: boolean }) {
-    const profileName = this.currentMesh?.profile_name
+  const profile = bedMeshProfiles.value.find(mesh => mesh.name === profileName)
 
-    if (config.name !== profileName) {
-      this.sendGcode(`BED_MESH_PROFILE SAVE=${encodeGcodeParamValue(config.name)}`)
-    }
-
-    if (config.removeDefault && profileName) {
-      this.sendGcode(`BED_MESH_PROFILE REMOVE=${encodeGcodeParamValue(profileName)}`)
-    }
-  }
-
-  handleOpenSaveDialog () {
-    const profileName = this.currentMesh?.profile_name
-
-    if (!profileName) {
-      return
-    }
-
-    const profile = this.bedMeshProfiles.find(mesh => mesh.name === profileName)
-
-    this.saveDialogState = {
-      open: true,
-      existingName: profileName,
-      adaptive: profile?.adaptive ?? false
-    }
+  saveDialogState.value = {
+    open: true,
+    existingName: profileName,
+    adaptive: profile?.adaptive ?? false
   }
 }
 </script>

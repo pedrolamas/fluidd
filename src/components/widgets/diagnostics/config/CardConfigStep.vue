@@ -1,6 +1,6 @@
 <template>
   <div>
-    <app-setting :title="$t('app.setting.label.title')">
+    <app-setting :title="t('app.setting.label.title')">
       <v-text-field
         v-model="config.title"
         filled
@@ -8,14 +8,14 @@
         single-line
         hide-details="auto"
         :rules="[
-          $rules.required
+          Rules.required
         ]"
       />
     </app-setting>
 
     <v-divider />
 
-    <app-setting :title="$t('app.setting.label.icon')">
+    <app-setting :title="t('app.setting.label.icon')">
       <v-select
         v-model="config.icon"
         filled
@@ -46,7 +46,7 @@
 
     <v-divider />
 
-    <app-setting :title="$t('app.setting.label.height')">
+    <app-setting :title="t('app.setting.label.height')">
       <v-text-field
         v-model="config.height"
         filled
@@ -55,27 +55,33 @@
         hide-details="auto"
         suffix="px"
         :rules="[
-          $rules.required,
-          $rules.numberGreaterThanOrEqual(1)
+          Rules.required,
+          Rules.numberGreaterThanOrEqual(1)
         ]"
       />
     </app-setting>
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
-import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
+<script setup lang="ts">
+import { computed, reactive, watch } from 'vue'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 import { Icons } from '@/globals'
+import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
 
-@Component({})
-export default class CardConfigStep extends Vue {
-  @Prop({ type: Object, required: true })
-  readonly config!: DiagnosticsCardConfig
+const props = defineProps<{
+  config: DiagnosticsCardConfig
+}>()
 
-  get icons () {
-    const icons = Object.keys(Icons)
-    return icons.sort().map(icon => ({ text: icon, value: icon }))
-  }
-}
+const config = reactive<DiagnosticsCardConfig>(JSON.parse(JSON.stringify(props.config)))
+
+watch(() => props.config, (v) => Object.assign(config, JSON.parse(JSON.stringify(v))), { deep: true })
+
+const { t } = useI18n()
+
+const icons = computed(() => {
+  const iconKeys = Object.keys(Icons)
+  return iconKeys.sort().map(icon => ({ text: icon, value: icon }))
+})
 </script>

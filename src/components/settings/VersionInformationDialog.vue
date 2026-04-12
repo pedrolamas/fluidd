@@ -1,7 +1,7 @@
 <template>
   <app-dialog
     v-model="open"
-    :title="'commits_behind' in component ? $t('app.version.label.commit_history'): $t('app.version.label.package_list')"
+    :title="'commits_behind' in component ? t('app.version.label.commit_history'): t('app.version.label.package_list')"
     max-width="850"
     no-actions
   >
@@ -30,7 +30,7 @@
           </template>
 
           <div class="secondary--text mb-4">
-            {{ $t('app.version.label.commits_on') }} {{ $filters.formatDate(key) }}
+            {{ t('app.version.label.commits_on') }} {{ Filters.formatDate(key) }}
           </div>
 
           <ol class="commit-history">
@@ -57,10 +57,10 @@
                           v-bind="attrs"
                           v-on="on"
                         >
-                          {{ $t('app.version.label.committed') }} {{ $filters.formatRelativeTimeToNow(+commit.date * 1000) }}
+                          {{ t('app.version.label.committed') }} {{ Filters.formatRelativeTimeToNow(+commit.date * 1000) }}
                         </span>
                       </template>
-                      <span>{{ $filters.formatDateTime(+commit.date * 1000) }}</span>
+                      <span>{{ Filters.formatDateTime(+commit.date * 1000) }}</span>
                     </v-tooltip>
                   </div>
                 </div>
@@ -100,33 +100,42 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Filters } from '@/plugins/filters'
 import type { VersionInfo } from '@/store/version/types'
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
 
-@Component({})
-export default class VersionInformationDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  component: VersionInfo
+}>()
 
-  @Prop({ type: Object })
-  readonly component!: VersionInfo
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  // For HashVersions or ArtifacVersions, show the commit history.
-  // For type system, show the packages available to update.
-  // For type client, just show the release notes if we can.
+const open = computed({
+  get: () => props.value,
+  set: (value) => emit('input', value ?? false)
+})
 
-  get commitHistory () {
-    return this.$typedGetters['version/getCommitHistory'](this.component.name)
+const { typedGetters } = useStore()
+const { t } = useI18n()
+
+// For HashVersions or ArtifacVersions, show the commit history.
+// For type system, show the packages available to update.
+// For type client, just show the release notes if we can.
+
+const commitHistory = computed(() => typedGetters['version/getCommitHistory'](props.component.name))
+
+const baseUrl = computed(() => {
+  if ('owner' in props.component) {
+    return `https://github.com/${props.component.owner}/${props.component.repo_name || props.component.name}`
   }
-
-  get baseUrl () {
-    if ('owner' in this.component) {
-      return `https://github.com/${this.component.owner}/${this.component.repo_name || this.component.name}`
-    }
-    return ''
-  }
-}
+  return ''
+})
 </script>
 
 <style lang="scss" scoped>

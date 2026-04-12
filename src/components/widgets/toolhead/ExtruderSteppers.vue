@@ -49,44 +49,41 @@
   </v-expansion-panels>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import ExtruderStepperSync from './ExtruderStepperSync.vue'
 import PressureAdvanceAdjust from './PressureAdvanceAdjust.vue'
 import type { KnownExtruder, ExtruderStepper } from '@/store/printer/types'
 
-@Component({
-  components: {
-    ExtruderStepperSync,
-    PressureAdvanceAdjust
-  }
+const { typedGetters } = useStore()
+const { t } = useI18n()
+
+const extruderSteppers = computed(() => {
+  const extruders: KnownExtruder[] = typedGetters['printer/getExtruders']
+  const steppers: ExtruderStepper[] = typedGetters['printer/getExtruderSteppers']
+
+  return steppers
+    .map(x => {
+      const labels = [
+        (x.motion_queue && extruders.find(y => y.key === x.motion_queue)?.name) || t('app.setting.label.none')
+      ]
+
+      if (x.enabled !== undefined) {
+        labels.push(t(`app.general.label.${x.enabled ? 'on' : 'off'}`))
+      }
+
+      if (x.disconnected) {
+        labels.push(t('app.general.label.disconnected'))
+      }
+
+      const description = labels.join(', ')
+
+      return {
+        ...x,
+        description
+      }
+    })
 })
-export default class ExtruderSteppers extends Vue {
-  get extruderSteppers () {
-    const extruders: KnownExtruder[] = this.$typedGetters['printer/getExtruders']
-    const extruderSteppers: ExtruderStepper[] = this.$typedGetters['printer/getExtruderSteppers']
-
-    return extruderSteppers
-      .map(x => {
-        const labels = [
-          (x.motion_queue && extruders.find(y => y.key === x.motion_queue)?.name) || this.$t('app.setting.label.none')
-        ]
-
-        if (x.enabled !== undefined) {
-          labels.push(this.$t(`app.general.label.${x.enabled ? 'on' : 'off'}`).toString())
-        }
-
-        if (x.disconnected) {
-          labels.push(this.$t('app.general.label.disconnected').toString())
-        }
-
-        const description = labels.join(', ')
-
-        return {
-          ...x,
-          description
-        }
-      })
-  }
-}
 </script>

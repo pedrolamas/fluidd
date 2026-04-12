@@ -16,29 +16,21 @@
     </v-col>
   </v-row>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import AfcUnitLaneMappingToolDialog from '@/components/widgets/afc/dialogs/AfcUnitLaneMappingToolDialog.vue'
 
-@Component({
-  components: {
-    AfcUnitLaneMappingToolDialog
-  }
-})
-export default class AfcCardUnitLaneHeader extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  showDialog = false
+const { getAfcLaneObject } = useAfcMixin()
 
-  get lane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
-  }
+const showDialog = ref(false)
 
-  get mappedTool (): string {
-    return this.lane?.map ?? '--'
-  }
-}
+const lane = computed((): Klipper.AfcLaneState | undefined => getAfcLaneObject(props.name))
+
+const mappedTool = computed(() => lane.value?.map ?? '--')
 </script>

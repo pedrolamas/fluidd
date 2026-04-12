@@ -12,7 +12,7 @@
             icon
             text
             v-on="{ ...tooltip, ...menu }"
-            @click="$emit('drawer')"
+            @click="emit('drawer')"
           >
             <v-icon>$account</v-icon>
           </app-btn>
@@ -37,7 +37,7 @@
           <app-btn
             :disabled="user.source !== 'moonraker'"
             small
-            @click="$emit('change-password')"
+            @click="emit('change-password')"
           >
             {{ $t('app.general.label.change_password') }}
           </app-btn>
@@ -58,7 +58,7 @@
         dense
         class="py-0"
       >
-        <v-list-item @click="$filters.routeTo({ name: 'settings', hash: '#auth' })">
+        <v-list-item @click="Filters.routeTo({ name: 'settings', hash: '#auth' })">
           <v-list-item-icon>
             <v-icon>$addAccount</v-icon>
           </v-list-item-icon>
@@ -83,39 +83,42 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { startCase, capitalize } from 'lodash-es'
-import type { AppUser } from '@/store/auth/types'
+import { useStore } from '@/composables/useStore'
+import { Filters } from '@/plugins/filters'
 
-@Component({})
-export default class AppNotificationMenu extends Vue {
-  get user (): AppUser | null {
-    return this.$typedState.auth.currentUser
-  }
+const emit = defineEmits<{
+  (e: 'drawer'): void
+  (e: 'change-password'): void
+}>()
 
-  get currentUser () {
-    if (!this.user) return ''
-    if (
-      this.user.username === '_TRUSTED_USER_' ||
-      this.user.username === '_API__API_KEY_USER_USER_'
-    ) {
-      return capitalize(startCase(this.user.username))
-    } else {
-      return this.user.username
-    }
-  }
+const { typedState, typedDispatch } = useStore()
 
-  get isTrustedOnly () {
-    if (!this.user) return false
-    return (
-      this.user.username === '_TRUSTED_USER_' ||
-      this.user.username === '_API__API_KEY_USER_USER_'
-    )
-  }
+const user = computed(() => typedState.auth.currentUser)
 
-  async handleLogout () {
-    await this.$typedDispatch('auth/checkTrust')
+const currentUser = computed(() => {
+  if (!user.value) return ''
+  if (
+    user.value.username === '_TRUSTED_USER_' ||
+    user.value.username === '_API__API_KEY_USER_USER_'
+  ) {
+    return capitalize(startCase(user.value.username))
+  } else {
+    return user.value.username
   }
+})
+
+const isTrustedOnly = computed(() => {
+  if (!user.value) return false
+  return (
+    user.value.username === '_TRUSTED_USER_' ||
+    user.value.username === '_API__API_KEY_USER_USER_'
+  )
+})
+
+async function handleLogout () {
+  await typedDispatch('auth/checkTrust')
 }
 </script>

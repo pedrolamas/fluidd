@@ -30,7 +30,7 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required
+            Rules.required
           ]"
         />
       </app-setting>
@@ -47,9 +47,9 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required,
-            $rules.lengthGreaterThanOrEqual(4),
-            $rules.passwordNotEqualUsername(currentUser)
+            Rules.required,
+            Rules.lengthGreaterThanOrEqual(4),
+            Rules.passwordNotEqualUsername(currentUser)
           ]"
         />
       </app-setting>
@@ -57,42 +57,51 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import { EventBus } from '@/eventBus'
 import type { AppUser } from '@/store/auth/types'
 import { SocketActions } from '@/api/socketActions'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 
-@Component({})
-export default class UserPasswordDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{ value?: boolean }>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+}>()
 
-  currentPassword = ''
-  password = ''
-  error = false
-  loading = false
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  get currentUser () {
-    const currentUser: AppUser | null = this.$typedState.auth.currentUser
+const { typedState } = useStore()
+const { tc } = useI18n()
 
-    return currentUser?.username ?? ''
-  }
+const currentPassword = ref('')
+const password = ref('')
+const error = ref(false)
+const loading = ref(false)
 
-  async handleSave () {
-    try {
-      this.loading = true
+const currentUser = computed(() => {
+  const currentUser: AppUser | null = typedState.auth.currentUser
+  return currentUser?.username ?? ''
+})
 
-      await SocketActions.accessUserPassword(this.currentPassword, this.password)
+async function handleSave () {
+  try {
+    loading.value = true
 
-      EventBus.$emit(this.$tc('app.general.msg.password_changed'), { timeout: 2000 })
+    await SocketActions.accessUserPassword(currentPassword.value, password.value)
 
-      this.open = false
-    } catch {
-      this.error = true
-    } finally {
-      this.loading = false
-    }
+    EventBus.$emit(tc('app.general.msg.password_changed'), { timeout: 2000 })
+
+    open.value = false
+  } catch {
+    error.value = true
+  } finally {
+    loading.value = false
   }
 }
 </script>

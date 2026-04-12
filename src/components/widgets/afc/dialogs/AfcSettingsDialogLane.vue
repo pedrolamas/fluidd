@@ -35,58 +35,56 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class AfcSettingsDialogLane extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  changedValue = false
+const { sendGcode } = useStateMixin()
+const { getAfcLaneSettings, getAfcLaneObject } = useAfcMixin()
 
-  get afcSettingsLane (): Klipper.AfcLaneSettings | Klipper.AfcStepperSettings | undefined {
-    return this.getAfcLaneSettings(this.name)
-  }
+const changedValue = ref(false)
 
-  get afcLane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
-  }
+const afcSettingsLane = computed((): Klipper.AfcLaneSettings | Klipper.AfcStepperSettings | undefined =>
+  getAfcLaneSettings(props.name)
+)
 
-  get settingsDistHub (): number {
-    return (
-      this.afcSettingsLane != null &&
-      'dist_hub' in this.afcSettingsLane &&
-      this.afcSettingsLane.dist_hub
-    ) || 0
-  }
+const afcLane = computed((): Klipper.AfcLaneState | undefined =>
+  getAfcLaneObject(props.name)
+)
 
-  get currentDistHub (): number {
-    return (
-      this.afcLane != null &&
-      'dist_hub' in this.afcLane &&
-      this.afcLane.dist_hub
-    ) || 0
-  }
+const settingsDistHub = computed(() =>
+  (
+    afcSettingsLane.value != null &&
+    'dist_hub' in afcSettingsLane.value &&
+    afcSettingsLane.value.dist_hub
+  ) || 0
+)
 
-  get enableSaveButton (): boolean {
-    return (
-      this.changedValue &&
-      this.currentDistHub !== this.settingsDistHub
-    )
-  }
+const currentDistHub = computed(() =>
+  (
+    afcLane.value != null &&
+    'dist_hub' in afcLane.value &&
+    afcLane.value.dist_hub
+  ) || 0
+)
 
-  setHubDist (value: number) {
-    this.changedValue = true
-    this.sendGcode(`SET_HUB_DIST LANE=${encodeGcodeParamValue(this.name)} LENGTH=${value}`)
-  }
+const enableSaveButton = computed(() =>
+  changedValue.value && currentDistHub.value !== settingsDistHub.value
+)
 
-  saveHubDist () {
-    this.changedValue = false
-    this.sendGcode(`SAVE_HUB_DIST LANE=${encodeGcodeParamValue(this.name)}`)
-  }
+function setHubDist (value: number) {
+  changedValue.value = true
+  sendGcode(`SET_HUB_DIST LANE=${encodeGcodeParamValue(props.name)} LENGTH=${value}`)
+}
+
+function saveHubDist () {
+  changedValue.value = false
+  sendGcode(`SAVE_HUB_DIST LANE=${encodeGcodeParamValue(props.name)}`)
 }
 </script>

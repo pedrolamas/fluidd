@@ -20,30 +20,28 @@
   </v-container>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class Sensors extends Vue {
-  get sensors (): Moonraker.Sensor.Entry[] {
-    return this.$typedGetters['sensors/getSensors']
+const { typedGetters } = useStore()
+
+const sensors = computed((): Moonraker.Sensor.Entry[] => typedGetters['sensors/getSensors'])
+
+function getFormattedValue (sensor: Moonraker.Sensor.Entry, key: string, value: unknown) {
+  if (value == null || value === '') {
+    return '--'
   }
 
-  getFormattedValue (sensor: Moonraker.Sensor.Entry, key: string, value: unknown) {
-    if (value == null || value === '') {
-      return '--'
-    }
+  const parameterUnits = sensor.parameter_info?.find(x => x.name === key)?.units
+  const units = parameterUnits
+    ? ` ${parameterUnits}`
+    : ''
 
-    const parameterUnits = sensor.parameter_info?.find(x => x.name === key)?.units
-    const units = parameterUnits
-      ? ` ${parameterUnits}`
-      : ''
-
-    if (typeof value === 'number') {
-      return `${Math.round(value * 100) / 100}${units}`
-    }
-
-    return `${value}${units}`
+  if (typeof value === 'number') {
+    return `${Math.round(value * 100) / 100}${units}`
   }
+
+  return `${value}${units}`
 }
 </script>

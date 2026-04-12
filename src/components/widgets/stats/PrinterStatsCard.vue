@@ -148,56 +148,57 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { SocketActions } from '@/api/socketActions'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class PrinterStatsCard extends Vue {
-  @Prop({ type: Boolean })
-  readonly narrow?: boolean
+defineProps<{
+  narrow?: boolean
+}>()
 
-  get lengthInKilometers (): boolean {
-    return this.$typedState.config.uiSettings.history.lengthInKilometers
-  }
+const { typedState, typedGetters, typedDispatch } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
 
-  set lengthInKilometers (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const lengthInKilometers = computed({
+  get: (): boolean => typedState.config.uiSettings.history.lengthInKilometers,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.history.lengthInKilometers',
       value,
       server: true
     })
   }
+})
 
-  get timeInDays (): boolean {
-    return this.$typedState.config.uiSettings.history.timeInDays
-  }
-
-  set timeInDays (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const timeInDays = computed({
+  get: (): boolean => typedState.config.uiSettings.history.timeInDays,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.history.timeInDays',
       value,
       server: true
     })
   }
+})
 
-  get rollup () {
-    return this.$typedGetters['history/getRollUp']
-  }
+const rollup = computed(() => typedGetters['history/getRollUp'])
 
-  get supportsHistoryComponent (): boolean {
-    return this.$typedGetters['server/componentSupport']('history')
-  }
+const supportsHistoryComponent = computed((): boolean =>
+  typedGetters['server/componentSupport']('history')
+)
 
-  async handleResetStats () {
-    const result = await this.$confirm(
-      this.$tc('app.history.msg.confirm_stats'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
+async function handleResetStats () {
+  const result = await confirm(
+    tc('app.history.msg.confirm_stats'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
 
-    if (result) {
-      SocketActions.serverHistoryResetTotals()
-    }
+  if (result) {
+    SocketActions.serverHistoryResetTotals()
   }
 }
 </script>

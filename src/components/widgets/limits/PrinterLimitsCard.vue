@@ -9,15 +9,6 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import PrinterLimits from '@/components/widgets/limits/PrinterLimits.vue'
-
-@Component({
-  components: {
-    PrinterLimits
-  }
-})
-export default class PrinterLimitsCard extends Vue {
-}
 </script>

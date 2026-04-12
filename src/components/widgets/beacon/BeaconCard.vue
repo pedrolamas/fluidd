@@ -113,7 +113,7 @@
             small
             block
             class="mb-2"
-            :loading="hasWait($waits.onBeaconCalibrate)"
+            :loading="hasWait(Waits.onBeaconCalibrate)"
             :disabled="printerBusy || !xyHomed"
             @click="calibrate"
           >
@@ -132,72 +132,74 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import SaveModelDialog from './SaveModelDialog.vue'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import type { BeaconModel } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({
-  components: {
-    SaveModelDialog
-  }
+defineProps<{
+  fullscreen?: boolean
+}>()
+
+const { hasWait, sendGcode, printerBusy, printerPrinting } = useStateMixin()
+const { xyHomed } = useToolheadMixin()
+const { typedGetters, typedState } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
+
+const saveDialogState = ref({
+  open: false,
+  existingName: 'default'
 })
-export default class BeaconCard extends Mixins(StateMixin, ToolheadMixin) {
-  saveDialogState = {
-    open: false,
-    existingName: 'default'
-  }
 
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+const beaconModels = computed<BeaconModel[]>(() => typedGetters['printer/getBeaconModels'])
 
-  get beaconModels (): BeaconModel[] {
-    return this.$typedGetters['printer/getBeaconModels']
-  }
-
-  async loadModel (name: string) {
-    const result = (
-      !this.printerPrinting ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_change_beacon_model'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-      )
+async function loadModel (name: string) {
+  const result = (
+    !printerPrinting.value ||
+    await confirm(
+      tc('app.general.simple_form.msg.confirm_change_beacon_model'),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
+  )
 
-    if (result) {
-      this.sendGcode(`BEACON_MODEL_SELECT NAME=${encodeGcodeParamValue(name)}`)
-    }
+  if (result) {
+    sendGcode(`BEACON_MODEL_SELECT NAME=${encodeGcodeParamValue(name)}`)
   }
+}
 
-  removeModel (name: string) {
-    this.sendGcode(`BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(name)}`)
+function removeModel (name: string) {
+  sendGcode(`BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(name)}`)
+}
+
+function calibrate () {
+  sendGcode('BEACON_CALIBRATE', Waits.onBeaconCalibrate)
+}
+
+function handleOpenSaveDialog () {
+  const existingName: string = typedState.printer.printer.beacon?.model ?? ''
+
+  saveDialogState.value = {
+    open: true,
+    existingName
   }
+}
 
-  calibrate () {
-    this.sendGcode('BEACON_CALIBRATE', this.$waits.onBeaconCalibrate)
+function handleModelSave (config: { name: string; removeDefault: boolean }) {
+  const modelName: string | null | undefined = typedState.printer.printer.beacon?.model
+
+  if (config.name !== modelName) {
+    sendGcode(`BEACON_MODEL_SAVE NAME=${encodeGcodeParamValue(config.name)}`)
   }
-
-  handleOpenSaveDialog () {
-    const existingName: string = this.$typedState.printer.printer.beacon?.model ?? ''
-
-    this.saveDialogState = {
-      open: true,
-      existingName
-    }
-  }
-
-  handleModelSave (config: { name: string; removeDefault: boolean }) {
-    const modelName: string | null | undefined = this.$typedState.printer.printer.beacon?.model
-
-    if (config.name !== modelName) {
-      this.sendGcode(`BEACON_MODEL_SAVE NAME=${encodeGcodeParamValue(config.name)}`)
-    }
-    if (config.removeDefault && modelName) {
-      this.sendGcode(`BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(modelName)}`)
-    }
+  if (config.removeDefault && modelName) {
+    sendGcode(`BEACON_MODEL_REMOVE NAME=${encodeGcodeParamValue(modelName)}`)
   }
 }
 </script>

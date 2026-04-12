@@ -14,51 +14,37 @@
     />
   </div>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useVuetify } from '@/composables/useVuetify'
 import AfcCardUnitLaneEmpty from '@/components/widgets/afc/AfcCardUnitLaneEmpty.vue'
 import AfcCardUnitLaneHeader from '@/components/widgets/afc/AfcCardUnitLaneHeader.vue'
 import AfcCardUnitLaneBody from '@/components/widgets/afc/AfcCardUnitLaneBody.vue'
 import AfcCardUnitLaneActions from '@/components/widgets/afc/AfcCardUnitLaneActions.vue'
 
-@Component({
-  components: {
-    AfcCardUnitLaneEmpty,
-    AfcCardUnitLaneHeader,
-    AfcCardUnitLaneBody,
-    AfcCardUnitLaneActions
-  }
-})
-export default class AfcCardUnitLane extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  get lane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
-  }
+const { afcCurrentLane, afcErrorState, getAfcLaneObject } = useAfcMixin()
+const vuetify = useVuetify()
 
-  get laneActive (): boolean {
-    return this.name === this.afcCurrentLane?.name
-  }
+const lane = computed((): Klipper.AfcLaneState | undefined => getAfcLaneObject(props.name))
 
-  get laneStatusClass () {
-    return {
-      'darken-3': this.$vuetify.theme.dark,
-      'lighten-2': !this.$vuetify.theme.dark,
-      'border-error': this.laneActive && this.afcErrorState,
-      'border-success': this.laneActive && !this.afcErrorState,
-    }
-  }
+const laneActive = computed(() => props.name === afcCurrentLane.value?.name)
 
-  get laneReady (): boolean {
-    return (
-      this.lane?.load === true &&
-      this.lane.prep === true
-    )
-  }
-}
+const laneStatusClass = computed(() => ({
+  'darken-3': vuetify.theme.dark,
+  'lighten-2': !vuetify.theme.dark,
+  'border-error': laneActive.value && afcErrorState.value,
+  'border-success': laneActive.value && !afcErrorState.value,
+}))
+
+const laneReady = computed(() =>
+  lane.value?.load === true && lane.value.prep === true
+)
 </script>
 
 <style scoped>

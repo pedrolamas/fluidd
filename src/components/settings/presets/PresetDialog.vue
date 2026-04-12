@@ -1,17 +1,17 @@
 <template>
   <app-dialog
     v-model="open"
-    :title="(preset.id != -1) ? $t('app.general.label.edit_preset') : $t('app.general.label.add_preset')"
+    :title="(preset.id != -1) ? t('app.general.label.edit_preset') : t('app.general.label.add_preset')"
     max-width="500"
-    :save-button-text="(preset.id !== -1) ? $t('app.general.btn.save') : $t('app.general.btn.add')"
+    :save-button-text="(preset.id !== -1) ? t('app.general.btn.save') : t('app.general.btn.add')"
     @save="handleSave"
   >
     <v-card-text class="pa-0">
-      <app-setting :title="$t('app.setting.label.thermal_preset_name')">
+      <app-setting :title="t('app.setting.label.thermal_preset_name')">
         <v-text-field
           v-model="preset.name"
           :rules="[
-            $rules.required
+            Rules.required
           ]"
           hide-details="auto"
           filled
@@ -24,7 +24,7 @@
       <template v-for="(item, i) in heaters">
         <app-setting
           :key="`${i}heater`"
-          :title="$filters.prettyCase(item.name)"
+          :title="Filters.prettyCase(item.name)"
         >
           <v-checkbox
             v-model="preset.values[item.name].active"
@@ -35,9 +35,9 @@
             v-model.number="preset.values[item.name].value"
             :disabled="!preset.values[item.name].active"
             :rules="preset.values[item.name].active ? [
-              $rules.required,
-              $rules.numberValid,
-              $rules.numberGreaterThan(0)
+              Rules.required,
+              Rules.numberValid,
+              Rules.numberGreaterThan(0)
             ] : undefined"
             hide-details="auto"
             type="number"
@@ -53,7 +53,7 @@
       <template v-for="(item, i) in fans">
         <app-setting
           :key="`${i}fan`"
-          :title="$filters.prettyCase(item.name)"
+          :title="Filters.prettyCase(item.name)"
         >
           <v-checkbox
             v-model="preset.values[item.name].active"
@@ -64,9 +64,9 @@
             v-model.number="preset.values[item.name].value"
             :disabled="!preset.values[item.name].active"
             :rules="preset.values[item.name].active ? [
-              $rules.required,
-              $rules.numberValid,
-              $rules.numberGreaterThan(0)
+              Rules.required,
+              Rules.numberValid,
+              Rules.numberGreaterThan(0)
             ] : undefined"
             hide-details="auto"
             type="number"
@@ -79,7 +79,7 @@
         <v-divider :key="i + 'fand'" />
       </template>
 
-      <app-setting :title="$t('app.setting.label.thermal_preset_gcode')">
+      <app-setting :title="t('app.setting.label.thermal_preset_gcode')">
         <v-textarea
           v-model="preset.gcode"
           rows="2"
@@ -93,31 +93,43 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, reactive, watch } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Filters, Rules } from '@/plugins/filters'
 import type { TemperaturePreset } from '@/store/config/types'
 import type { Fan, Heater } from '@/store/printer/types'
 
-@Component({})
-export default class TemperaturePresetDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  preset: TemperaturePreset
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly preset!: TemperaturePreset
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'save', preset: TemperaturePreset): void
+}>()
 
-  get heaters (): Heater[] {
-    return this.$typedGetters['printer/getHeaters']
-  }
+const open = computed({
+  get: () => props.value,
+  set: (value) => emit('input', value ?? false)
+})
 
-  get fans (): Fan[] {
-    return this.$store.getters['printer/getOutputs'](['temperature_fan'])
-  }
+const preset = reactive<TemperaturePreset>(JSON.parse(JSON.stringify(props.preset)))
 
-  handleSave () {
-    this.$emit('save', this.preset)
-    this.open = false
-  }
+watch(() => props.preset, (v) => Object.assign(preset, JSON.parse(JSON.stringify(v))), { deep: true })
+
+const { typedGetters, store } = useStore()
+const { t } = useI18n()
+
+const heaters = computed((): Heater[] => typedGetters['printer/getHeaters'])
+
+const fans = computed((): Fan[] => store.getters['printer/getOutputs'](['temperature_fan']))
+
+function handleSave () {
+  emit('save', { ...preset })
+  open.value = false
 }
 </script>
 

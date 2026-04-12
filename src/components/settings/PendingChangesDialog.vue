@@ -1,8 +1,8 @@
 <template>
   <app-dialog
     v-model="open"
-    :title="$t('app.general.title.pending_configuration_changes')"
-    :save-button-text="$t('app.general.btn.save_config_and_restart')"
+    :title="t('app.general.title.pending_configuration_changes')"
+    :save-button-text="t('app.general.btn.save_config_and_restart')"
     max-width="600"
     @save="handleSubmit"
   >
@@ -19,43 +19,56 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class PendingChangesDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+}>()
 
-  get saveConfigPendingItems () {
-    const saveConfigPendingItems: Klipper.ConfigState = this.$typedGetters['printer/getSaveConfigPendingItems']
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'save'): void
+}>()
 
-    const { changed, deleted } = Object.entries(saveConfigPendingItems)
-      .reduce<{ changed: string[], deleted: string[] }>((previous, [sectionName, sectionEntries]) => {
-        if (sectionEntries == null) {
-          previous.deleted.push(`# [${sectionName}]`)
-        } else {
-          const sectionEntryNameValues = Object.entries(sectionEntries)
-            .map(([entryName, entryValue]) => `${entryName}: ${entryValue}`)
+const open = computed({
+  get: () => props.value,
+  set: (value) => emit('input', value ?? false)
+})
 
-          previous.changed.push(`[${sectionName}]\n${sectionEntryNameValues.join('\n')}`)
-        }
+const { typedGetters } = useStore()
+const { t } = useI18n()
 
-        return previous
-      }, { changed: [], deleted: [] })
+const saveConfigPendingItems = computed(() => {
+  const saveConfigPendingItems: Klipper.ConfigState = typedGetters['printer/getSaveConfigPendingItems']
 
-    const lines = [...changed]
+  const { changed, deleted } = Object.entries(saveConfigPendingItems)
+    .reduce<{ changed: string[], deleted: string[] }>((previous, [sectionName, sectionEntries]) => {
+      if (sectionEntries == null) {
+        previous.deleted.push(`# [${sectionName}]`)
+      } else {
+        const sectionEntryNameValues = Object.entries(sectionEntries)
+          .map(([entryName, entryValue]) => `${entryName}: ${entryValue}`)
 
-    if (deleted.length > 0) {
-      lines.push(`# ${this.$t('app.general.msg.pending_configuration_sections_deleted')}\n${deleted.join('\n')}`)
-    }
+        previous.changed.push(`[${sectionName}]\n${sectionEntryNameValues.join('\n')}`)
+      }
 
-    return lines.join('\n\n')
+      return previous
+    }, { changed: [], deleted: [] })
+
+  const lines = [...changed]
+
+  if (deleted.length > 0) {
+    lines.push(`# ${t('app.general.msg.pending_configuration_sections_deleted')}\n${deleted.join('\n')}`)
   }
 
-  handleSubmit () {
-    this.open = false
-    this.$emit('save')
-  }
+  return lines.join('\n\n')
+})
+
+function handleSubmit () {
+  open.value = false
+  emit('save')
 }
 </script>

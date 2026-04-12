@@ -73,42 +73,41 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed, watch } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import type { ScrewsTiltAdjust } from '@/store/printer/types'
 
-@Component({})
-export default class ScrewsTiltAdjustDialog extends Mixins(StateMixin, ToolheadMixin) {
-  get screwsTiltAdjust (): ScrewsTiltAdjust {
-    return this.$typedGetters['printer/getScrewsTiltAdjust']
-  }
+const { sendGcode, klippyReady, printerPrinting } = useStateMixin()
+const { hasScrewsTiltAdjustResults, screwsTiltAdjustDialogOpen } = useToolheadMixin()
+const { typedGetters, typedState, typedCommit } = useStore()
 
-  get showScrewsTiltAdjustDialogAutomatically (): boolean {
-    return this.$typedState.config.uiSettings.general.showScrewsTiltAdjustDialogAutomatically
-  }
+const screwsTiltAdjust = computed<ScrewsTiltAdjust>(() => typedGetters['printer/getScrewsTiltAdjust'])
 
-  @Watch('hasScrewsTiltAdjustResults')
-  onHasScrewsTiltAdjustResults (value: boolean) {
-    this.screwsTiltAdjustDialogOpen = (
-      value &&
-      this.showScrewsTiltAdjustDialogAutomatically &&
-      this.klippyReady &&
-      !this.printerPrinting
-    )
-  }
+const showScrewsTiltAdjustDialogAutomatically = computed<boolean>(
+  () => typedState.config.uiSettings.general.showScrewsTiltAdjustDialogAutomatically
+)
 
-  @Watch('screwsTiltAdjustDialogOpen')
-  onScrewsTiltAdjustDialogOpen (value: boolean) {
-    if (!value) {
-      this.$typedCommit('printer/setClearScrewsTiltAdjust')
-    }
-  }
+watch(hasScrewsTiltAdjustResults, (value) => {
+  screwsTiltAdjustDialogOpen.value = (
+    value &&
+    showScrewsTiltAdjustDialogAutomatically.value &&
+    klippyReady.value &&
+    !printerPrinting.value
+  )
+})
 
-  retry () {
-    this.sendGcode('SCREWS_TILT_CALCULATE', this.$waits.onBedScrewsCalculate)
-    this.screwsTiltAdjustDialogOpen = false
+watch(screwsTiltAdjustDialogOpen, (value) => {
+  if (!value) {
+    typedCommit('printer/setClearScrewsTiltAdjust')
   }
+})
+
+function retry () {
+  sendGcode('SCREWS_TILT_CALCULATE', Waits.onBedScrewsCalculate)
+  screwsTiltAdjustDialogOpen.value = false
 }
 </script>

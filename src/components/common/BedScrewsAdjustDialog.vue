@@ -70,7 +70,7 @@
       </app-btn>
 
       <app-btn
-        :loading="hasWait($waits.onBedScrewsAdjust)"
+        :loading="hasWait(Waits.onBedScrewsAdjust)"
         color="primary"
         text
         type="button"
@@ -80,7 +80,7 @@
       </app-btn>
 
       <app-btn
-        :loading="hasWait($waits.onBedScrewsAdjust)"
+        :loading="hasWait(Waits.onBedScrewsAdjust)"
         color="primary"
         type="submit"
       >
@@ -90,63 +90,55 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed, watch } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import type { BedScrews } from '@/store/printer/types'
 
-@Component({})
-export default class BedScrewsAdjustDialog extends Mixins(StateMixin, ToolheadMixin) {
-  get bedScrews (): BedScrews {
-    return this.$typedGetters['printer/getBedScrews']
-  }
+const { hasWait, sendGcode, klippyReady, printerPrinting } = useStateMixin()
+const { isBedScrewsAdjustActive, bedScrewsAdjustDialogOpen } = useToolheadMixin()
+const { typedGetters, typedState } = useStore()
 
-  get currentScrewIndex () {
-    return this.bedScrews.current_screw ?? 0
-  }
+const bedScrews = computed<BedScrews>(() => typedGetters['printer/getBedScrews'])
 
-  get currentScrewName () {
-    return this.bedScrews.screws[this.currentScrewIndex]?.prettyName ?? ''
-  }
+const currentScrewIndex = computed(() => bedScrews.value.current_screw ?? 0)
 
-  get acceptedScrews () {
-    return this.bedScrews.accepted_screws ?? 0
-  }
+const currentScrewName = computed(() => bedScrews.value.screws[currentScrewIndex.value]?.prettyName ?? '')
 
-  get totalScrews () {
-    return this.bedScrews.screws.length
-  }
+const acceptedScrews = computed(() => bedScrews.value.accepted_screws ?? 0)
 
-  get showBedScrewsAdjustDialogAutomatically (): boolean {
-    return this.$typedState.config.uiSettings.general.showBedScrewsAdjustDialogAutomatically
-  }
+const totalScrews = computed(() => bedScrews.value.screws.length)
 
-  @Watch('isBedScrewsAdjustActive')
-  onBedScrewsAdjustActive (value: boolean) {
-    if (
-      !value ||
-      (
-        this.showBedScrewsAdjustDialogAutomatically &&
-        this.klippyReady &&
-        !this.printerPrinting
-      )
-    ) {
-      this.bedScrewsAdjustDialogOpen = value
-    }
-  }
+const showBedScrewsAdjustDialogAutomatically = computed<boolean>(
+  () => typedState.config.uiSettings.general.showBedScrewsAdjustDialogAutomatically
+)
 
-  sendAbort () {
-    this.sendGcode('ABORT', this.$waits.onBedScrewsAdjust)
-    this.bedScrewsAdjustDialogOpen = false
+watch(isBedScrewsAdjustActive, (value) => {
+  if (
+    !value ||
+    (
+      showBedScrewsAdjustDialogAutomatically.value &&
+      klippyReady.value &&
+      !printerPrinting.value
+    )
+  ) {
+    bedScrewsAdjustDialogOpen.value = value
   }
+})
 
-  sendAdjusted () {
-    this.sendGcode('ADJUSTED', this.$waits.onBedScrewsAdjust)
-  }
+function sendAbort () {
+  sendGcode('ABORT', Waits.onBedScrewsAdjust)
+  bedScrewsAdjustDialogOpen.value = false
+}
 
-  sendAccept () {
-    this.sendGcode('ACCEPT', this.$waits.onBedScrewsAdjust)
-  }
+function sendAdjusted () {
+  sendGcode('ADJUSTED', Waits.onBedScrewsAdjust)
+}
+
+function sendAccept () {
+  sendGcode('ACCEPT', Waits.onBedScrewsAdjust)
 }
 </script>

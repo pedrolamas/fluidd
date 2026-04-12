@@ -12,31 +12,49 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Ref, Mixins } from 'vue-property-decorator'
-import CameraMixin from '@/mixins/camera'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useCameraMixin } from '@/composables/useCameraMixin'
 
-@Component({})
-export default class IframeCamera extends Mixins(CameraMixin) {
-  @Ref('streamingElement')
-  readonly cameraIframe!: HTMLIFrameElement
+const props = defineProps<{
+  camera: Moonraker.Webcam.Entry
+  crossorigin?: 'anonymous' | 'use-credentials' | ''
+}>()
 
-  cameraIFrameSource = ''
+const emit = defineEmits<{
+  (e: string, ...args: any[]): void
+}>()
 
-  startPlayback () {
-    this.updateStatus('connecting')
+const {
+  cameraStyle,
+  updateStatus,
+  updateRawCameraUrl,
+  buildAbsoluteUrl,
+  menuItemClick,
+  setPlaybackHandlers,
+} = useCameraMixin(props, emit)
 
-    const url = this.buildAbsoluteUrl(this.camera.stream_url || '').toString()
+defineExpose({ menuItemClick })
 
-    this.cameraIFrameSource = url
+const streamingElement = ref<HTMLIFrameElement>()
 
-    this.updateRawCameraUrl(url)
-  }
+const cameraIFrameSource = ref('')
 
-  stopPlayback () {
-    this.updateStatus('disconnected')
-    this.cameraIFrameSource = ''
-    this.cameraIframe.src = ''
-  }
+function startPlayback () {
+  updateStatus('connecting')
+
+  const url = buildAbsoluteUrl(props.camera.stream_url || '').toString()
+
+  cameraIFrameSource.value = url
+
+  updateRawCameraUrl(url)
 }
+
+function stopPlayback () {
+  updateStatus('disconnected')
+  cameraIFrameSource.value = ''
+  streamingElement.value!.src = ''
+}
+
+setPlaybackHandlers(startPlayback, stopPlayback)
 </script>

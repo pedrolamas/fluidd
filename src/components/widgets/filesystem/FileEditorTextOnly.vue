@@ -3,28 +3,37 @@
     v-model="content"
     class="v-input v-textarea px-2"
     :class="{
-      [$vuetify.theme.dark ? 'theme--dark': 'theme--light']: true,
+      [vuetify.theme.dark ? 'theme--dark': 'theme--light']: true,
     }"
     :readonly="readonly"
     spellcheck="false"
   />
 </template>
 
-<script lang="ts">
-import { Vue, Component, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, onMounted } from 'vue'
+import { useVuetify } from '@/composables/useVuetify'
 
-@Component({})
-export default class FileEditorText extends Vue {
-  @VModel({ type: String })
-  content?: string
+const props = defineProps<{
+  value?: string
+  readonly?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly readonly?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: string): void
+  (e: 'ready'): void
+}>()
 
-  mounted () {
-    this.$emit('ready')
-  }
-}
+const vuetify = useVuetify()
+
+const content = computed({
+  get: () => props.value,
+  set: (value) => emit('input', value ?? '')
+})
+
+onMounted(() => {
+  emit('ready')
+})
 </script>
 
 <style lang="scss" scoped>

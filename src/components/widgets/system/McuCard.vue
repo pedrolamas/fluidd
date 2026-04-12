@@ -65,32 +65,27 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import McuInformationDialog from './McuInformationDialog.vue'
 import type { KlippyApp, MCU } from '@/store/printer/types'
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { useStore } from '@/composables/useStore'
 
-@Component({
-  components: {
-    McuInformationDialog
-  }
-})
-export default class PrinterStatsCard extends Vue {
-  @Prop({ type: Object, required: true })
-  readonly mcu!: MCU
+const props = defineProps<{
+  mcu: MCU
+}>()
 
-  get klippyApp (): KlippyApp {
-    return this.$typedGetters['printer/getKlippyApp']
-  }
+const { typedGetters } = useStore()
 
-  get mcuConstants (): Record<string, string | number> {
-    return this.mcu.mcu_constants || {}
-  }
+const mcuInformationDialogOpen = ref(false)
 
-  mcuInformationDialogOpen = false
+const klippyApp = computed((): KlippyApp => typedGetters['printer/getKlippyApp'])
 
-  showMcuInformationDialog () {
-    this.mcuInformationDialogOpen = true
-  }
+const mcuConstants = computed((): Record<string, string | number> =>
+  props.mcu.mcu_constants || {}
+)
+
+function showMcuInformationDialog () {
+  mcuInformationDialogOpen.value = true
 }
 </script>

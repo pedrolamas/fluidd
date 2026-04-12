@@ -30,7 +30,7 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required,
+            Rules.required,
             customRules.uniqueName
           ]"
         />
@@ -66,7 +66,7 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required,
+            Rules.required,
             ...type.rules
           ]"
         />
@@ -75,57 +75,62 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { ConsoleFilter } from '@/store/console/types'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 
-@Component({})
-export default class ConsoleFilterDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  filter: ConsoleFilter
+}>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+  (e: 'save', filter: ConsoleFilter): void
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly filter!: ConsoleFilter
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  get customRules () {
-    return {
-      uniqueName: (v: string) => !this.filters.some((c: ConsoleFilter) => c.id !== this.filter.id && c.name.toLowerCase() === v.toLowerCase()) || this.$t('app.general.simple_form.error.exists')
-    }
-  }
+const filter = computed(() => props.filter)
 
-  get types () {
-    return [
-      {
-        text: this.$t('app.setting.label.contains'),
-        value: 'contains',
-        rules: []
-      },
-      {
-        text: this.$t('app.setting.label.starts_with'),
-        value: 'starts-with',
-        rules: []
-      },
-      {
-        text: this.$t('app.setting.label.expression'),
-        value: 'expression',
-        rules: [
-          this.$rules.regExpPatternValid
-        ]
-      }
+const { typedState } = useStore()
+const { t } = useI18n()
+
+const filters = computed((): ConsoleFilter[] => typedState.console.consoleFilters)
+
+const customRules = computed(() => ({
+  uniqueName: (v: string) => !filters.value.some((c: ConsoleFilter) => c.id !== props.filter.id && c.name.toLowerCase() === v.toLowerCase()) || t('app.general.simple_form.error.exists')
+}))
+
+const types = computed(() => [
+  {
+    text: t('app.setting.label.contains'),
+    value: 'contains',
+    rules: [] as ((v: string) => boolean | string)[]
+  },
+  {
+    text: t('app.setting.label.starts_with'),
+    value: 'starts-with',
+    rules: [] as ((v: string) => boolean | string)[]
+  },
+  {
+    text: t('app.setting.label.expression'),
+    value: 'expression',
+    rules: [
+      Rules.regExpPatternValid
     ]
   }
+])
 
-  get type () {
-    return this.types.find(f => f.value === this.filter?.type) || this.types[0]
-  }
+const type = computed(() => types.value.find(f => f.value === props.filter?.type) || types.value[0])
 
-  get filters (): ConsoleFilter[] {
-    return this.$typedState.console.consoleFilters
-  }
-
-  handleSave () {
-    this.$emit('save', this.filter)
-    this.open = false
-  }
+function handleSave () {
+  emit('save', props.filter)
+  open.value = false
 }
 </script>

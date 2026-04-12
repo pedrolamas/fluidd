@@ -75,40 +75,54 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { computed, reactive, watch } from 'vue'
 import type { Macro, MacroCategory } from '@/store/macros/types'
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useVuetify } from '@/composables/useVuetify'
 
-@Component({})
-export default class MacroMoveDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  macro: Macro
+}>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly macro!: Macro
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  get categories () {
-    // Grabs all categories and filters by the currently defined one.
-    const categories: MacroCategory[] = [...this.$typedGetters['macros/getCategories']]
-    categories.unshift({ name: this.$t('app.general.label.uncategorized').toString(), id: '0' })
-    return categories
+const macro = reactive({ ...props.macro })
+
+watch(() => props.macro, (v) => Object.assign(macro, v), { deep: true })
+
+const { typedGetters, typedDispatch } = useStore()
+const { t } = useI18n()
+const vuetify = useVuetify()
+
+const categories = computed(() => {
+  // Grabs all categories and filters by the currently defined one.
+  const cats: MacroCategory[] = [...typedGetters['macros/getCategories']]
+  cats.unshift({ name: t('app.general.label.uncategorized'), id: '0' })
+  return cats
+})
+
+const color = computed({
+  get: (): string | undefined => macro.color || vuetify.theme.currentTheme.secondary?.toString(),
+  set: (value: string | undefined) => {
+    macro.color = value
   }
+})
 
-  get color (): string | undefined {
-    return this.macro.color || this.$vuetify.theme.currentTheme.secondary?.toString()
-  }
+function handleResetColor () {
+  macro.color = undefined
+}
 
-  set color (value: string | undefined) {
-    this.macro.color = value
-  }
-
-  handleResetColor () {
-    this.macro.color = undefined
-  }
-
-  handleSave () {
-    this.$typedDispatch('macros/saveMacro', this.macro)
-    this.open = false
-  }
+function handleSave () {
+  typedDispatch('macros/saveMacro', macro)
+  open.value = false
 }
 </script>

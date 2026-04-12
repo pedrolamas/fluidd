@@ -28,7 +28,7 @@
       :step="i + 1"
     >
       <template v-if="currentStep === i + 1">
-        <app-setting :title="$t('app.setting.label.enable')">
+        <app-setting :title="t('app.setting.label.enable')">
           <v-switch
             v-model="config.axes[i].enabled"
             hide-details
@@ -37,7 +37,7 @@
 
         <v-divider />
 
-        <app-setting :title="$t('app.setting.label.show_legend')">
+        <app-setting :title="t('app.setting.label.show_legend')">
           <v-switch
             v-model="config.axes[i].showLegend"
             hide-details
@@ -46,7 +46,7 @@
 
         <v-divider />
 
-        <app-setting :title="$t('app.setting.label.unit')">
+        <app-setting :title="t('app.setting.label.unit')">
           <v-text-field
             v-model="config.axes[i].unit"
             filled
@@ -54,23 +54,23 @@
             single-line
             hide-details="auto"
             :rules="[
-              $rules.required
+              Rules.required
             ]"
           />
         </app-setting>
 
         <v-divider />
 
-        <app-setting :title="$t('app.setting.label.min')">
+        <app-setting :title="t('app.setting.label.min')">
           <v-text-field
             v-model="config.axes[i].min"
             filled
             dense
             single-line
             hide-details="auto"
-            :hint="$t('app.setting.label.optional')"
+            :hint="t('app.setting.label.optional')"
             :rules="[
-              $rules.numberValid
+              Rules.numberValid
             ]"
             :suffix="config.axes[i].unit"
           />
@@ -78,16 +78,16 @@
 
         <v-divider />
 
-        <app-setting :title="$t('app.setting.label.max')">
+        <app-setting :title="t('app.setting.label.max')">
           <v-text-field
             v-model="config.axes[i].max"
             filled
             dense
             single-line
             hide-details="auto"
-            :hint="$t('app.setting.label.optional')"
+            :hint="t('app.setting.label.optional')"
             :rules="[
-              $rules.numberValid
+              Rules.numberValid
             ]"
             :suffix="config.axes[i].unit"
           />
@@ -97,18 +97,24 @@
   </v-stepper>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, reactive, watch } from 'vue'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
 
-@Component({})
-export default class AxesConfigStep extends Vue {
-  @Prop({ type: Object, required: true })
-  readonly config!: DiagnosticsCardConfig
+const props = defineProps<{
+  config: DiagnosticsCardConfig
+}>()
 
-  currentStep = 1
-  steps = [this.$t('app.setting.label.left_y'), this.$t('app.setting.label.right_y')]
-}
+const config = reactive<DiagnosticsCardConfig>(JSON.parse(JSON.stringify(props.config)))
+
+watch(() => props.config, (v) => Object.assign(config, JSON.parse(JSON.stringify(v))), { deep: true })
+
+const { t } = useI18n()
+
+const currentStep = ref(1)
+const steps = [t('app.setting.label.left_y'), t('app.setting.label.right_y')]
 </script>
 
 <style lang="scss" scoped>

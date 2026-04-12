@@ -12,7 +12,7 @@
         v-if="!fullscreen"
         small
         class="me-1 my-1"
-        :loading="hasWait($waits.onMeshCalibrate)"
+        :loading="hasWait(Waits.onMeshCalibrate)"
         :disabled="printerBusy || !allHomed"
         @click="calibrate()"
       >
@@ -50,7 +50,7 @@
     <v-card-text>
       <bed-mesh-chart
         v-if="hasMeshLoaded"
-        ref="chart"
+        ref="bedMeshChartRef"
         :options="options"
         :data="series"
         :graphics="graphics"
@@ -62,171 +62,149 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, Ref } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import BedMeshChart from './BedMeshChart.vue'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
-import BrowserMixin from '@/mixins/browser'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import type { AppMeshes, MatrixType } from '@/store/mesh/types'
 
-@Component({
-  components: {
-    BedMeshChart
+defineProps<{
+  fullscreen?: boolean
+}>()
+
+const { hasWait, sendGcode, printerBusy } = useStateMixin()
+const { allHomed } = useToolheadMixin()
+const { isMobileViewport } = useBrowserMixin()
+const { typedGetters, typedState } = useStore()
+const { t } = useI18n()
+
+const bedMeshChartRef = ref<InstanceType<typeof BedMeshChart>>()
+
+const matrix = computed<MatrixType>(() => typedState.mesh.matrix)
+const scale = computed<number>(() => typedState.mesh.scale)
+const boxScale = computed<number>(() => typedState.mesh.boxScale)
+const wireframe = computed<boolean>(() => typedState.mesh.wireframe)
+const flatSurface = computed<boolean>(() => typedState.mesh.flatSurface)
+const mesh = computed<AppMeshes>(() => typedGetters['mesh/getCurrentMeshData'])
+
+const hasMeshLoaded = computed(() => {
+  const m = mesh.value
+  const mx = matrix.value
+
+  return m && m[mx] && m[mx].coordinates && m[mx].coordinates.length > 0
+})
+
+const options = computed(() => {
+  const map_scale = scale.value / 2
+  const box_scale = boxScale.value / 2
+
+  let zMin = -Math.abs(map_scale - mesh.value[matrix.value].min)
+  let zMax = map_scale + mesh.value[matrix.value].max
+  if (scale.value === 0) {
+    zMin = mesh.value[matrix.value].min
+    zMax = mesh.value[matrix.value].max
+  }
+
+  const zBoxMin = -Math.abs(mesh.value[matrix.value].mid - box_scale)
+  const zBoxMax = mesh.value[matrix.value].mid + box_scale
+
+  const legends = series.value.reduce((obj, s) => {
+    return Object.assign(
+      obj,
+      {
+        [s.name]: (
+          !s.name.endsWith('_flat') ||
+          (
+            flatSurface.value &&
+            s.name.startsWith(matrix.value)
+          )
+        )
+      }
+    )
+  }, Object.assign({}))
+
+  return {
+    legend: {
+      show: false,
+      selected: legends
+    },
+    visualMap: {
+      min: zMin,
+      max: zMax,
+      dimension: 2,
+      seriesIndex: 0
+    },
+    zAxis3D: {
+      min: zBoxMin,
+      max: zBoxMax
+    }
   }
 })
-export default class BedMeshCard extends Mixins(StateMixin, ToolheadMixin, BrowserMixin) {
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
 
-  @Ref('chart')
-  readonly bedMeshChart!: BedMeshChart
-
-  get hasMeshLoaded () {
-    const mesh = this.mesh
-    const matrix = this.matrix
-
-    return mesh && mesh[matrix] && mesh[matrix].coordinates && mesh[matrix].coordinates.length > 0
-  }
-
-  get options () {
-    const map_scale = this.scale / 2
-    const box_scale = this.boxScale / 2
-
-    // These define the visualMap scaling.
-    let zMin = -Math.abs(map_scale - this.mesh[this.matrix].min)
-    let zMax = map_scale + this.mesh[this.matrix].max
-    if (this.scale === 0) {
-      // Applies the scale based on the min and max of the mesh.
-      zMin = this.mesh[this.matrix].min
-      zMax = this.mesh[this.matrix].max
-    }
-
-    // These define the 3d box scaling.
-    const zBoxMin = -Math.abs(this.mesh[this.matrix].mid - box_scale)
-    const zBoxMax = this.mesh[this.matrix].mid + box_scale
-
-    const legends = this.series.reduce((obj, series) => {
-      return Object.assign(
-        obj,
-        {
-          [series.name]: (
-            !series.name.endsWith('_flat') ||
-            (
-              this.flatSurface &&
-              series.name.startsWith(this.matrix)
-            )
-          )
-        }
-      )
-    }, Object.assign({}))
-
-    const opts = {
-      legend: {
-        show: false,
-        selected: legends
-      },
-      visualMap: {
-        min: zMin,
-        max: zMax,
-        dimension: 2,
-        seriesIndex: 0
-      },
-      zAxis3D: {
-        min: zBoxMin,
-        max: zBoxMax
-      }
-    }
-    return opts
-  }
-
-  get series () {
-    const matrix = this.matrix
-    const wireframe = this.wireframe
-    const series = [
-      {
-        type: 'surface',
-        name: matrix,
-        shading: 'color',
-        wireframe: {
-          show: wireframe
-        },
-        data: this.mesh[matrix].coordinates,
-        dataShape: this.mesh[matrix].dimensions
-      },
-      this.createFlatSeries('probed_matrix_flat'),
-      this.createFlatSeries('mesh_matrix_flat')
-    ]
-    return series
-  }
-
-  get graphics () {
-    const { range } = this.mesh[this.matrix]
-
-    return [{
-      type: 'text',
-      right: 10,
-      top: 0,
-      z: 100,
-      silent: true,
-      style: {
-        text: `${this.$t('app.general.label.range')}: ${range.toFixed(4)}`
-      }
-    }]
-  }
-
-  createFlatSeries (matrix: string) {
-    const wireframe = this.wireframe
-    return {
+const series = computed(() => {
+  const mx = matrix.value
+  const wf = wireframe.value
+  return [
+    {
       type: 'surface',
-      name: matrix,
-      itemStyle: {
-        color: [0.5, 0.5, 0.5, 0.25]
-      },
+      name: mx,
+      shading: 'color',
       wireframe: {
-        show: wireframe,
-        lineStyle: {
-          opacity: 0.25,
-          width: 1,
-          color: '#ffffff'
-        }
+        show: wf
       },
-      data: this.mesh[matrix].coordinates,
-      dataShape: this.mesh[matrix].dimensions
+      data: mesh.value[mx].coordinates,
+      dataShape: mesh.value[mx].dimensions
+    },
+    createFlatSeries('probed_matrix_flat'),
+    createFlatSeries('mesh_matrix_flat')
+  ]
+})
+
+const graphics = computed(() => {
+  const { range } = mesh.value[matrix.value]
+
+  return [{
+    type: 'text',
+    right: 10,
+    top: 0,
+    z: 100,
+    silent: true,
+    style: {
+      text: `${t('app.general.label.range')}: ${range.toFixed(4)}`
     }
-  }
+  }]
+})
 
-  calibrate () {
-    this.sendGcode('BED_MESH_CALIBRATE', this.$waits.onMeshCalibrate)
+function createFlatSeries (mx: string) {
+  return {
+    type: 'surface',
+    name: mx,
+    itemStyle: {
+      color: [0.5, 0.5, 0.5, 0.25]
+    },
+    wireframe: {
+      show: wireframe.value,
+      lineStyle: {
+        opacity: 0.25,
+        width: 1,
+        color: '#ffffff'
+      }
+    },
+    data: mesh.value[mx].coordinates,
+    dataShape: mesh.value[mx].dimensions
   }
+}
 
-  get matrix (): MatrixType {
-    return this.$typedState.mesh.matrix
-  }
+function calibrate () {
+  sendGcode('BED_MESH_CALIBRATE', Waits.onMeshCalibrate)
+}
 
-  get scale (): number {
-    return this.$typedState.mesh.scale
-  }
-
-  get boxScale (): number {
-    return this.$typedState.mesh.boxScale
-  }
-
-  get wireframe (): boolean {
-    return this.$typedState.mesh.wireframe
-  }
-
-  get flatSurface (): boolean {
-    return this.$typedState.mesh.flatSurface
-  }
-
-  // The current processed mesh data, if any.
-  get mesh (): AppMeshes {
-    return this.$typedGetters['mesh/getCurrentMeshData']
-  }
-
-  downloadImage () {
-    this.bedMeshChart.downloadImage()
-  }
+function downloadImage () {
+  bedMeshChartRef.value?.downloadImage()
 }
 </script>

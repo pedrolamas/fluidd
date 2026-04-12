@@ -37,7 +37,7 @@
     <div class="toolbar-supplemental">
       <div v-if="socketConnected && authenticated && klippyReady && showSaveConfigAndRestartForPendingChanges">
         <app-save-config-and-restart-btn
-          :loading="hasWait($waits.onSaveConfig)"
+          :loading="hasWait(Waits.onSaveConfig)"
           :disabled="printerPrinting || printerPaused"
           @click="saveConfigAndRestart"
         />
@@ -234,264 +234,242 @@
   </v-app-bar>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue'
 import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import { defaultState } from '@/store/layout/state'
-import StateMixin from '@/mixins/state'
-import ServicesMixin from '@/mixins/services'
-import FilesMixin from '@/mixins/files'
-import BrowserMixin from '@/mixins/browser'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
+import { useVuetify } from '@/composables/useVuetify'
 import { SocketActions } from '@/api/socketActions'
+import { Waits } from '@/globals'
+import { Filters } from '@/plugins/filters'
 import type { OutputPin } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
-import vuetify from '@/plugins/vuetify'
 import type { AppUser } from '@/store/auth/types'
+import { useRoute } from 'vue-router/composables'
 
-@Component({
-  components: {
-    UserPasswordDialog,
-    PendingChangesDialog,
-    AppSaveConfigAndRestartBtn,
-    AppUploadAndPrintBtn
-  }
-})
-export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin, BrowserMixin) {
-  menu = false
-  userPasswordDialogOpen = false
-  pendingChangesDialogOpen = false
+defineEmits<{
+  (e: 'navdrawer'): void
+  (e: 'toolsdrawer'): void
+}>()
 
-  get supportsAuth (): boolean {
-    return this.$typedGetters['server/componentSupport']('authorization')
-  }
+const { hasWait, sendGcode, emergencyStop, klippyReady, socketConnected, authenticated, printerPrinting, printerPaused } = useStateMixin()
+const { uploadFile } = useFilesMixin()
+const { isMobileViewport } = useBrowserMixin()
+const { typedGetters, typedState, typedCommit, typedDispatch } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
+const vuetify = useVuetify()
+const route = useRoute()
 
-  get instanceName (): string {
-    return this.$typedState.config.uiSettings.general.instanceName
-  }
+const userPasswordDialogOpen = ref(false)
+const pendingChangesDialogOpen = ref(false)
 
-  get hasUpdates (): boolean {
-    return this.$typedGetters['version/hasUpdates']
-  }
+const supportsAuth = computed<boolean>(() => typedGetters['server/componentSupport']('authorization'))
 
-  get saveConfigPending (): boolean {
-    return this.$typedGetters['printer/getSaveConfigPending']
-  }
+const instanceName = computed<string>(() => typedState.config.uiSettings.general.instanceName)
 
-  get saveConfigPendingItems (): Klipper.ConfigState {
-    return this.$typedGetters['printer/getSaveConfigPendingItems']
-  }
+const saveConfigPending = computed<boolean>(() => typedGetters['printer/getSaveConfigPending'])
 
-  get showSaveConfigAndRestartForPendingChanges (): boolean {
-    if (!this.showSaveConfigAndRestart || !this.saveConfigPending) {
-      return false
-    }
+const saveConfigPendingItems = computed<Klipper.ConfigState>(() => typedGetters['printer/getSaveConfigPendingItems'])
 
-    const sectionsToIgnore = this.sectionsToIgnorePendingConfigurationChanges
-
-    return (
-      sectionsToIgnore.length === 0 ||
-      Object.keys(this.saveConfigPendingItems)
-        .filter(key => !sectionsToIgnore.includes(key))
-        .length > 0
-    )
-  }
-
-  get devicePowerComponentEnabled (): boolean {
-    return this.$typedGetters['server/componentSupport']('power')
-  }
-
-  get inLayout (): boolean {
-    return (this.$typedState.config.layoutMode)
-  }
-
-  get showSaveConfigAndRestart (): boolean {
-    return this.$typedState.config.uiSettings.general.showSaveConfigAndRestart
-  }
-
-  get sectionsToIgnorePendingConfigurationChanges (): string[] {
-    return this.$typedState.config.uiSettings.general.sectionsToIgnorePendingConfigurationChanges
-  }
-
-  get showUploadAndPrint (): boolean {
-    return this.$typedState.config.uiSettings.general.showUploadAndPrint
-  }
-
-  get topNavPowerToggle () {
-    const topNavPowerToggle: string | null = this.$typedState.config.uiSettings.general.topNavPowerToggle
-
-    if (!topNavPowerToggle) return null
-
-    const [name, type] = topNavPowerToggle.split(':')
-
-    switch (type) {
-      case 'klipper': {
-        const device: OutputPin | undefined = this.$typedGetters['printer/getPinByName'](name)
-
-        if (!device) return null
-
-        return {
-          type,
-          name: device?.prettyName ?? name,
-          device
-        }
-      }
-
-      default: {
-        const device: Moonraker.Power.Device | undefined = this.$typedGetters['power/getDeviceByName'](topNavPowerToggle)
-
-        if (!device) return null
-
-        return {
-          type: 'moonraker' as const,
-          name: this.$filters.prettyCase(topNavPowerToggle),
-          device
-        }
-      }
-    }
-  }
-
-  get topNavPowerDeviceOn (): boolean {
-    const { type, device } = this.topNavPowerToggle || {}
-
-    if (!device) return false
-
-    switch (type) {
-      case 'moonraker':
-        return device.status === 'on'
-
-      case 'klipper':
-        return device.value !== 0
-    }
-
+const showSaveConfigAndRestartForPendingChanges = computed<boolean>(() => {
+  if (!showSaveConfigAndRestart.value || !saveConfigPending.value) {
     return false
   }
 
-  get topNavPowerDeviceDisabled (): boolean {
-    const { type, device } = this.topNavPowerToggle || {}
+  const sectionsToIgnore = sectionsToIgnorePendingConfigurationChanges.value
 
-    if (!device) return true
+  return (
+    sectionsToIgnore.length === 0 ||
+    Object.keys(saveConfigPendingItems.value)
+      .filter(key => !sectionsToIgnore.includes(key))
+      .length > 0
+  )
+})
 
-    switch (type) {
-      case 'moonraker':
-        return (this.printerPrinting && device.locked_while_printing) || ['init', 'error'].includes(device.status) || (!this.devicePowerComponentEnabled)
+const devicePowerComponentEnabled = computed<boolean>(() => typedGetters['server/componentSupport']('power'))
 
-      case 'klipper':
-        return !this.klippyReady
+const inLayout = computed<boolean>(() => typedState.config.layoutMode)
+
+const showSaveConfigAndRestart = computed<boolean>(() => typedState.config.uiSettings.general.showSaveConfigAndRestart)
+
+const sectionsToIgnorePendingConfigurationChanges = computed<string[]>(
+  () => typedState.config.uiSettings.general.sectionsToIgnorePendingConfigurationChanges
+)
+
+const showUploadAndPrint = computed<boolean>(() => typedState.config.uiSettings.general.showUploadAndPrint)
+
+const topNavPowerToggle = computed(() => {
+  const topNavPowerToggle: string | null = typedState.config.uiSettings.general.topNavPowerToggle
+
+  if (!topNavPowerToggle) return null
+
+  const [name, type] = topNavPowerToggle.split(':')
+
+  switch (type) {
+    case 'klipper': {
+      const device: OutputPin | undefined = typedGetters['printer/getPinByName'](name)
+
+      if (!device) return null
+
+      return {
+        type,
+        name: device?.prettyName ?? name,
+        device
+      }
     }
 
-    return true
+    default: {
+      const device: Moonraker.Power.Device | undefined = typedGetters['power/getDeviceByName'](topNavPowerToggle)
+
+      if (!device) return null
+
+      return {
+        type: 'moonraker' as const,
+        name: Filters.prettyCase(topNavPowerToggle),
+        device
+      }
+    }
+  }
+})
+
+const topNavPowerDeviceOn = computed<boolean>(() => {
+  const { type, device } = topNavPowerToggle.value || {}
+
+  if (!device) return false
+
+  switch (type) {
+    case 'moonraker':
+      return device.status === 'on'
+
+    case 'klipper':
+      return device.value !== 0
   }
 
-  get enableKeyboardShortcuts (): boolean {
-    return this.$typedState.config.uiSettings.general.enableKeyboardShortcuts
+  return false
+})
+
+const topNavPowerDeviceDisabled = computed<boolean>(() => {
+  const { type, device } = topNavPowerToggle.value || {}
+
+  if (!device) return true
+
+  switch (type) {
+    case 'moonraker':
+      return (printerPrinting.value && device.locked_while_printing) || ['init', 'error'].includes(device.status) || (!devicePowerComponentEnabled.value)
+
+    case 'klipper':
+      return !klippyReady.value
   }
 
-  handleExitLayout () {
-    this.$typedCommit('config/setLayoutMode', false)
-  }
+  return true
+})
 
-  get isDashboard () {
-    return this.$route.name === 'home'
-  }
+const enableKeyboardShortcuts = computed<boolean>(() => typedState.config.uiSettings.general.enableKeyboardShortcuts)
 
-  handleResetLayout () {
-    const pathLayouts = [
-      'diagnostics'
-    ]
+function handleExitLayout () {
+  typedCommit('config/setLayoutMode', false)
+}
 
-    const pathLayout = pathLayouts.includes(this.$route.name ?? '')
-      ? this.$route.name
-      : undefined
-    const layoutDefaultState = pathLayout
-      ? defaultState().layouts[pathLayout]
-      : this.$typedGetters['layout/getLayout']('dashboard')!
+const isDashboard = computed(() => route.name === 'home')
 
-    const toReset = pathLayout ?? this.$typedGetters['layout/getSpecificLayoutName']
+function handleResetLayout () {
+  const pathLayouts = [
+    'diagnostics'
+  ]
 
-    this.$typedDispatch('layout/onLayoutChange', {
-      name: toReset,
-      value: layoutDefaultState
-    })
-  }
+  const pathLayout = pathLayouts.includes(route.name ?? '')
+    ? route.name
+    : undefined
+  const layoutDefaultState = pathLayout
+    ? defaultState().layouts[pathLayout]
+    : typedGetters['layout/getLayout']('dashboard')!
 
-  get currentLayoutName () {
-    return this.$typedGetters['layout/getSpecificLayoutName']
-  }
+  const toReset = pathLayout ?? typedGetters['layout/getSpecificLayoutName']
 
-  get currentUser (): AppUser | null {
-    return this.$typedState.auth.currentUser
-  }
+  typedDispatch('layout/onLayoutChange', {
+    name: toReset,
+    value: layoutDefaultState
+  })
+}
 
-  get currentBreakpoint () {
-    return vuetify.framework.breakpoint.name
-  }
+const currentLayoutName = computed(() => typedGetters['layout/getSpecificLayoutName'])
 
-  handleSetDefaultLayout () {
-    this.$typedDispatch('layout/onLayoutChange', {
-      name: 'dashboard',
-      value: this.$typedGetters['layout/getLayout'](this.currentLayoutName)!
-    })
-  }
+const currentUser = computed<AppUser | null>(() => typedState.auth.currentUser)
 
-  handleResetDefaultLayout () {
-    this.$typedDispatch('layout/onLayoutChange', {
-      name: 'dashboard',
-      value: defaultState().layouts.dashboard
-    })
-  }
+const currentBreakpoint = computed(() => vuetify.framework.breakpoint.name)
 
-  async handlePowerToggle () {
-    const { type, device } = this.topNavPowerToggle || {}
+function handleSetDefaultLayout () {
+  typedDispatch('layout/onLayoutChange', {
+    name: 'dashboard',
+    value: typedGetters['layout/getLayout'](currentLayoutName.value)!
+  })
+}
 
-    if (!device) return
+function handleResetDefaultLayout () {
+  typedDispatch('layout/onLayoutChange', {
+    name: 'dashboard',
+    value: defaultState().layouts.dashboard
+  })
+}
 
-    const confirmOnPowerDeviceChange: boolean = this.$typedState.config.uiSettings.general.confirmOnPowerDeviceChange
+async function handlePowerToggle () {
+  const { type, device } = topNavPowerToggle.value || {}
 
-    const result = (
-      !confirmOnPowerDeviceChange ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_power_device_toggle'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-      )
+  if (!device) return
+
+  const confirmOnPowerDeviceChange: boolean = typedState.config.uiSettings.general.confirmOnPowerDeviceChange
+
+  const result = (
+    !confirmOnPowerDeviceChange ||
+    await confirm(
+      tc('app.general.simple_form.msg.confirm_power_device_toggle'),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
+  )
 
-    if (result) {
-      switch (type) {
-        case 'moonraker': {
-          const state = (device.status === 'on') ? 'off' : 'on'
-          SocketActions.machineDevicePowerSetDevice(device.device, state)
-          break
-        }
+  if (result) {
+    switch (type) {
+      case 'moonraker': {
+        const state = (device.status === 'on') ? 'off' : 'on'
+        SocketActions.machineDevicePowerSetDevice(device.device, state)
+        break
+      }
 
-        case 'klipper': {
-          const value = (device.value !== 0) ? 0 : device.scale
-          this.sendGcode(`SET_PIN PIN=${encodeGcodeParamValue(device.name)} VALUE=${value}`, `${this.$waits.onSetOutputPin}${device.name}`)
-          break
-        }
+      case 'klipper': {
+        const value = (device.value !== 0) ? 0 : device.scale
+        sendGcode(`SET_PIN PIN=${encodeGcodeParamValue(device.name)} VALUE=${value}`, `${Waits.onSetOutputPin}${device.name}`)
+        break
       }
     }
   }
+}
 
-  handleUploadAndPrint (file: File) {
-    this.uploadFile(file, '/', 'gcodes', true)
-  }
+function handleUploadAndPrint (file: File) {
+  uploadFile(file, '/', 'gcodes', true)
+}
 
-  saveConfigAndRestart (force = false) {
-    if (!force) {
-      const confirmOnSaveConfigAndRestart: boolean = this.$typedState.config.uiSettings.general.confirmOnSaveConfigAndRestart
+function saveConfigAndRestart (force = false) {
+  if (!force) {
+    const confirmOnSaveConfigAndRestart: boolean = typedState.config.uiSettings.general.confirmOnSaveConfigAndRestart
 
-      if (confirmOnSaveConfigAndRestart) {
-        this.pendingChangesDialogOpen = true
+    if (confirmOnSaveConfigAndRestart) {
+      pendingChangesDialogOpen.value = true
 
-        return
-      }
+      return
     }
-
-    this.sendGcode('SAVE_CONFIG', this.$waits.onSaveConfig)
   }
+
+  sendGcode('SAVE_CONFIG', Waits.onSaveConfig)
 }
 </script>
 

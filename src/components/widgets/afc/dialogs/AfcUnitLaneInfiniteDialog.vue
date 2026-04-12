@@ -29,56 +29,51 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class AfcUnitLaneInfiniteDialog extends Mixins(StateMixin, AfcMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  name: string
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  get lane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
-  }
+const { sendGcode } = useStateMixin()
+const { afcLanes, getAfcLaneObject } = useAfcMixin()
 
-  get runoutLane (): string {
-    return this.lane?.runout_lane ?? 'NONE'
-  }
+const open = computed({
+  get: () => props.value ?? false,
+  set: (value: boolean) => emit('input', value)
+})
 
-  get laneList (): string[] {
-    const laneList: string[] = []
+const currentLane = computed((): Klipper.AfcLaneState | undefined => getAfcLaneObject(props.name))
 
-    for (const laneName of this.afcLanes) {
-      if (laneName === this.name) {
-        continue
-      }
+const runoutLane = computed(() => currentLane.value?.runout_lane ?? 'NONE')
 
-      const lane = this.getAfcLaneObject(laneName)
+const laneList = computed(() => {
+  const list: string[] = []
 
-      if (
-        lane?.prep === true &&
-        lane.load === true
-      ) {
-        laneList.push(lane.name)
-      }
+  for (const laneName of afcLanes.value) {
+    if (laneName === props.name) continue
+
+    const l = getAfcLaneObject(laneName)
+
+    if (l?.prep === true && l.load === true) {
+      list.push(l.name)
     }
-
-    return [
-      'NONE',
-      ...laneList.sort((a, b) => a.localeCompare(b))
-    ]
   }
 
-  setRunout (newLane: string) {
-    this.sendGcode(`SET_RUNOUT LANE=${encodeGcodeParamValue(this.name)} RUNOUT=${encodeGcodeParamValue(newLane)}`)
+  return ['NONE', ...list.sort((a, b) => a.localeCompare(b))]
+})
 
-    this.open = false
-  }
+function setRunout (newLane: string) {
+  sendGcode(`SET_RUNOUT LANE=${encodeGcodeParamValue(props.name)} RUNOUT=${encodeGcodeParamValue(newLane)}`)
+  open.value = false
 }
 </script>

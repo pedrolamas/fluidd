@@ -33,51 +33,45 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { TextSortOrder } from '@/store/config/types'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class FileEditorSettings extends Vue {
-  get textSortOrder (): TextSortOrder {
-    return this.$typedState.config.uiSettings.general.textSortOrder
-  }
+const { typedState, typedDispatch } = useStore()
+const { t } = useI18n()
 
-  set textSortOrder (value: TextSortOrder) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.textSortOrder',
-      value,
-      server: true
-    })
-  }
+const textSortOrder = computed({
+  get: (): TextSortOrder => typedState.config.uiSettings.general.textSortOrder,
+  set: (value: TextSortOrder) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.textSortOrder',
+    value,
+    server: true
+  })
+})
 
-  get availableTextSortOrders () {
-    return [
-      {
-        value: 'default',
-        text: this.$t('app.general.label.default')
-      },
-      {
-        value: 'numeric-prefix',
-        text: this.$t('app.general.label.numeric_prefix_sort')
-      },
-      {
-        value: 'version',
-        text: this.$t('app.general.label.version_sort')
-      }
-    ]
+const availableTextSortOrders = computed(() => [
+  {
+    value: 'default',
+    text: t('app.general.label.default')
+  },
+  {
+    value: 'numeric-prefix',
+    text: t('app.general.label.numeric_prefix_sort')
+  },
+  {
+    value: 'version',
+    text: t('app.general.label.version_sort')
   }
+])
 
-  get filesAndFoldersDragAndDrop (): boolean {
-    return this.$typedState.config.uiSettings.general.filesAndFoldersDragAndDrop
-  }
-
-  set filesAndFoldersDragAndDrop (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.filesAndFoldersDragAndDrop',
-      value,
-      server: true
-    })
-  }
-}
+const filesAndFoldersDragAndDrop = computed({
+  get: (): boolean => typedState.config.uiSettings.general.filesAndFoldersDragAndDrop,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.filesAndFoldersDragAndDrop',
+    value,
+    server: true
+  })
+})
 </script>

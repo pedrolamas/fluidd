@@ -27,9 +27,10 @@
     </v-card-text>
   </collapsable-card>
 </template>
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import AfcCardMessage from '@/components/widgets/afc/AfcCardMessage.vue'
 import AfcCardBypass from '@/components/widgets/afc/AfcCardBypass.vue'
 import AfcCardExtruder from '@/components/widgets/afc/AfcCardExtruder.vue'
@@ -37,25 +38,13 @@ import AfcCardUnit from '@/components/widgets/afc/AfcCardUnit.vue'
 import AfcCardButtons from '@/components/widgets/afc/AfcCardButtons.vue'
 import AfcCardSettings from '@/components/widgets/afc/AfcCardSettings.vue'
 
-@Component({
-  components: {
-    AfcCardMessage,
-    AfcCardBypass,
-    AfcCardExtruder,
-    AfcCardUnit,
-    AfcCardButtons,
-    AfcCardSettings
-  }
-})
-export default class AfcCard extends Mixins(AfcMixin) {
-  get filteredExtruders (): string[] {
-    return this.afcExtruders
-      .filter(extruder => !this.afcHiddenExtruders.includes(extruder))
-  }
+const { afcExtruders, afcHiddenExtruders, afcUnits, afcHiddenUnits } = useAfcMixin()
 
-  get filteredUnits (): string[] {
-    return this.afcUnits
-      .filter(unit => !this.afcHiddenUnits.includes(unit))
-  }
-}
+const filteredExtruders = computed(() =>
+  afcExtruders.value.filter(extruder => !afcHiddenExtruders.value.includes(extruder))
+)
+
+const filteredUnits = computed(() =>
+  afcUnits.value.filter(unit => !afcHiddenUnits.value.includes(unit))
+)
 </script>

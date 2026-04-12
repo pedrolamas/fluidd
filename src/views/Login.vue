@@ -98,48 +98,48 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, onMounted, getCurrentInstance } from 'vue'
+import { useStore } from '@/composables/useStore'
 import { appInit } from '@/init'
 import { consola } from 'consola'
 import type { InstanceConfig } from '@/store/config/types'
 
-@Component({})
-export default class Login extends Vue {
-  username = ''
-  password = ''
-  error = false
-  loading = false
-  source = 'moonraker'
-  availableSources = [this.source]
+const { typedState, typedGetters, typedDispatch } = useStore()
 
-  async mounted () {
-    const authInfo = await this.$typedDispatch('auth/getAuthInfo')
-    this.source = authInfo.defaultSource ?? this.source
-    this.availableSources = authInfo.availableSources ?? this.availableSources
+const username = ref('')
+const password = ref('')
+const error = ref(false)
+const loading = ref(false)
+const source = ref('moonraker')
+const availableSources = ref([source.value])
+
+onMounted(async () => {
+  const authInfo = await typedDispatch('auth/getAuthInfo')
+  source.value = authInfo.defaultSource ?? source.value
+  availableSources.value = authInfo.availableSources ?? availableSources.value
+})
+
+const handleLogin = async () => {
+  error.value = false
+  loading.value = true
+  try {
+    await typedDispatch('auth/login', { username: username.value, password: password.value, source: source.value })
+  } catch {
+    error.value = true
   }
+  loading.value = false
 
-  async handleLogin () {
-    this.error = false
-    this.loading = true
-    try {
-      await this.$typedDispatch('auth/login', { username: this.username, password: this.password, source: this.source })
-    } catch {
-      this.error = true
-    }
-    this.loading = false
+  // Re-init the app.
+  if (!error.value) {
+    const instance: InstanceConfig | undefined = typedGetters['config/getCurrentInstance']
 
-    // Re-init the app.
-    if (!this.error) {
-      const instance: InstanceConfig | undefined = this.$typedGetters['config/getCurrentInstance']
+    const config = await appInit(instance, typedState.config.hostConfig)
 
-      const config = await appInit(instance, this.$typedState.config.hostConfig)
-
-      // Reconnect the socket with the new instance url.
-      if (config.apiConnected && config.apiAuthenticated) {
-        consola.debug('Activating socket with config', config)
-        this.$socket.connect(config.apiConfig.socketUrl)
-      }
+    // Reconnect the socket with the new instance url.
+    if (config.apiConnected && config.apiAuthenticated) {
+      consola.debug('Activating socket with config', config)
+      getCurrentInstance()?.proxy?.$socket.connect(config.apiConfig.socketUrl)
     }
   }
 }

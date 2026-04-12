@@ -9,15 +9,12 @@
     {{ $t('app.afc.BypassActive') }}
   </v-alert>
 </template>
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
 
-@Component
-export default class AfcCardBypass extends Mixins(StateMixin, AfcMixin) {
-  get bypassState (): boolean {
-    return this.afc?.bypass_state === true
-  }
-}
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+
+const { afc } = useAfcMixin()
+
+const bypassState = computed(() => afc.value?.bypass_state === true)
 </script>

@@ -57,7 +57,7 @@
             </v-expansion-panel-header>
 
             <v-expansion-panel-content>
-              <app-setting :title="$t('app.setting.label.name')">
+              <app-setting :title="t('app.setting.label.name')">
                 <v-text-field
                   v-model="metric.name"
                   filled
@@ -65,14 +65,14 @@
                   single-line
                   hide-details="auto"
                   :rules="[
-                    $rules.required
+                    Rules.required
                   ]"
                 />
               </app-setting>
 
               <v-divider />
 
-              <app-setting :title="$t('app.setting.label.line_color')">
+              <app-setting :title="t('app.setting.label.line_color')">
                 <app-color-picker
                   :value="metric.style.lineColor"
                   :title="metric.name"
@@ -83,7 +83,7 @@
 
               <v-divider />
 
-              <app-setting :title="$t('app.setting.label.line_style')">
+              <app-setting :title="t('app.setting.label.line_style')">
                 <v-select
                   v-model="metric.style.lineStyle"
                   filled
@@ -96,7 +96,7 @@
 
               <v-divider />
 
-              <app-setting :title="$t('app.setting.label.fill_color')">
+              <app-setting :title="t('app.setting.label.fill_color')">
                 <app-color-picker
                   :value="metric.style.fillColor ?? metric.style.lineColor"
                   :title="metric.name"
@@ -110,7 +110,7 @@
               <app-named-slider
                 v-model="metric.style.fillOpacity"
                 class="px-4 py-3"
-                :label="$t('app.setting.label.fill_opacity')"
+                :label="t('app.setting.label.fill_opacity')"
                 :min="0"
                 :max="100"
                 suffix="%"
@@ -118,7 +118,7 @@
 
               <v-divider />
 
-              <app-setting :title="$t('app.setting.label.show_legend')">
+              <app-setting :title="t('app.setting.label.show_legend')">
                 <v-switch
                   v-model="metric.style.displayLegend"
                   hide-details
@@ -147,7 +147,7 @@
             <v-icon small>
               $plus
             </v-icon>
-            {{ $t('app.setting.btn.add_metric') }}
+            {{ t('app.setting.btn.add_metric') }}
           </app-btn>
         </v-row>
       </template>
@@ -155,40 +155,42 @@
   </v-stepper>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, reactive, watch } from 'vue'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
 import MetricsCollectorConfig from './MetricsCollectorConfig.vue'
 import { defaultState } from '@/store/layout/state'
 
-@Component({
-  components: {
-    MetricsCollectorConfig
-  }
-})
-export default class MetricsConfigStep extends Vue {
-  @Prop({ type: Object, required: true })
-  readonly config!: DiagnosticsCardConfig
+const props = defineProps<{
+  config: DiagnosticsCardConfig
+}>()
 
-  currentStep = 1
-  steps = [this.$t('app.setting.label.left_y'), this.$t('app.setting.label.right_y')]
+const config = reactive<DiagnosticsCardConfig>(JSON.parse(JSON.stringify(props.config)))
 
-  lineStyles = [
-    { text: this.$t('app.setting.label.solid'), value: 'solid' },
-    { text: this.$t('app.setting.label.dotted'), value: 'dotted' },
-    { text: this.$t('app.setting.label.dashed'), value: 'dashed' }
-  ]
+watch(() => props.config, (v) => Object.assign(config, JSON.parse(JSON.stringify(v))), { deep: true })
 
-  addMetric (axis: number) {
-    const defaultCard = defaultState().layouts.diagnostics.container1[0] as DiagnosticsCardConfig
-    const defaultMetric = defaultCard.axes[0].metrics[0]
+const { t } = useI18n()
 
-    this.config.axes[axis].metrics.push(defaultMetric)
-  }
+const currentStep = ref(1)
+const steps = [t('app.setting.label.left_y'), t('app.setting.label.right_y')]
 
-  removeMetric (axis: number, metric: number) {
-    this.config.axes[axis].metrics.splice(metric, 1)
-  }
+const lineStyles = [
+  { text: t('app.setting.label.solid'), value: 'solid' },
+  { text: t('app.setting.label.dotted'), value: 'dotted' },
+  { text: t('app.setting.label.dashed'), value: 'dashed' }
+]
+
+function addMetric (axis: number) {
+  const defaultCard = defaultState().layouts.diagnostics.container1[0] as DiagnosticsCardConfig
+  const defaultMetric = defaultCard.axes[0].metrics[0]
+
+  config.axes[axis].metrics.push(defaultMetric)
+}
+
+function removeMetric (axis: number, metric: number) {
+  config.axes[axis].metrics.splice(metric, 1)
 }
 </script>
 

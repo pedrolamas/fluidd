@@ -55,7 +55,7 @@
         v-for="(device, index) in powerDevices"
         :key="index"
         :disabled="(device.status === 'error' || device.status === 'init' || (printerPrinting && device.locked_while_printing))"
-        :loading="hasWait(`${$waits.onDevicePowerToggle}/${device.device}`)"
+        :loading="hasWait(`${Waits.onDevicePowerToggle}/${device.device}`)"
         @click="togglePowerDevice(device)"
       >
         <v-list-item-content>
@@ -133,143 +133,134 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ServicesMixin from '@/mixins/services'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useServicesMixin } from '@/composables/useServicesMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 import { SocketActions } from '@/api/socketActions'
+import { Waits } from '@/globals'
 import type { ServiceInfo } from '@/store/server/types'
 
-@Component({})
-export default class SystemCommands extends Mixins(StateMixin, ServicesMixin) {
-  get serverInfo (): Moonraker.Server.InfoResponse {
-    return this.$typedState.server.info
-  }
+const emit = defineEmits<{
+  (e: 'click'): void
+}>()
 
-  get hosted (): boolean {
-    return this.$typedState.config.hostConfig.hosted
-  }
+const { hasWait, printerPrinting } = useStateMixin()
+const { moonrakerServiceName, hostReboot, hostShutdown, serviceRestartByName, serviceStartByName, serviceStopByName } = useServicesMixin()
+const { typedGetters, typedState } = useStore()
+const confirm = useConfirm()
+const { t, tc } = useI18n()
 
-  get powerDevices (): Moonraker.Power.Device[] {
-    return this.$typedGetters['power/getDevices']
-  }
+const powerDevices = computed<Moonraker.Power.Device[]>(() => typedGetters['power/getDevices'])
 
-  get devicePowerComponentEnabled (): boolean {
-    return this.$typedGetters['server/componentSupport']('power')
-  }
+const devicePowerComponentEnabled = computed<boolean>(() => typedGetters['server/componentSupport']('power'))
 
-  get services (): ServiceInfo[] {
-    const services: ServiceInfo[] = this.$typedGetters['server/getServices']
+const services = computed<ServiceInfo[]>(() => typedGetters['server/getServices'])
 
-    return services
-  }
+const systemInfo = computed<Moonraker.Machine.SystemInfo | null>(() => typedState.server.system_info)
 
-  get systemInfo (): Moonraker.Machine.SystemInfo | null {
-    return this.$typedState.server.system_info
-  }
+const canControlHost = computed<boolean>(() => systemInfo.value?.virtualization?.virt_type !== 'container')
 
-  get canControlHost (): boolean {
-    return this.systemInfo?.virtualization?.virt_type !== 'container'
-  }
-
-  async checkDialog (executableFunction: (service: ServiceInfo) => Promise<unknown>, service: ServiceInfo, action: string) {
-    const result = (
-      !(
-        this.printerPrinting ||
-        ['restart', 'stop'].includes(action)
-      ) ||
-      await this.$confirm(
-        this.$t(
-          `app.general.simple_form.msg.confirm_service_${action}`,
-          { name: service.name })?.toString(),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-      )
+async function checkDialog (executableFunction: (service: ServiceInfo) => Promise<unknown>, service: ServiceInfo, action: string) {
+  const result = (
+    !(
+      printerPrinting.value ||
+      ['restart', 'stop'].includes(action)
+    ) ||
+    await confirm(
+      t(
+        `app.general.simple_form.msg.confirm_service_${action}`,
+        { name: service.name })?.toString(),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
+  )
 
-    if (result) {
-      this.$emit('click')
-      await executableFunction(service)
-    }
+  if (result) {
+    emit('click')
+    await executableFunction(service)
   }
+}
 
-  async serviceRestart (service: ServiceInfo) {
-    await this.serviceRestartByName(service.name)
+async function serviceRestart (service: ServiceInfo) {
+  await serviceRestartByName(service.name)
+}
+
+async function serviceStart (service: ServiceInfo) {
+  await serviceStartByName(service.name)
+}
+
+async function serviceStop (service: ServiceInfo) {
+  await serviceStopByName(service.name)
+}
+
+async function handleHostReboot () {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_reboot_host'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    emit('click')
+    hostReboot()
   }
+}
 
-  async serviceStart (service: ServiceInfo) {
-    await this.serviceStartByName(service.name)
+async function handleHostShutdown () {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_shutdown_host'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    emit('click')
+    hostShutdown()
   }
+}
 
-  async serviceStop (service: ServiceInfo) {
-    await this.serviceStopByName(service.name)
-  }
+async function togglePowerDevice (device: Moonraker.Power.Device) {
+  const confirmOnPowerDeviceChange: boolean = typedState.config.uiSettings.general.confirmOnPowerDeviceChange
 
-  async handleHostReboot () {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_reboot_host'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  const result = (
+    !confirmOnPowerDeviceChange ||
+    await confirm(
+      tc('app.general.simple_form.msg.confirm_power_device_toggle'),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
     )
+  )
 
-    if (result) {
-      this.$emit('click')
-      this.hostReboot()
+  if (result) {
+    const state = (device.status === 'on') ? 'off' : 'on'
+    SocketActions.machineDevicePowerSetDevice(device.device, state)
+  }
+}
+
+function getPowerIcon (device: Moonraker.Power.Device) {
+  switch (device.status) {
+    case 'error': {
+      return '$error'
+    }
+    case 'init': {
+      return '$dots'
+    }
+    case 'on': {
+      return '$powerOn'
+    }
+    case 'off': {
+      return '$powerOff'
     }
   }
+}
 
-  async handleHostShutdown () {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_shutdown_host'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$emit('click')
-      this.hostShutdown()
+function getPowerButtonText (device: Moonraker.Power.Device): string {
+  switch (device.status) {
+    case 'error': {
+      return `${device.device} [error]`
     }
-  }
-
-  async togglePowerDevice (device: Moonraker.Power.Device) {
-    const confirmOnPowerDeviceChange: boolean = this.$typedState.config.uiSettings.general.confirmOnPowerDeviceChange
-
-    const result = (
-      !confirmOnPowerDeviceChange ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_power_device_toggle'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-      )
-    )
-
-    if (result) {
-      const state = (device.status === 'on') ? 'off' : 'on'
-      SocketActions.machineDevicePowerSetDevice(device.device, state)
-    }
-  }
-
-  getPowerIcon (device: Moonraker.Power.Device) {
-    switch (device.status) {
-      case 'error': {
-        return '$error'
-      }
-      case 'init': {
-        return '$dots'
-      }
-      case 'on': {
-        return '$powerOn'
-      }
-      case 'off': {
-        return '$powerOff'
-      }
-    }
-  }
-
-  getPowerButtonText (device: Moonraker.Power.Device): string {
-    switch (device.status) {
-      case 'error': {
-        return `${device.device} [error]`
-      }
-      default: {
-        return `${device.device}`
-      }
+    default: {
+      return `${device.device}`
     }
   }
 }

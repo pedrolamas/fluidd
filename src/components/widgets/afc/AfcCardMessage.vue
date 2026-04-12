@@ -24,33 +24,32 @@
     </v-row>
   </v-alert>
 </template>
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
 import { consola } from 'consola'
 
-@Component
-export default class AfcCardMessage extends Mixins(StateMixin, AfcMixin) {
-  get type (): string {
-    const type = this.afc?.message?.type ?? 'error'
-    const possibleTypes = ['info', 'warning', 'success', 'error']
+const { sendGcode } = useStateMixin()
+const { afc } = useAfcMixin()
 
-    if (!possibleTypes.includes(type)) {
-      consola.warn(`AfcCardMessage: Invalid message type "${type}" detected. Defaulting to "error".`)
-      return 'error'
-    }
+const type = computed(() => {
+  const t = afc.value?.message?.type ?? 'error'
+  const possibleTypes = ['info', 'warning', 'success', 'error']
 
-    return type
+  if (!possibleTypes.includes(t)) {
+    consola.warn(`AfcCardMessage: Invalid message type "${t}" detected. Defaulting to "error".`)
+    return 'error'
   }
 
-  get message (): string | undefined | null {
-    return this.afc?.message?.message
-  }
+  return t
+})
 
-  clearMessage () {
-    this.sendGcode('AFC_CLEAR_MESSAGE')
-  }
+const message = computed(() => afc.value?.message?.message)
+
+function clearMessage () {
+  sendGcode('AFC_CLEAR_MESSAGE')
 }
 </script>
 

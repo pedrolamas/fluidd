@@ -27,7 +27,7 @@
           class="mt-0"
           hide-details="auto"
           :rules="[
-            $rules.required
+            Rules.required
           ]"
         />
       </app-setting>
@@ -102,7 +102,7 @@
             single-line
             hide-details="auto"
             :rules="[
-              $rules.required
+              Rules.required
             ]"
           />
         </app-setting>
@@ -134,7 +134,7 @@
           single-line
           hide-details="auto"
           :rules="[
-            $rules.required
+            Rules.required
           ]"
         />
       </app-setting>
@@ -152,7 +152,7 @@
           single-line
           hide-details="auto"
           :rules="[
-            $rules.required
+            Rules.required
           ]"
         />
       </app-setting>
@@ -173,8 +173,8 @@
             single-line
             hide-details="auto"
             :rules="[
-              $rules.required,
-              $rules.aspectRatioValid
+              Rules.required,
+              Rules.aspectRatioValid
             ]"
           />
         </app-setting>
@@ -183,20 +183,28 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { Rules } from '@/plugins/filters'
 
-@Component({})
-export default class CameraConfigDialog extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  camera: Moonraker.Webcam.Entry
+}>()
+const emit = defineEmits<{
+  (e: 'input', v: boolean | undefined): void
+  (e: 'save', camera: Moonraker.Webcam.Entry): void
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly camera!: Moonraker.Webcam.Entry
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  handleSave () {
-    this.$emit('save', this.camera)
-    this.open = false
-  }
+const camera = computed(() => props.camera)
+
+function handleSave () {
+  emit('save', props.camera)
+  open.value = false
 }
 </script>

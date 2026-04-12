@@ -11,35 +11,32 @@
   </v-list-item>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
 
-@Component
-export default class AfcCardSettingsExtruder extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  get showExtruder () {
-    return !this.afcHiddenExtruders
-      .includes(this.name)
-  }
+const { afcHiddenExtruders } = useAfcMixin()
+const { typedDispatch } = useStore()
 
-  set showExtruder (value: boolean) {
-    const values = new Set(this.afcHiddenExtruders)
-
+const showExtruder = computed({
+  get: () => !afcHiddenExtruders.value.includes(props.name),
+  set: (value: boolean) => {
+    const values = new Set(afcHiddenExtruders.value)
     if (value) {
-      values.delete(this.name)
+      values.delete(props.name)
     } else {
-      values.add(this.name)
+      values.add(props.name)
     }
-
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.afc.hiddenExtruders',
       value: [...values],
       server: true
     })
   }
-}
+})
 </script>

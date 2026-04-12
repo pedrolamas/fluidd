@@ -91,78 +91,63 @@
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { AppUser } from '@/store/auth/types'
-import { Component, Vue } from 'vue-property-decorator'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
 import UserConfigDialog from './UserConfigDialog.vue'
 import ApiKeyDialog from './ApiKeyDialog.vue'
 
-@Component({
-  components: {
-    UserConfigDialog,
-    ApiKeyDialog
-  }
+const { typedState, typedDispatch } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+
+const userDialogState = ref<any>({
+  open: false,
+  user: null,
+  handler: null
 })
-export default class AuthSettings extends Vue {
-  search = ''
-  categoryId?: string = undefined
 
-  userDialogState: any = {
-    open: false,
-    user: null,
-    handler: null
+const apiKeyDialogState = ref<any>({
+  open: false
+})
+
+const users = computed((): AppUser[] => typedState.auth.users)
+
+const currentUser = computed(() => {
+  const currentUser: AppUser | null = typedState.auth.currentUser
+  return currentUser?.username ?? ''
+})
+
+function handleAddUserDialog () {
+  userDialogState.value = {
+    open: true,
+    user: { username: '', password: '' },
+    handler: handleSaveUser
   }
+}
 
-  apiKeyDialogState: any = {
-    open: false
+function handleApiKeyDialog () {
+  apiKeyDialogState.value.open = true
+}
+
+async function handleRemoveUser (user: AppUser) {
+  const result = await confirm(
+    t('app.general.simple_form.msg.confirm_remove_user', { username: user.username }),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    typedDispatch('auth/removeUser', user)
   }
+}
 
-  get users (): AppUser[] {
-    return this.$typedState.auth.users
-  }
+async function handleSaveUser (user: AppUser) {
+  await typedDispatch('auth/addUser', user)
 
-  get currentUser () {
-    const currentUser: AppUser | null = this.$typedState.auth.currentUser
-
-    return currentUser?.username ?? ''
-  }
-
-  handleAddUserDialog () {
-    this.userDialogState = {
-      open: true,
-      user: { username: '', password: '' },
-      handler: this.handleSaveUser
-    }
-  }
-
-  handleEditUserDialog (user: AppUser) {
-    this.userDialogState = {
-      open: true,
-      user,
-      handler: this.handleSaveUser
-    }
-  }
-
-  handleApiKeyDialog () {
-    this.apiKeyDialogState.open = true
-  }
-
-  async handleRemoveUser (user: AppUser) {
-    const result = await this.$confirm(
-      this.$t('app.general.simple_form.msg.confirm_remove_user', { username: user.username }).toString(),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      this.$typedDispatch('auth/removeUser', user)
-    }
-  }
-
-  async handleSaveUser (user: AppUser) {
-    await this.$typedDispatch('auth/addUser', user)
-
-    // We only want to check trust if this is the first user being added.
-    if (this.users.length === 0) this.$typedDispatch('auth/checkTrust')
-  }
+  // We only want to check trust if this is the first user being added.
+  if (users.value.length === 0) typedDispatch('auth/checkTrust')
 }
 </script>

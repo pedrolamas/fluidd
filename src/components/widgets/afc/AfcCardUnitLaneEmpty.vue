@@ -36,33 +36,32 @@
     </v-row>
   </div>
 </template>
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useI18n } from '@/composables/useI18n'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component
-export default class AfcCardUnitLaneEmpty extends Mixins(StateMixin, AfcMixin) {
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const props = defineProps<{
+  name: string
+}>()
 
-  get lane (): Klipper.AfcLaneState | undefined {
-    return this.getAfcLaneObject(this.name)
-  }
+const { sendGcode } = useStateMixin()
+const { getAfcLaneObject } = useAfcMixin()
+const { t } = useI18n()
 
-  get prep (): boolean {
-    return this.lane?.prep === true
-  }
+const lane = computed((): Klipper.AfcLaneState | undefined => getAfcLaneObject(props.name))
 
-  get text (): string {
-    if (this.prep) return this.$t('app.afc.PrepDetected').toString()
+const prep = computed(() => lane.value?.prep === true)
 
-    return this.$t('app.afc.Empty').toString()
-  }
+const text = computed(() => {
+  if (prep.value) return t('app.afc.PrepDetected')
+  return t('app.afc.Empty')
+})
 
-  ejectLane () {
-    this.sendGcode(`LANE_UNLOAD LANE=${encodeGcodeParamValue(this.name)}`)
-  }
+function ejectLane () {
+  sendGcode(`LANE_UNLOAD LANE=${encodeGcodeParamValue(props.name)}`)
 }
 </script>

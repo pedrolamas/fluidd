@@ -34,10 +34,9 @@
   </v-toolbar>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
-
-@Component({})
-export default class JobQueueBulkActions extends Vue {
-}
+<script setup lang="ts">
+defineEmits<{
+  (e: 'multiply'): void
+  (e: 'remove'): void
+}>()
 </script>

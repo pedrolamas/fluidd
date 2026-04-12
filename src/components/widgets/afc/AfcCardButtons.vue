@@ -108,10 +108,13 @@
     </v-list>
   </v-menu>
 </template>
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import MacroBtn from '@/components/widgets/macros/MacroBtn.vue'
 import AfcSettingsDialog from '@/components/widgets/afc/dialogs/AfcSettingsDialog.vue'
 import type { GcodeCommands } from '@/store/printer/types'
@@ -133,136 +136,131 @@ type AfcMacro = {
   disabled?: boolean
 }
 
-@Component({
-  components: {
-    AfcSettingsDialog,
-    MacroBtn
+const { klippyReady, sendGcode, printerPrinting } = useStateMixin()
+const { afc } = useAfcMixin()
+const { typedState, typedGetters } = useStore()
+const { t } = useI18n()
+
+const showAfcSettings = ref(false)
+
+const printerSettings = computed((): Klipper.SettingsState =>
+  typedGetters['printer/getPrinterSettings']
+)
+
+const printerConfig = computed((): Klipper.ConfigState =>
+  typedGetters['printer/getPrinterConfig']
+)
+
+const availableCommands = computed((): GcodeCommands =>
+  typedGetters['printer/getAvailableCommands']
+)
+
+const commands = computed(() => {
+  const available = availableCommands.value
+  const cmds: AfcCommand[] = []
+
+  if ('AFC_CALIBRATION' in available) {
+    cmds.push({
+      icon: '$afcCalibration',
+      text: t('app.afc.Calibrate'),
+      command: 'AFC_CALIBRATION',
+      description: available['AFC_CALIBRATION'].help,
+      disabled: printerPrinting.value
+    })
   }
+
+  if (afc.value?.led_state === true) {
+    if ('TURN_OFF_AFC_LED' in available) {
+      cmds.push({
+        icon: '$afcTurnOffLed',
+        text: t('app.afc.LedOff'),
+        command: 'TURN_OFF_AFC_LED',
+        description: available['TURN_OFF_AFC_LED'].help
+      })
+    }
+  } else {
+    if ('TURN_ON_AFC_LED' in available) {
+      cmds.push({
+        icon: '$afcTurnOnLed',
+        text: t('app.afc.LedOn'),
+        command: 'TURN_ON_AFC_LED',
+        description: available['TURN_ON_AFC_LED'].help
+      })
+    }
+  }
+
+  if (
+    afc.value?.td1_present === true &&
+    'AFC_GET_TD_ONE_DATA' in available
+  ) {
+    cmds.push({
+      icon: '',
+      text: t('app.afc.CaptureTd'),
+      command: 'AFC_GET_TD_ONE_DATA',
+      description: available['AFC_GET_TD_ONE_DATA'].help,
+      disabled: printerPrinting.value
+    })
+  }
+
+  return cmds
 })
-export default class AfcCardButtons extends Mixins(StateMixin, AfcMixin) {
-  showAfcSettings = false
 
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
-  }
+const macros = computed(() => {
+  const settings: Klipper.AfcSettings | undefined = printerSettings.value.afc
+  const afcMacros: AfcMacro[] = []
 
-  get printerConfig (): Klipper.ConfigState {
-    return this.$typedGetters['printer/getPrinterConfig']
-  }
+  if (settings?.wipe) {
+    const macroName: string = settings.wipe_cmd || 'AFC_BRUSH'
+    const macro: Macro | undefined = typedGetters['macros/getMacroByName'](macroName)
 
-  get availableCommands (): GcodeCommands {
-    return this.$typedGetters['printer/getAvailableCommands']
-  }
-
-  get commands () {
-    const availableCommands = this.availableCommands
-
-    const commands: AfcCommand[] = []
-
-    if ('AFC_CALIBRATION' in availableCommands) {
-      commands.push({
-        icon: '$afcCalibration',
-        text: this.$t('app.afc.Calibrate').toString(),
-        command: 'AFC_CALIBRATION',
-        description: availableCommands['AFC_CALIBRATION'].help,
-        disabled: this.printerPrinting
+    if (macro != null) {
+      afcMacros.push({
+        text: t('app.afc.BrushNozzle'),
+        macroName,
+        macro,
+        disabled: printerPrinting.value
       })
     }
+  }
 
-    if (this.afc?.led_state === true) {
-      if ('TURN_OFF_AFC_LED' in availableCommands) {
-        commands.push({
-          icon: '$afcTurnOffLed',
-          text: this.$t('app.afc.LedOff').toString(),
-          command: 'TURN_OFF_AFC_LED',
-          description: availableCommands['TURN_OFF_AFC_LED'].help
-        })
-      }
-    } else {
-      if ('TURN_ON_AFC_LED' in availableCommands) {
-        commands.push({
-          icon: '$afcTurnOnLed',
-          text: this.$t('app.afc.LedOn').toString(),
-          command: 'TURN_ON_AFC_LED',
-          description: availableCommands['TURN_ON_AFC_LED'].help
-        })
-      }
-    }
+  if (settings?.park) {
+    const macroName: string = settings.park_cmd || 'AFC_PARK'
+    const macro: Macro | undefined = typedGetters['macros/getMacroByName'](macroName)
 
-    if (
-      this.afc?.td1_present === true &&
-      'AFC_GET_TD_ONE_DATA' in availableCommands
-    ) {
-      commands.push({
-        icon: '',
-        text: this.$t('app.afc.CaptureTd').toString(),
-        command: 'AFC_GET_TD_ONE_DATA',
-        description: availableCommands['AFC_GET_TD_ONE_DATA'].help,
-        disabled: this.printerPrinting
+    if (macro != null) {
+      afcMacros.push({
+        text: t('app.afc.ParkNozzle'),
+        macroName,
+        macro,
+        disabled: printerPrinting.value
       })
     }
-
-    return commands
   }
 
-  get macros () {
-    const settings: Klipper.AfcSettings | undefined = this.printerSettings.afc
+  return afcMacros
+})
 
-    const afcMacros: AfcMacro[] = []
+function downloadDebugJson () {
+  const printer: Klipper.PrinterState = typedState.printer.printer
 
-    if (settings?.wipe) {
-      const macroName: string = settings.wipe_cmd || 'AFC_BRUSH'
-      const macro: Macro | undefined = this.$typedGetters['macros/getMacroByName'](macroName)
-
-      if (macro != null) {
-        afcMacros.push({
-          text: this.$t('app.afc.BrushNozzle').toString(),
-          macroName,
-          macro,
-          disabled: this.printerPrinting
-        })
-      }
-    }
-
-    if (settings?.park) {
-      const macroName: string = settings.park_cmd || 'AFC_PARK'
-      const macro: Macro | undefined = this.$typedGetters['macros/getMacroByName'](macroName)
-
-      if (macro != null) {
-        afcMacros.push({
-          text: this.$t('app.afc.ParkNozzle').toString(),
-          macroName,
-          macro,
-          disabled: this.printerPrinting
-        })
-      }
-    }
-
-    return afcMacros
+  const output = {
+    config: Object.fromEntries(
+      Object.entries(printerConfig.value)
+        .filter(([key]) => /^afc(?:$|_)/.test(key))
+    ),
+    settings: Object.fromEntries(
+      Object.entries(printerSettings.value)
+        .filter(([key]) => /^afc(?:$|_)/.test(key))
+    ),
+    printer: Object.fromEntries(
+      Object.entries(printer)
+        .filter(([key]) => /^afc(?:$|_)/.test(key))
+    ),
   }
 
-  downloadDebugJson () {
-    const printer: Klipper.PrinterState = this.$typedState.printer.printer
+  const jsonString = JSON.stringify(output)
+  const url = `data:text/plain;charset=utf-8,${encodeURIComponent(jsonString)}`
 
-    const output = {
-      config: Object.fromEntries(
-        Object.entries(this.printerConfig)
-          .filter(([key]) => /^afc(?:$|_)/.test(key))
-      ),
-      settings: Object.fromEntries(
-        Object.entries(this.printerSettings)
-          .filter(([key]) => /^afc(?:$|_)/.test(key))
-      ),
-      printer: Object.fromEntries(
-        Object.entries(printer)
-          .filter(([key]) => /^afc(?:$|_)/.test(key))
-      ),
-    }
-
-    const jsonString = JSON.stringify(output)
-    const url = `data:text/plain;charset=utf-8,${encodeURIComponent(jsonString)}`
-
-    downloadUrl('afc_debug.json', url)
-  }
+  downloadUrl('afc_debug.json', url)
 }
 </script>

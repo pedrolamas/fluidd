@@ -31,44 +31,34 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
 import Console from '@/components/widgets/console/Console.vue'
-import BrowserMixin from '@/mixins/browser'
 import type { UpdateResponse } from '@/store/version/types'
 
-@Component({
-  components: {
-    Console
+const { typedGetters, typedState, typedCommit } = useStore()
+const { isMobileViewport } = useBrowserMixin()
+
+const invokedDialog = ref(false)
+
+const updating = computed<boolean>(() => typedState.version.status?.busy ?? false)
+
+const responses = computed<UpdateResponse[]>(() => typedGetters['version/getResponses'])
+
+// When updating starts, lock the dialog open (side effect moved out of computed)
+watch(updating, (val) => { if (val) invokedDialog.value = true })
+
+const open = computed({
+  get (): boolean {
+    return invokedDialog.value || updating.value
+  },
+  set (value: boolean) {
+    if (!value) {
+      invokedDialog.value = false
+      typedCommit('version/setClearUpdateResponse')
+    }
   }
 })
-export default class UpdatingDialog extends Mixins(StateMixin, BrowserMixin) {
-  invokedDialog = false
-
-  get open (): boolean {
-    if (this.invokedDialog || this.updating) {
-      this.invokedDialog = true
-
-      return true
-    }
-
-    return false
-  }
-
-  set open (value: boolean) {
-    if (!value) {
-      this.invokedDialog = false
-      this.$typedCommit('version/setClearUpdateResponse')
-    }
-  }
-
-  get updating (): boolean {
-    return this.$typedState.version.status?.busy ?? false
-  }
-
-  get responses (): UpdateResponse[] {
-    return this.$typedGetters['version/getResponses']
-  }
-}
 </script>

@@ -2,7 +2,7 @@
   <app-dialog
     v-model="open"
     scrollable
-    :max-width="$vuetify.breakpoint.mdAndDown ? '90vw' : '75vw'"
+    :max-width="vuetify.breakpoint.mdAndDown ? '90vw' : '75vw'"
     :title="$tc('app.spoolman.title.spool_selection', targetMacro ? 2 : 1, { macro: targetMacro?.toUpperCase() })"
     title-shadow
   >
@@ -113,10 +113,10 @@
         @update:sort-by="handleSortOrderKeyChange"
         @update:sort-desc="handleSortOrderDescChange"
       >
-        <template #item="{ headers, item }">
+        <template #item="{ headers: tableHeaders, item }">
           <app-data-table-row
             :key="item.id"
-            :headers="headers"
+            :headers="tableHeaders"
             :item="item"
             :is-selected="item.id === selectedSpoolId"
             @click.prevent="selectedSpoolId = selectedSpoolId === item.id ? null : item.id"
@@ -305,13 +305,10 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import AfcMixin from '@/mixins/afc'
+<script setup lang="ts">
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { SocketActions } from '@/api/socketActions'
 import type { Spool } from '@/store/spoolman/types'
-import BrowserMixin from '@/mixins/browser'
 import QRReader from '@/components/widgets/spoolman/QRReader.vue'
 import QrScanner from 'qr-scanner'
 import type { AppDataTableHeader } from '@/types'
@@ -319,472 +316,463 @@ import getFilePaths from '@/util/get-file-paths'
 import type { DataTableHeader } from 'vuetify'
 import type { AppFileWithMeta } from '@/store/files/types'
 import type { SpoolmanRemainingFilamentUnit } from '@/store/config/types'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
+import { useVuetify } from '@/composables/useVuetify'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useAfcMixin } from '@/composables/useAfcMixin'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useRoute, useRouter } from 'vue-router/composables'
 
 type SpoolWithAfcLoadedLane = Spool & {
   afc_loaded_lane?: string
 }
 
-@Component({
-  components: {
-    QRReader
-  }
+const { typedState, typedGetters, typedCommit, typedDispatch } = useStore()
+const confirm = useConfirm()
+const { t, tc } = useI18n()
+const vuetify = useVuetify()
+const { isMobileViewport } = useBrowserMixin()
+const { afc, afcLoadedSpools } = useAfcMixin()
+const { printerState, sendGcode } = useStateMixin()
+const route = useRoute()
+const router = useRouter()
+
+const search = ref('')
+const selectedSpoolId = ref<number | null>(null)
+const cameraScanSource = ref<null | string>(null)
+const hasDeviceCamera = ref(false)
+
+onMounted(async () => {
+  hasDeviceCamera.value = await QrScanner.hasCamera()
 })
-export default class SpoolSelectionDialog extends Mixins(StateMixin, BrowserMixin, AfcMixin) {
-  search = ''
-  selectedSpoolId: number | null = null
 
-  cameraScanSource: null | string = null
-
-  hasDeviceCamera = false
-
-  async mounted () {
-    this.hasDeviceCamera = await QrScanner.hasCamera()
-  }
-
-  @Watch('open')
-  onOpen () {
-    if (this.open) {
-      if (this.spoolSelectionOnly) {
-        this.selectedSpoolId = this.$typedState.spoolman.dialog.selectedSpoolId ?? null
-      } else if (this.targetMacro) {
-        const macro = this.$typedGetters['macros/getMacroByName'](this.targetMacro)
-
-        this.selectedSpoolId = typeof macro?.variables?.spool_id === 'number'
-          ? macro.variables.spool_id
-          : null
-      } else {
-        this.selectedSpoolId = this.$typedState.spoolman.activeSpool
-      }
-
-      if (this.currentFileName && this.currentFile == null) {
-        SocketActions.serverFilesMetadata(this.currentFileName)
-      }
-
-      if (this.hasDeviceCamera && this.preferDeviceCamera) {
-        this.$nextTick(() => (this.cameraScanSource = 'device'))
-      } else {
-        const autoOpenCameraId = this.autoOpenQRDetectionCamera
-        if (autoOpenCameraId && this.$typedGetters['webcams/getWebcamById'](autoOpenCameraId)) {
-          this.$nextTick(() => (this.cameraScanSource = autoOpenCameraId))
-        }
-      }
-    }
-  }
-
-  get open (): boolean {
-    return this.$typedState.spoolman.dialog.show
-  }
-
-  set open (val: boolean) {
-    this.$typedCommit('spoolman/setDialogState', {
-      ...this.$typedState.spoolman.dialog,
+const open = computed({
+  get: (): boolean => typedState.spoolman.dialog.show,
+  set: (val: boolean) => {
+    typedCommit('spoolman/setDialogState', {
+      ...typedState.spoolman.dialog,
       show: val
     })
   }
+})
 
-  get availableSpools (): SpoolWithAfcLoadedLane[] {
-    const availableSpools: Spool[] = this.$typedGetters['spoolman/getAvailableSpools']
-
-    const afcLoadedSpools = this.afc != null
-      ? this.afcLoadedSpools
-      : {}
-
-    return availableSpools
-      .filter(x => !x.archived)
-      .map(spool => ({
-        ...spool,
-        afc_loaded_lane: afcLoadedSpools[spool.id]
-      } satisfies SpoolWithAfcLoadedLane))
-  }
-
-  get currency (): string | null {
-    return this.$typedState.spoolman.currency
-  }
-
-  get configurableHeaders (): AppDataTableHeader[] {
-    const afcHeaders: AppDataTableHeader[] = this.afc != null
-      ? [
-          {
-            text: this.$tc('app.afc.LaneLoaded'),
-            value: 'afc_loaded_lane',
-            cellClass: 'text-no-wrap'
-          }
-        ]
-      : []
-
-    const headers: AppDataTableHeader[] = [
-      {
-        text: this.$tc('app.spoolman.label.id'),
-        value: 'id',
-        cellClass: 'text-no-wrap'
-      },
-      ...afcHeaders,
-      {
-        text: this.$tc('app.spoolman.label.material'),
-        value: 'filament.material',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.initial_weight'),
-        value: 'initial_weight',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.used_weight'),
-        value: 'used_weight',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.remaining_weight'),
-        value: 'remaining_weight',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.initial_length'),
-        value: 'initial_length',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.used_length'),
-        value: 'used_length',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.remaining_length'),
-        value: 'remaining_length',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.price'),
-        value: 'price',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.lot_nr'),
-        value: 'lot_nr',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.density'),
-        value: 'filament.density',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.diameter'),
-        value: 'filament.diameter',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.extruder_temp'),
-        value: 'filament.settings_extruder_temp',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.bed_temp'),
-        value: 'filament.settings_bed_temp',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.colors'),
-        value: 'filament.colors',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.location'),
-        value: 'location',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.comment'),
-        value: 'comment',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.first_used'),
-        value: 'first_used',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.spoolman.label.last_used'),
-        value: 'last_used',
-        cellClass: 'text-no-wrap'
-      }
-    ]
-
-    const mergedTableHeaders: AppDataTableHeader[] = this.$typedGetters['config/getMergedTableHeaders'](headers, 'spoolman')
-
-    return mergedTableHeaders
-  }
-
-  get headers (): DataTableHeader[] {
-    return [
-      {
-        text: this.$tc('app.spoolman.label.filament_name'),
-        value: 'filament_name'
-      },
-      ...this.configurableHeaders
-        .filter(header => header.visible !== false)
-    ]
-  }
-
-  get filename (): string | undefined {
-    const filename: string | undefined = this.$typedState.spoolman.dialog.filename
-
-    if (filename && filename.startsWith('/')) {
-      return filename.slice(1)
+watch(open, (val) => {
+  if (val) {
+    if (spoolSelectionOnly.value) {
+      selectedSpoolId.value = typedState.spoolman.dialog.selectedSpoolId ?? null
+    } else if (targetMacro.value) {
+      const macro = typedGetters['macros/getMacroByName'](targetMacro.value)
+      selectedSpoolId.value = typeof macro?.variables?.spool_id === 'number'
+        ? macro.variables.spool_id
+        : null
+    } else {
+      selectedSpoolId.value = typedState.spoolman.activeSpool
     }
 
-    return filename
-  }
-
-  get currentFileName (): string {
-    return this.filename || this.$typedState.printer.printer.print_stats?.filename || ''
-  }
-
-  get currentFile (): AppFileWithMeta | undefined {
-    const { filename, rootPath } = getFilePaths(this.currentFileName, 'gcodes')
-
-    return this.$typedGetters['files/getFile'](rootPath, filename)
-  }
-
-  get spoolSelectionOnly (): boolean {
-    return this.$typedState.spoolman.dialog.spoolSelectionOnly ?? false
-  }
-
-  get targetMacro (): string | undefined {
-    return this.$typedState.spoolman.dialog.targetMacro
-  }
-
-  get enabledWebcams (): Moonraker.Webcam.Entry[] {
-    return this.$typedGetters['webcams/getEnabledWebcams']
-  }
-
-  get availableCameras (): Pick<Moonraker.Webcam.Entry, 'uid' | 'name'>[] {
-    const cameras: Pick<Moonraker.Webcam.Entry, 'uid' | 'name'>[] = this.enabledWebcams
-      .filter(camera => camera.service !== 'iframe')
-
-    if (this.hasDeviceCamera) {
-      // always show device camera first
-      cameras.unshift({
-        name: this.$t('app.spoolman.label.device_camera').toString(),
-        uid: 'device'
-      })
+    if (currentFileName.value && currentFile.value == null) {
+      SocketActions.serverFilesMetadata(currentFileName.value)
     }
 
-    return cameras
-  }
-
-  get remainingFilamentUnit (): SpoolmanRemainingFilamentUnit {
-    return this.$typedState.config.uiSettings.spoolman.remainingFilamentUnit
-  }
-
-  handleQRCodeDetected (id: number) {
-    this.cameraScanSource = null
-    this.selectedSpoolId = id
-    if (
-      !this.availableSpools
-        .filter(spool => this.filterResults('', this.search, spool))
-        .some(spool => spool.id === id)
-    ) {
-      // clear filter if selected spool isn't in filter results
-      this.search = ''
-    }
-
-    if (this.autoSelectSpoolOnMatch) {
-      this.handleSelectSpool()
-    }
-  }
-
-  async handleSelectSpool () {
-    if (this.spoolSelectionOnly) {
-      // save selection for parent dialog
-      this.$typedCommit('spoolman/setDialogState', {
-        show: false,
-        selectedSpoolId: this.selectedSpoolId ?? undefined
-      })
-      return
-    }
-
-    if (!this.selectedSpoolId) {
-      // no spool selected
-
-      const confirmation = await this.$confirm(
-        this.$tc('app.spoolman.msg.no_spool'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
-      )
-
-      if (!confirmation) {
-        return
+    if (hasDeviceCamera.value && preferDeviceCamera.value) {
+      nextTick(() => (cameraScanSource.value = 'device'))
+    } else {
+      const autoOpenCameraId = autoOpenQRDetectionCamera.value
+      if (autoOpenCameraId && typedGetters['webcams/getWebcamById'](autoOpenCameraId)) {
+        nextTick(() => (cameraScanSource.value = autoOpenCameraId))
       }
     }
+  }
+})
 
-    if (this.targetMacro) {
-      // no need to run sanity checks or start a print when we target a macro, so we return early
+const availableSpools = computed((): SpoolWithAfcLoadedLane[] => {
+  const spools: Spool[] = typedGetters['spoolman/getAvailableSpools']
+  const loadedSpools = afc.value != null ? afcLoadedSpools.value : {}
 
-      // set spool_id via SET_GCODE_VARIABLE
-      const commands = [
-        `SET_GCODE_VARIABLE MACRO=${this.targetMacro} VARIABLE=spool_id VALUE=${this.selectedSpoolId ?? 'None'}`
+  return spools
+    .filter(x => !x.archived)
+    .map(spool => ({
+      ...spool,
+      afc_loaded_lane: loadedSpools[spool.id]
+    } satisfies SpoolWithAfcLoadedLane))
+})
+
+const currency = computed((): string | null => typedState.spoolman.currency)
+
+const configurableHeaders = computed((): AppDataTableHeader[] => {
+  const afcHeaders: AppDataTableHeader[] = afc.value != null
+    ? [
+        {
+          text: tc('app.afc.LaneLoaded'),
+          value: 'afc_loaded_lane',
+          cellClass: 'text-no-wrap'
+        }
       ]
+    : []
 
-      const printerConfig: Klipper.ConfigState = this.$typedGetters['printer/getPrinterConfig']
-      const supportsSaveVariables = printerConfig.save_variables
-      if (supportsSaveVariables) {
-        // persist selected spool across restarts
-        commands.push(`SAVE_VARIABLE VARIABLE=${this.targetMacro.toLowerCase()}__spool_id VALUE=${this.selectedSpoolId ?? 'None'}`)
-      }
+  const headers: AppDataTableHeader[] = [
+    {
+      text: tc('app.spoolman.label.id'),
+      value: 'id',
+      cellClass: 'text-no-wrap'
+    },
+    ...afcHeaders,
+    {
+      text: tc('app.spoolman.label.material'),
+      value: 'filament.material',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.initial_weight'),
+      value: 'initial_weight',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.used_weight'),
+      value: 'used_weight',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.remaining_weight'),
+      value: 'remaining_weight',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.initial_length'),
+      value: 'initial_length',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.used_length'),
+      value: 'used_length',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.remaining_length'),
+      value: 'remaining_length',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.price'),
+      value: 'price',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.lot_nr'),
+      value: 'lot_nr',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.density'),
+      value: 'filament.density',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.diameter'),
+      value: 'filament.diameter',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.extruder_temp'),
+      value: 'filament.settings_extruder_temp',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.bed_temp'),
+      value: 'filament.settings_bed_temp',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.colors'),
+      value: 'filament.colors',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.location'),
+      value: 'location',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.comment'),
+      value: 'comment',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.first_used'),
+      value: 'first_used',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.spoolman.label.last_used'),
+      value: 'last_used',
+      cellClass: 'text-no-wrap'
+    }
+  ]
 
-      this.sendGcode(commands.join('\n'))
+  const mergedTableHeaders: AppDataTableHeader[] = typedGetters['config/getMergedTableHeaders'](headers, 'spoolman')
 
-      const macro = this.$typedGetters['macros/getMacroByName'](this.targetMacro)
-      if (macro?.variables?.active) {
-        // selected tool is active, update active spool
-        await SocketActions.serverSpoolmanPostSpoolId(this.selectedSpoolId ?? undefined)
-      }
+  return mergedTableHeaders
+})
 
-      this.open = false
+const headers = computed((): DataTableHeader[] => [
+  {
+    text: tc('app.spoolman.label.filament_name'),
+    value: 'filament_name'
+  },
+  ...configurableHeaders.value
+    .filter(header => header.visible !== false)
+])
+
+const filename = computed((): string | undefined => {
+  const fname: string | undefined = typedState.spoolman.dialog.filename
+  if (fname && fname.startsWith('/')) {
+    return fname.slice(1)
+  }
+  return fname
+})
+
+const currentFileName = computed((): string =>
+  filename.value || typedState.printer.printer.print_stats?.filename || ''
+)
+
+const currentFile = computed((): AppFileWithMeta | undefined => {
+  const { filename: fname, rootPath } = getFilePaths(currentFileName.value, 'gcodes')
+  return typedGetters['files/getFile'](rootPath, fname)
+})
+
+const spoolSelectionOnly = computed((): boolean =>
+  typedState.spoolman.dialog.spoolSelectionOnly ?? false
+)
+
+const targetMacro = computed((): string | undefined =>
+  typedState.spoolman.dialog.targetMacro
+)
+
+const enabledWebcams = computed((): Moonraker.Webcam.Entry[] =>
+  typedGetters['webcams/getEnabledWebcams']
+)
+
+const availableCameras = computed((): Pick<Moonraker.Webcam.Entry, 'uid' | 'name'>[] => {
+  const cameras: Pick<Moonraker.Webcam.Entry, 'uid' | 'name'>[] = enabledWebcams.value
+    .filter(camera => camera.service !== 'iframe')
+
+  if (hasDeviceCamera.value) {
+    cameras.unshift({
+      name: t('app.spoolman.label.device_camera').toString(),
+      uid: 'device'
+    })
+  }
+
+  return cameras
+})
+
+const remainingFilamentUnit = computed((): SpoolmanRemainingFilamentUnit =>
+  typedState.config.uiSettings.spoolman.remainingFilamentUnit
+)
+
+const spoolmanURL = computed((): string | undefined =>
+  typedGetters['spoolman/getSpoolmanUrl']
+)
+
+const preferDeviceCamera = computed(() =>
+  typedState.config.uiSettings.spoolman.preferDeviceCamera
+)
+
+const autoOpenQRDetectionCamera = computed((): string | null =>
+  typedState.config.uiSettings.spoolman.autoOpenQRDetectionCamera
+)
+
+const autoSelectSpoolOnMatch = computed((): boolean =>
+  typedState.config.uiSettings.spoolman.autoSelectSpoolOnMatch
+)
+
+const warnOnNotEnoughFilament = computed((): boolean =>
+  typedState.config.uiSettings.spoolman.warnOnNotEnoughFilament
+)
+
+const warnOnFilamentTypeMismatch = computed((): boolean =>
+  typedState.config.uiSettings.spoolman.warnOnFilamentTypeMismatch
+)
+
+const sortOrder = computed(() =>
+  typedState.config.uiSettings.spoolman.selectionDialogSortOrder
+)
+
+function handleQRCodeDetected (id: number) {
+  cameraScanSource.value = null
+  selectedSpoolId.value = id
+  if (
+    !availableSpools.value
+      .filter(spool => filterResults('', search.value, spool))
+      .some(spool => spool.id === id)
+  ) {
+    // clear filter if selected spool isn't in filter results
+    search.value = ''
+  }
+
+  if (autoSelectSpoolOnMatch.value) {
+    handleSelectSpool()
+  }
+}
+
+async function handleSelectSpool () {
+  if (spoolSelectionOnly.value) {
+    // save selection for parent dialog
+    typedCommit('spoolman/setDialogState', {
+      show: false,
+      selectedSpoolId: selectedSpoolId.value ?? undefined
+    })
+    return
+  }
+
+  if (!selectedSpoolId.value) {
+    // no spool selected
+    const confirmation = await confirm(
+      tc('app.spoolman.msg.no_spool'),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
+    )
+
+    if (!confirmation) {
       return
     }
+  }
 
-    const spool = this.availableSpools.find(spool => spool.id === this.selectedSpoolId)
-    if (spool && this.currentFileName && (this.warnOnFilamentTypeMismatch || this.warnOnNotEnoughFilament)) {
-      // trigger sanity checks when we have an active file
-      // (current print or new print) and sanity checks are enabled.
+  if (targetMacro.value) {
+    // no need to run sanity checks or start a print when we target a macro, so we return early
 
-      if (this.currentFile && (this.filename || !['complete', 'cancelled'].includes(this.printerState))) {
-        // if we're tracking a file and starting a new print or the current one hasn't ended yet
+    // set spool_id via SET_GCODE_VARIABLE
+    const commands = [
+      `SET_GCODE_VARIABLE MACRO=${targetMacro.value} VARIABLE=spool_id VALUE=${selectedSpoolId.value ?? 'None'}`
+    ]
 
-        if (this.warnOnFilamentTypeMismatch) {
-          const fileMaterials = this.currentFile.filament_type?.map(x => x.toLowerCase())
-          const spoolMaterial = spool.filament.material?.toLowerCase()
+    const printerConfig: Klipper.ConfigState = typedGetters['printer/getPrinterConfig']
+    const supportsSaveVariables = printerConfig.save_variables
+    if (supportsSaveVariables) {
+      // persist selected spool across restarts
+      commands.push(`SAVE_VARIABLE VARIABLE=${targetMacro.value.toLowerCase()}__spool_id VALUE=${selectedSpoolId.value ?? 'None'}`)
+    }
 
-          if (spoolMaterial && fileMaterials && !fileMaterials.includes(spoolMaterial)) {
-            // filament materials don't match
+    sendGcode(commands.join('\n'))
 
-            const confirmation = await this.$confirm(
-              this.$tc('app.spoolman.msg.mismatched_filament'),
-              { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
-            )
+    const macro = typedGetters['macros/getMacroByName'](targetMacro.value)
+    if (macro?.variables?.active) {
+      // selected tool is active, update active spool
+      await SocketActions.serverSpoolmanPostSpoolId(selectedSpoolId.value ?? undefined)
+    }
 
-            if (!confirmation) {
-              return
-            }
-          }
-        }
+    open.value = false
+    return
+  }
 
-        let requiredLength = this.currentFile?.filament_total
-        if (requiredLength && ['printing', 'paused'].includes(this.printerState)) {
-          // if we're currently running a print job, subtract the already printed amount from the required length
-          requiredLength -= this.$typedState.printer.printer.print_stats?.filament_used ?? 0
-          requiredLength = Math.max(requiredLength, 0)
-        }
+  const spool = availableSpools.value.find(spool => spool.id === selectedSpoolId.value)
+  if (spool && currentFileName.value && (warnOnFilamentTypeMismatch.value || warnOnNotEnoughFilament.value)) {
+    // trigger sanity checks when we have an active file
+    // (current print or new print) and sanity checks are enabled.
 
-        if (!requiredLength) {
-          // missing file metadata
+    if (currentFile.value && (filename.value || !['complete', 'cancelled'].includes(printerState.value))) {
+      // if we're tracking a file and starting a new print or the current one hasn't ended yet
 
-          const confirmation = await this.$confirm(
-            this.$tc('app.spoolman.msg.no_required_length'),
-            { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
+      if (warnOnFilamentTypeMismatch.value) {
+        const fileMaterials = currentFile.value.filament_type?.map(x => x.toLowerCase())
+        const spoolMaterial = spool.filament.material?.toLowerCase()
+
+        if (spoolMaterial && fileMaterials && !fileMaterials.includes(spoolMaterial)) {
+          // filament materials don't match
+          const confirmation = await confirm(
+            tc('app.spoolman.msg.mismatched_filament'),
+            { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
           )
 
           if (!confirmation) {
             return
           }
-        } else if (this.warnOnNotEnoughFilament) {
-          if (spool.remaining_length != null && requiredLength >= spool.remaining_length) {
-            // not enough filament
+        }
+      }
 
-            const confirmation = await this.$confirm(
-              this.$tc('app.spoolman.msg.no_filament'),
-              { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
-            )
+      let requiredLength = currentFile.value?.filament_total
+      if (requiredLength && ['printing', 'paused'].includes(printerState.value)) {
+        // if we're currently running a print job, subtract the already printed amount from the required length
+        requiredLength -= typedState.printer.printer.print_stats?.filament_used ?? 0
+        requiredLength = Math.max(requiredLength, 0)
+      }
 
-            if (!confirmation) {
-              return
-            }
+      if (!requiredLength) {
+        // missing file metadata
+        const confirmation = await confirm(
+          tc('app.spoolman.msg.no_required_length'),
+          { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
+        )
+
+        if (!confirmation) {
+          return
+        }
+      } else if (warnOnNotEnoughFilament.value) {
+        if (spool.remaining_length != null && requiredLength >= spool.remaining_length) {
+          // not enough filament
+          const confirmation = await confirm(
+            tc('app.spoolman.msg.no_filament'),
+            { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
+          )
+
+          if (!confirmation) {
+            return
           }
         }
       }
     }
+  }
 
-    await SocketActions.serverSpoolmanPostSpoolId(this.selectedSpoolId ?? undefined)
+  await SocketActions.serverSpoolmanPostSpoolId(selectedSpoolId.value ?? undefined)
 
-    if (this.filename) {
-      await SocketActions.printerPrintStart(this.filename)
+  if (filename.value) {
+    await SocketActions.printerPrintStart(filename.value)
 
-      if (this.$route.name !== 'home') {
-        this.$router.push({ name: 'home' })
-      }
+    if (route.name !== 'home') {
+      router.push({ name: 'home' })
     }
-
-    this.open = false
   }
 
-  filterResults (value: string, query: string, item: Spool): boolean {
-    query = query.toLowerCase()
-    return [item.id, item.comment, item.filament.name, item.filament.material, item.filament.vendor?.name]
-      .some(val => val?.toString().toLowerCase().includes(query))
-  }
+  open.value = false
+}
 
-  get spoolmanURL (): string | undefined {
-    return this.$typedGetters['spoolman/getSpoolmanUrl']
-  }
+function filterResults (value: string, query: string, item: Spool): boolean {
+  query = query.toLowerCase()
+  return [item.id, item.comment, item.filament.name, item.filament.material, item.filament.vendor?.name]
+    .some(val => val?.toString().toLowerCase().includes(query))
+}
 
-  get preferDeviceCamera () {
-    return this.$typedState.config.uiSettings.spoolman.preferDeviceCamera
-  }
+function handleSortOrderKeyChange (value?: string) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.spoolman.selectionDialogSortOrder.key',
+    value: value ?? null,
+    server: true
+  })
+}
 
-  get autoOpenQRDetectionCamera (): string | null {
-    return this.$typedState.config.uiSettings.spoolman.autoOpenQRDetectionCamera
-  }
+function handleSortOrderDescChange (value?: boolean) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.spoolman.selectionDialogSortOrder.desc',
+    value: value ?? null,
+    server: true
+  })
+}
 
-  get autoSelectSpoolOnMatch (): boolean {
-    return this.$typedState.config.uiSettings.spoolman.autoSelectSpoolOnMatch
-  }
-
-  get warnOnNotEnoughFilament (): boolean {
-    return this.$typedState.config.uiSettings.spoolman.warnOnNotEnoughFilament
-  }
-
-  get warnOnFilamentTypeMismatch (): boolean {
-    return this.$typedState.config.uiSettings.spoolman.warnOnFilamentTypeMismatch
-  }
-
-  get sortOrder () {
-    return this.$typedState.config.uiSettings.spoolman.selectionDialogSortOrder
-  }
-
-  handleSortOrderKeyChange (value?: string) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.spoolman.selectionDialogSortOrder.key',
-      value: value ?? null,
-      server: true
-    })
-  }
-
-  handleSortOrderDescChange (value?: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.spoolman.selectionDialogSortOrder.desc',
-      value: value ?? null,
-      server: true
-    })
-  }
-
-  getSpoolColor (spool?: Spool) {
-    return spool?.filament.color_hex ?? (this.$vuetify.theme.dark ? '#fff' : '#000')
-  }
+function getSpoolColor (spool?: Spool) {
+  return spool?.filament.color_hex ?? (vuetify.theme.dark ? '#fff' : '#000')
 }
 </script>
 
