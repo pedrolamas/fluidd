@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import VueMacros from 'unplugin-vue-macros/vite'
 import vue from '@pedrolamas/plugin-vue2'
 import { VitePWA } from 'vite-plugin-pwa'
 import Components from 'unplugin-vue-components/rolldown'
@@ -87,7 +88,14 @@ export default defineConfig({
         navigateFallback: 'index.html'
       }
     }),
-    vue(),
+    VueMacros({
+      plugins: {
+        vue: vue()
+      },
+      defineModels: {
+        unified: true
+      }
+    }),
     version(),
     content(),
     checker({

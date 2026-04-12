@@ -24,7 +24,8 @@
   },
 
   "vueCompilerOptions": {
-    "target": 2.7
+    "target": 2.7,
+    "plugins": ["unplugin-vue-macros/volar"]
   },
 
   "include": [

@@ -13,7 +13,7 @@ import isNullOrEmpty, { type NullableOrEmpty } from '@/util/is-null-or-empty'
 import { consola } from 'consola'
 import type { RootActions, RootGetters, RootMutations, RootState } from '@/store/types'
 
-const Filters = {
+export const Filters = {
   /**
    * Determines API urls from a base url
    */
