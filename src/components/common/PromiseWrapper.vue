@@ -8,53 +8,40 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, watch, onMounted } from 'vue'
 
-@Component({})
-export default class StatusCard extends Vue {
-  pending = false
-  error: unknown = null
-  result: unknown = null
+const props = defineProps<{
+  promise?: Promise<unknown> | null
+}>()
 
-  @Prop({ type: Promise })
-  readonly promise?: Promise<unknown> | null
+const pending = ref(false)
+const error = ref<unknown>(null)
+const result = ref<unknown>(null)
 
-  @Watch('promise')
-  onPromiseChanged () {
-    this.evaluatePromise()
-  }
-
-  async evaluatePromise () {
-    const promise = this.promise
-
-    if (!promise) {
-      this.setPromiseResults(null, null, null)
-
-      return
-    }
-
-    this.pending = true
-
-    try {
-      const result = await promise
-
-      this.setPromiseResults(promise, result, null)
-    } catch (error) {
-      this.setPromiseResults(promise, null, error)
-    }
-  }
-
-  setPromiseResults (promise: Promise<unknown> | null, result: unknown, error: unknown) {
-    if (!promise || this.promise === promise) {
-      this.error = error
-      this.result = result
-      this.pending = false
-    }
-  }
-
-  mounted () {
-    this.evaluatePromise()
+function setPromiseResults (promise: Promise<unknown> | null, res: unknown, err: unknown) {
+  if (!promise || props.promise === promise) {
+    error.value = err
+    result.value = res
+    pending.value = false
   }
 }
+
+async function evaluatePromise () {
+  const promise = props.promise
+  if (!promise) {
+    setPromiseResults(null, null, null)
+    return
+  }
+  pending.value = true
+  try {
+    const res = await promise
+    setPromiseResults(promise, res, null)
+  } catch (err) {
+    setPromiseResults(promise, null, err)
+  }
+}
+
+watch(() => props.promise, () => evaluatePromise())
+onMounted(() => evaluatePromise())
 </script>

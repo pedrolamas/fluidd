@@ -13,20 +13,9 @@
   </v-footer>
 </template>
 
-<script lang="ts">
-import Vue from 'vue'
-import { Component } from 'vue-property-decorator'
-
-@Component({})
-export default class AppFooter extends Vue {
-  get version () {
-    return import.meta.env.VERSION
-  }
-
-  get hash () {
-    return import.meta.env.HASH
-  }
-}
+<script setup lang="ts">
+const version = import.meta.env.VERSION
+const hash = import.meta.env.HASH
 </script>
 
 <style lang="scss" scoped>

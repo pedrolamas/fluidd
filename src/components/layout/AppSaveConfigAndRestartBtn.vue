@@ -38,19 +38,19 @@
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useVuetify } from '@/composables/useVuetify'
 
-@Component({})
-export default class AppSaveConfigAndRestartBtn extends Vue {
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+defineProps<{
+  disabled?: boolean
+  loading?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
+defineEmits<{
+  (e: 'click'): void
+}>()
 
-  get isExpanded () {
-    return this.$vuetify.breakpoint.mdAndUp
-  }
-}
+const vuetify = useVuetify()
+const isExpanded = computed(() => vuetify.breakpoint.mdAndUp)
 </script>

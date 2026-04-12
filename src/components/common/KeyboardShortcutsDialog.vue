@@ -109,60 +109,33 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Globals } from '@/globals'
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from '@/util/event-helpers'
-import { Component, Vue } from 'vue-property-decorator'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class KeyboardShortcutsDialog extends Vue {
-  open = false
+const { typedState, typedGetters } = useStore()
 
-  get keyboardShortcuts () {
-    return Globals.KEYBOARD_SHORTCUTS
-  }
+const open = ref(false)
+const keyboardShortcuts = Globals.KEYBOARD_SHORTCUTS
 
-  get enableKeyboardShortcuts (): boolean {
-    return this.$typedState.config.uiSettings.general.enableKeyboardShortcuts
-  }
+const enableKeyboardShortcuts = computed(() => typedState.config.uiSettings.general.enableKeyboardShortcuts)
+const supportsHistory = computed(() => typedGetters['server/componentSupport']('history'))
+const supportsTimelapse = computed(() => typedGetters['server/componentSupport']('timelapse'))
+const enableDiagnostics = computed(() => typedState.config.uiSettings.general.enableDiagnostics)
 
-  get supportsHistory (): boolean {
-    return this.$typedGetters['server/componentSupport']('history')
-  }
-
-  get supportsTimelapse (): boolean {
-    return this.$typedGetters['server/componentSupport']('timelapse')
-  }
-
-  get enableDiagnostics (): boolean {
-    return this.$typedState.config.uiSettings.general.enableDiagnostics
-  }
-
-  handleKeyDown (event: KeyboardEvent) {
-    if (!this.enableKeyboardShortcuts) {
-      return
-    }
-
-    const shortcut = keyboardEventToKeyboardShortcut(event)
-
-    if (
-      ['?', 'Shift+?'].includes(shortcut) &&
-      !eventTargetIsContentEditable(event)
-    ) {
-      event.preventDefault()
-
-      this.open = true
-    }
-  }
-
-  created () {
-    window.addEventListener('keydown', this.handleKeyDown, false)
-  }
-
-  beforeDestroy () {
-    window.removeEventListener('keydown', this.handleKeyDown)
+function handleKeyDown (event: KeyboardEvent) {
+  if (!enableKeyboardShortcuts.value) return
+  const shortcut = keyboardEventToKeyboardShortcut(event)
+  if (['?', 'Shift+?'].includes(shortcut) && !eventTargetIsContentEditable(event)) {
+    event.preventDefault()
+    open.value = true
   }
 }
+
+onMounted(() => window.addEventListener('keydown', handleKeyDown, false))
+onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown))
 </script>
 
 <style lang="scss" scoped>

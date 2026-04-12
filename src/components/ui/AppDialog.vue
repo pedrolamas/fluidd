@@ -65,7 +65,7 @@
         </v-card-title>
 
         <v-card-subtitle
-          v-if="subTitle || hasSubTitleSlot"
+          v-if="subTitle || $slots['sub-title']"
           class="card-heading pb-2 secondary--text"
         >
           <slot name="sub-title">
@@ -108,89 +108,74 @@
   </v-dialog>
 </template>
 
-<script lang="ts">
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed, useListeners } from 'vue'
 import type { VForm } from 'vuetify/lib'
-import { Component, Prop, VModel, Ref, PropSync, Mixins } from 'vue-property-decorator'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = withDefaults(defineProps<{
+  value?: boolean
+  disabled?: boolean
+  title?: string
+  helpTooltip?: string
+  subTitle?: string
+  closeButtonDisabled?: boolean
+  cancelButtonText?: string
+  cancelButtonLoading?: boolean
+  saveButtonText?: string
+  saveButtonDisabled?: boolean
+  saveButtonLoading?: boolean
+  scrollable?: boolean
+  persistent?: boolean
+  noActions?: boolean
+  loading?: boolean | string
+  titleShadow?: boolean
+  valid?: boolean
+}>(), {
+  scrollable: true
 })
-export default class AppDialog extends Mixins(BrowserMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+  (e: 'update:valid', value: boolean | undefined): void
+  (e: 'cancel'): void
+  (e: 'save'): void
+}>()
 
-  @Prop({ type: String })
-  readonly title?: string
+const { isMobileViewport } = useBrowserMixin()
+const listeners = useListeners()
 
-  @Prop({ type: String })
-  readonly helpTooltip?: string
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  @Prop({ type: String })
-  readonly subTitle?: string
+const validModel = computed({
+  get: () => props.valid,
+  set: (v) => emit('update:valid', v)
+})
 
-  @Prop({ type: Boolean })
-  readonly closeButtonDisabled?: boolean
+const form = ref<VForm>()
 
-  @Prop({ type: String })
-  readonly cancelButtonText?: string
+function validate () {
+  return form.value?.validate() ?? false
+}
 
-  @Prop({ type: Boolean })
-  readonly cancelButtonLoading?: boolean
-
-  @Prop({ type: String })
-  readonly saveButtonText?: string
-
-  @Prop({ type: Boolean })
-  readonly saveButtonDisabled?: boolean
-
-  @Prop({ type: Boolean })
-  readonly saveButtonLoading?: boolean
-
-  @Prop({ type: Boolean, default: true })
-  readonly scrollable?: boolean
-
-  @Prop({ type: Boolean })
-  readonly persistent?: boolean
-
-  @Prop({ type: Boolean })
-  readonly noActions?: boolean
-
-  @Prop({ type: [Boolean, String] })
-  readonly loading?: boolean | string
-
-  @Prop({ type: Boolean })
-  readonly titleShadow?: boolean
-
-  @PropSync('valid', { type: Boolean })
-  validModel?: boolean
-
-  @Ref('form')
-  readonly form!: VForm
-
-  get hasSubTitleSlot () {
-    return !!this.$slots['sub-title'] || !!this.$scopedSlots['sub-title']
-  }
-
-  validate () {
-    return this.form.validate()
-  }
-
-  handleCancel () {
-    if (this.$listeners.cancel) {
-      this.$emit('cancel')
-    } else {
-      this.open = false
-    }
-  }
-
-  handleSave () {
-    if (this.validate()) {
-      this.$emit('save')
-    }
+function handleCancel () {
+  if (listeners.cancel) {
+    emit('cancel')
+  } else {
+    open.value = false
   }
 }
+
+function handleSave () {
+  if (validate()) {
+    emit('save')
+  }
+}
+
+defineExpose({ validate })
 </script>

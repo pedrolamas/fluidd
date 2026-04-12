@@ -72,7 +72,7 @@
         :class="_contentClasses"
         :style="_contentStyles"
       >
-        <template v-if="subTitle || hasSubTitleSlot">
+        <template v-if="subTitle || $slots['sub-title']">
           <v-card-subtitle class="py-2">
             <slot name="sub-title">
               <span v-safe-html="subTitle" />
@@ -93,7 +93,7 @@
         :class="_contentClasses"
         :style="_contentStyles"
       >
-        <template v-if="subTitle || hasSubTitleSlot">
+        <template v-if="subTitle || $slots['sub-title']">
           <v-card-subtitle class="py-2">
             <slot name="sub-title">
               <span v-safe-html="subTitle" />
@@ -109,285 +109,124 @@
   </v-card>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed, watch, useSlots, onMounted } from 'vue'
 import type { LayoutConfig } from '@/store/layout/types'
-import { Component, Vue, Prop, Watch } from 'vue-property-decorator'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class CollapsableCard extends Vue {
-  /**
-   * Title
-   */
-  @Prop({ type: String, required: true })
-  readonly title!: string
+const { typedState, typedGetters, typedDispatch } = useStore()
+const slots = useSlots()
 
-  @Prop({ type: String })
-  readonly helpTooltip?: string
+const props = withDefaults(defineProps<{
+  title: string
+  icon: string
+  helpTooltip?: string
+  color?: string
+  subTitle?: string
+  layoutPath?: string
+  lazy?: boolean
+  loading?: boolean
+  draggable?: boolean
+  collapsable?: boolean
+  rounded?: string
+  height?: number | string
+  menuBreakpoint?: string
+  cardClasses?: string
+  contentClasses?: string
+}>(), {
+  lazy: true,
+  collapsable: true,
+  rounded: 'md',
+  menuBreakpoint: 'lg'
+})
 
-  /**
-   * Card color.
-   */
-  @Prop({ type: String })
-  readonly color!: string
+const emit = defineEmits<{
+  (e: 'collapsed', val: boolean): void
+}>()
 
-  /**
-   * Sub title.
-   */
-  @Prop({ type: String })
-  readonly subTitle?: string
+const baseCardClasses = ref({ 'collapsable-card': true })
+const baseContentClasses = ref({ 'overflow-hidden': true })
 
-  /**
-   * Required to bind to a layout.
-   * Used to ref specific layout items.
-   * Should include a path to the layout, e.g.,
-   * dashboard.toolhead-card
-   * Container is irrelevant as configs can not have
-   * duplicate id's across containers for any given layout.
-   */
-  @Prop({ type: String })
-  readonly layoutPath!: string
+const hasDefaultSlot = computed(() => !!slots.default)
+const hasCollapsedContentSlot = computed(() => !!slots['collapse-button'] || !!slots['collapsed-content']?.()?.length)
 
-  /**
-   * If lazy, we use a v-show for card display.
-   * If not lazy, we use a v-if - removing
-   * from the DOM. A good use case for this is
-   * the camera card, whereby we don't want
-   * to be streaming the cam image if not
-   * visible.
-   */
-  @Prop({ type: Boolean, default: true })
-  readonly lazy?: boolean
-
-  /**
-   * The icon to use in the title.
-   */
-  @Prop({ type: String, required: true })
-  readonly icon!: string
-
-  /**
-   * Loading state.
-   */
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-
-  /**
-   * Enables dragging of the card. Also causes the card
-   * to react to layoutMode state.
-   */
-  @Prop({ type: Boolean })
-  readonly draggable?: boolean
-
-  /**
-   * Whether this card is collapsable or not.
-   */
-  @Prop({ type: Boolean, default: true })
-  readonly collapsable?: boolean
-
-  /**
-   * Rounded
-   */
-  @Prop({ type: String, default: 'md' })
-  readonly rounded!: string
-
-  /**
-   * Optionally set a defined height.
-   */
-  @Prop({ type: [Number, String] })
-  readonly height?: number | string
-
-  /**
-   * Breakpoint at which to condense the menu buttons to a hamburger.
-   * xs, sm, md, lg, xl.
-   */
-  @Prop({ type: String, default: 'lg' })
-  readonly menuBreakpoint!: string
-
-  /**
-   * Define any optional classes for the card itself.
-   */
-  @Prop({ type: String })
-  readonly cardClasses?: string
-
-  /**
-   * Define any optional classes for the card content itself.
-   */
-  @Prop({ type: String })
-  readonly contentClasses?: string
-
-  /**
-   * Base classes.
-   */
-  baseCardClasses = { 'collapsable-card': true }
-  baseContentClasses = { 'overflow-hidden': true }
-
-  get _cardClasses () {
-    // If user defined, format to an object based on the input.
-    const classes: Record<string, unknown> = {}
-    if (this.cardClasses) {
-      this.cardClasses.split(' ').forEach(s => {
-        classes[s] = true
-      })
-    }
-    return {
-      ...classes,
-      ...this.baseCardClasses,
-      collapsed: (this.isCollapsed || !this.hasDefaultSlot || this.inLayout) && !this.hasCollapsedContentSlot
+const _layoutPath = computed(() => {
+  if (props.layoutPath) {
+    if (props.layoutPath.includes('.')) {
+      const split = props.layoutPath.split('.')
+      let name = split[0]
+      if (name === 'dashboard') name = typedGetters['layout/getSpecificLayoutName']
+      return { name, id: split[1] }
+    } else {
+      throw new Error('invalid layout path')
     }
   }
+  return undefined
+})
 
-  get _contentClasses () {
-    const classes: Record<string, unknown> = {}
-    if (this.contentClasses) {
-      this.contentClasses.split(' ').forEach(s => {
-        classes[s] = true
-      })
-    }
-    return {
-      ...classes,
-      ...this.baseContentClasses
-    }
+const layout = computed<LayoutConfig | undefined>(() => {
+  if (_layoutPath.value) {
+    return typedGetters['layout/getConfig'](_layoutPath.value.name, _layoutPath.value.id)
   }
+  return undefined
+})
 
-  // height can not be applied to the card, otherwise
-  // it will not collapse properly.
-  // Instead we assign the height to the content area
-  // and abritrarily remove what we think the header
-  // height is to get close enough.
-  get _contentStyles () {
-    return (this.height)
-      ? `height: calc(${this.height}px - 49px);`
-      : ''
-  }
+const isLoading = computed<boolean | string>(() => props.loading ? 'primary' : false)
 
-  get _collapsable () {
-    if (!this.collapsable) return false
-    return (this.layout) ? this.collapsable : false
-  }
-
-  get _layoutPath () {
-    if (this.layoutPath) {
-      if (this.layoutPath.includes('.')) {
-        const split = this.layoutPath.split('.')
-        let name = split[0]
-        if (name === 'dashboard') name = this.$typedGetters['layout/getSpecificLayoutName']
-
-        return {
-          name,
-          id: split[1]
-        }
-      } else {
-        throw new Error('invalid layout path')
-      }
-    }
-  }
-
-  get layout (): LayoutConfig | undefined {
-    if (this._layoutPath) {
-      return this.$typedGetters['layout/getConfig'](this._layoutPath.name, this._layoutPath.id)
-    }
-  }
-
-  /**
-   * The menu classes associated with the btns not inside a dropdown.
-   */
-  get menuClasses () {
-    return `d-none d-${this.menuBreakpoint}-flex`
-  }
-
-  get isLoading (): boolean | string {
-    return (this.loading) ? 'primary' : false
-  }
-
-  /**
-   * Whether this card is in a collapsed state or not.
-   * E.g., in layout mode - you may set it to collapsed.
-   * If the layout isn't defined, then this should always be disabled.
-   */
-  get isCollapsed (): boolean {
-    if (!this.collapsable) {
-      return false
-    }
-    return (this.layout) ? this.layout.collapsed : false
-  }
-
-  set isCollapsed (collapsed: boolean) {
-    const value = this.layout
-    if (value && this._layoutPath) {
+const isCollapsed = computed({
+  get: (): boolean => {
+    if (!props.collapsable) return false
+    return layout.value ? layout.value.collapsed : false
+  },
+  set: (collapsed: boolean) => {
+    const value = layout.value
+    if (value && _layoutPath.value) {
       value.collapsed = collapsed
-      this.$typedDispatch('layout/onUpdateConfig', { name: this._layoutPath.name, value })
+      typedDispatch('layout/onUpdateConfig', { name: _layoutPath.value.name, value })
     }
   }
+})
 
-  @Watch('isCollapsed')
-  isCollapsedChange (val: boolean) {
-    this.$emit('collapsed', val)
-  }
-
-  /**
-   * Whether this card is in an enabled state or not.
-   * E.g., in layout mode - you may set it to disabled
-   * in order to prevent its display.
-   * If the layout isn't defined, then this should always be enabled.
-   */
-  get isEnabled (): boolean {
-    return (this.layout) ? this.layout.enabled : true
-  }
-
-  set isEnabled (enabled: boolean) {
-    const value = this.layout
-    if (value && this._layoutPath) {
+const isEnabled = computed({
+  get: (): boolean => layout.value ? layout.value.enabled : true,
+  set: (enabled: boolean) => {
+    const value = layout.value
+    if (value && _layoutPath.value) {
       value.enabled = enabled
-      this.$typedDispatch('layout/onUpdateConfig', { name: this._layoutPath.name, value })
+      typedDispatch('layout/onUpdateConfig', { name: _layoutPath.value.name, value })
     }
   }
+})
 
-  get inLayout (): boolean {
-    return (
-      this.$typedState.config.layoutMode &&
-      !!this.draggable
-    )
+const inLayout = computed(() => typedState.config.layoutMode && !!props.draggable)
+const _collapsable = computed(() => props.collapsable ? !!layout.value : false)
+
+const _cardClasses = computed(() => {
+  const classes: Record<string, unknown> = {}
+  if (props.cardClasses) {
+    props.cardClasses.split(' ').forEach(s => { classes[s] = true })
   }
-
-  /**
-   * Main content.
-   */
-  get hasDefaultSlot () {
-    return !!this.$slots.default || !!this.$scopedSlots.default
+  return {
+    ...classes,
+    ...baseCardClasses.value,
+    collapsed: (isCollapsed.value || !hasDefaultSlot.value || inLayout.value) && !hasCollapsedContentSlot.value
   }
+})
 
-  /**
-   * To override the title.
-   */
-  get hasTitleSlot () {
-    return !!this.$slots.title || !!this.$scopedSlots.title
+const _contentClasses = computed(() => {
+  const classes: Record<string, unknown> = {}
+  if (props.contentClasses) {
+    props.contentClasses.split(' ').forEach(s => { classes[s] = true })
   }
+  return { ...classes, ...baseContentClasses.value }
+})
 
-  /**
-   * To override the sub title.
-   */
-  get hasSubTitleSlot () {
-    return !!this.$slots['sub-title'] || !!this.$scopedSlots['sub-title']
-  }
+const _contentStyles = computed(() =>
+  props.height ? `height: calc(${props.height}px - 49px);` : ''
+)
 
-  /**
-   * To override the collapse button.
-   */
-  get hasCollapseButtonSlot () {
-    return !!this.$slots['collapse-button'] || !!this.$scopedSlots['collapse-button']
-  }
-
-  get hasCollapsedContentSlot () {
-    // no idea if the slot has children, so we assume it does
-    if (this.$scopedSlots['collapse-button']) return true
-
-    // return true if slot is defined and has child elements
-    return !!this.$slots['collapsed-content']?.length
-  }
-
-  mounted () {
-    this.$emit('collapsed', this.isCollapsed)
-  }
-}
+watch(isCollapsed, (val) => emit('collapsed', val))
+onMounted(() => emit('collapsed', isCollapsed.value))
 </script>
 
 <style lang="scss" scoped>

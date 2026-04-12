@@ -39,35 +39,33 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = defineProps<{
+  value?: unknown
+  label: string
+  resetValue?: unknown
+  disabled?: boolean
+  loading?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: unknown): void
+  (e: 'submit', value: unknown): void
+}>()
+
+const inputValue = computed({
+  get: () => props.value,
+  set: (v: unknown) => emit('input', v)
 })
-export default class AppNamedTextField extends Mixins(StateMixin) {
-  @VModel({ })
-  inputValue?: unknown
 
-  @Prop({ type: String, required: true })
-  readonly label!: string
-
-  @Prop({ })
-  readonly resetValue?: unknown
-
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-
-  handleReset () {
-    if (this.resetValue !== undefined) {
-      this.inputValue = this.resetValue
-
-      this.$emit('submit', this.resetValue)
-    }
+function handleReset () {
+  if (props.resetValue !== undefined) {
+    inputValue.value = props.resetValue
+    emit('submit', props.resetValue)
   }
 }
 </script>

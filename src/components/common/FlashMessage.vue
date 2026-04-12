@@ -22,25 +22,27 @@
   </v-snackbar>
 </template>
 
-<script lang="ts">
-import Vue from 'vue'
-import { Component, Prop, VModel } from 'vue-property-decorator'
-import type { FlashMessageTypes } from '@/types'
+<script setup lang="ts">
+import { computed } from 'vue'
+const props = withDefaults(defineProps<{
+  value?: boolean
+  type?: string
+  text?: string
+  timeout?: number
+}>(), {
+  type: 'dark',
+  text: 'Saved!',
+  timeout: 1500
+})
 
-@Component({})
-export default class FlashMessage extends Vue {
-  @VModel({ type: Boolean })
-  open?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+}>()
 
-  @Prop({ type: String, default: 'dark' })
-  readonly type!: FlashMessageTypes
-
-  @Prop({ type: String, default: 'Saved!' })
-  readonly text!: string
-
-  @Prop({ type: Number, default: 1500 })
-  readonly timeout!: number
-}
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 </script>
 
 <style lang="scss" scoped>
