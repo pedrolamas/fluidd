@@ -26,30 +26,21 @@
   </app-btn-group>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({})
-export default class AppUpDownBtnGroup extends Vue {
-  @Prop({ type: Array, required: true })
-  readonly values!: number[]
+const props = defineProps<{
+  values: number[]
+  color?: string
+  disabled?: boolean
+}>()
 
-  @Prop({ type: String })
-  readonly color?: string
+defineEmits<{
+  (e: 'click', value: number): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  get valuesDown (): number[] {
-    return [...this.values]
-      .sort((a, b) => b - a)
-  }
-
-  get valuesUp (): number[] {
-    return [...this.values]
-      .sort((a, b) => a - b)
-  }
-}
+const valuesDown = computed(() => [...props.values].sort((a, b) => b - a))
+const valuesUp = computed(() => [...props.values].sort((a, b) => a - b))
 </script>
 
 <style lang="scss" scoped>

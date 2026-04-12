@@ -56,40 +56,32 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { AppDataTableHeader } from '@/types'
 import type { ConfiguredTableHeader } from '@/store/config/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class AppColumnPicker extends Vue {
-  @Prop({ type: String, required: true })
-  readonly keyName!: string
+const { typedDispatch } = useStore()
 
-  @Prop({ type: Array, required: true })
-  readonly headers!: AppDataTableHeader[]
+const props = defineProps<{
+  keyName: string
+  headers: AppDataTableHeader[]
+}>()
 
-  get configurableHeaders (): AppDataTableHeader[] {
-    return this.headers
+const configurableHeaders = computed({
+  get: () => props.headers,
+  set: (value: AppDataTableHeader[]) => {
+    const headers = value.map(({ value, visible }): ConfiguredTableHeader => ({ value, visible }))
+    typedDispatch('config/updateHeaders', { name: props.keyName, headers })
   }
+})
 
-  set configurableHeaders (value: AppDataTableHeader[]) {
-    const headers = value
-      .map(({ value, visible }): ConfiguredTableHeader => ({
-        value,
-        visible
-      }))
-
-    this.$typedDispatch('config/updateHeaders', { name: this.keyName, headers })
+function handleToggleHeader (value: AppDataTableHeader) {
+  const header: ConfiguredTableHeader = {
+    value: value.value,
+    visible: !(value.visible !== false)
   }
-
-  handleToggleHeader (value: AppDataTableHeader) {
-    const header : ConfiguredTableHeader = {
-      value: value.value,
-      visible: !(value.visible !== false)
-    }
-
-    this.$typedDispatch('config/updateHeader', { name: this.keyName, header })
-  }
+  typedDispatch('config/updateHeader', { name: props.keyName, header })
 }
 </script>

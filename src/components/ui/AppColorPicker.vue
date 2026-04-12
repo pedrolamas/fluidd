@@ -167,220 +167,165 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, Ref, VModel, PropSync, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, reactive } from 'vue'
 import iro from '@jaames/iro'
 import { IroColor } from '@irojs/iro-core'
 import type { ColorPickerProps } from '@jaames/iro/dist/ColorPicker'
 import type { ColorPickerValueRange } from '@/store/config/types'
+import { useStore } from '@/composables/useStore'
 
-interface PointerPosition {
-  x: number;
-  y: number;
+interface PointerPosition { x: number; y: number }
+
+const { typedState, typedDispatch } = useStore()
+
+const props = withDefaults(defineProps<{
+  value: string
+  white?: number
+  title?: string
+  dot?: boolean
+  supportedChannels?: string
+  disabled?: boolean
+}>(), {
+  white: 0,
+  title: '',
+  supportedChannels: 'RGB'
+})
+
+const emit = defineEmits<{
+  (e: 'input', value: string): void
+  (e: 'update:white', value: number): void
+}>()
+
+const inputPrimaryColor = computed({
+  get: () => props.value,
+  set: (v: string) => emit('input', v)
+})
+
+const inputWhiteValue = computed({
+  get: () => props.white ?? 0,
+  set: (v: number) => emit('update:white', v)
+})
+
+const card = ref<{ $el: HTMLElement }>()
+const lastPointerPosition = reactive<PointerPosition>({ x: 0, y: 0 })
+const currentPrimaryColor = ref(new IroColor())
+const currentWhiteColor = ref(new IroColor())
+
+function valueToHexColor (value: number): string {
+  value = Math.round(Math.min(Math.max(value, 0), 255))
+  return `#${value.toString(16).padStart(2, '0').repeat(3)}`
 }
 
-@Component({})
-export default class AppColorPicker extends Vue {
-  @VModel({ type: String, required: true })
-  inputPrimaryColor!: string
+const inputWhiteColor = computed(() => valueToHexColor(inputWhiteValue.value))
 
-  @PropSync('white', { type: Number, default: 0 })
-  inputWhiteValue!: number
+const valueRange = computed<ColorPickerValueRange>({
+  get: () => typedState.config.uiSettings.general.colorPickerValueRange,
+  set: (value) => typedDispatch('config/saveByPath', { path: 'uiSettings.general.colorPickerValueRange', value, server: true })
+})
 
-  @Prop({ type: String, default: '' })
-  readonly title!: string
+function convertValueRange (value: number, direction: 'in' | 'out') {
+  if (valueRange.value === 'absolute') return value
+  let factor = 1
+  if (valueRange.value === 'percentage') factor = 255
+  if (direction === 'out') factor = 1 / factor
+  return Math.round(value * factor * 1000) / 1000
+}
 
-  @Prop({ type: Boolean })
-  readonly dot?: boolean
+const currentRed = computed({
+  get: () => convertValueRange(currentPrimaryColor.value.red, 'out'),
+  set: (v: number) => { currentPrimaryColor.value.red = convertValueRange(v, 'in') }
+})
 
-  @Prop({ type: String, default: 'RGB' })
-  readonly supportedChannels!: string
+const currentGreen = computed({
+  get: () => convertValueRange(currentPrimaryColor.value.green, 'out'),
+  set: (v: number) => { currentPrimaryColor.value.green = convertValueRange(v, 'in') }
+})
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+const currentBlue = computed({
+  get: () => convertValueRange(currentPrimaryColor.value.blue, 'out'),
+  set: (v: number) => { currentPrimaryColor.value.blue = convertValueRange(v, 'in') }
+})
 
-  @Ref('card')
-  readonly card!: Vue
+const currentWhite = computed({
+  get: () => convertValueRange(currentWhiteColor.value.red, 'out'),
+  set: (v: number) => { currentWhiteColor.value.set(valueToHexColor(convertValueRange(v, 'in'))) }
+})
 
-  lastPointerPosition: PointerPosition = { x: 0, y: 0 }
+const primaryOptions = computed<Partial<ColorPickerProps>>(() => ({
+  color: inputPrimaryColor.value,
+  width: 208,
+  layout: [
+    { component: iro.ui.Wheel, options: { wheelLightness: false, wheelAngle: 270, wheelDirection: 'clockwise' } },
+    { component: iro.ui.Slider, options: { sliderType: 'value' } }
+  ]
+}))
 
-  get primaryOptions (): Partial<ColorPickerProps> {
-    return {
-      color: this.inputPrimaryColor,
-      width: 208,
-      layout: [
-        {
-          component: iro.ui.Wheel,
-          options: {
-            wheelLightness: false,
-            wheelAngle: 270,
-            wheelDirection: 'clockwise'
-          }
-        },
-        {
-          component: iro.ui.Slider,
-          options: {
-            sliderType: 'value'
-          }
-        }
-      ]
-    }
-  }
+const whiteOptions = computed<Partial<ColorPickerProps>>(() => ({
+  color: inputWhiteColor.value,
+  width: 208,
+  layout: [{ component: iro.ui.Slider, options: { sliderType: 'value' } }]
+}))
 
-  get whiteOptions (): Partial<ColorPickerProps> {
-    return {
-      color: this.inputWhiteColor,
-      width: 208,
-      layout: [
-        {
-          component: iro.ui.Slider,
-          options: {
-            sliderType: 'value'
-          }
-        }
-      ]
-    }
-  }
+const controlColor = computed(() =>
+  props.supportedChannels === 'W' ? inputWhiteColor.value : inputPrimaryColor.value
+)
 
-  currentPrimaryColor = new IroColor()
-  currentWhiteColor = new IroColor()
+watch(() => props.value, (value) => { currentPrimaryColor.value.set(value) })
+watch(() => props.white, (value) => { currentWhiteColor.value.set(valueToHexColor(value ?? 0)) })
 
-  @Watch('value')
-  onValue (value: string) {
-    this.currentPrimaryColor.set(value)
-  }
+function handleReset () {
+  currentPrimaryColor.value.set(inputPrimaryColor.value)
+  currentWhiteColor.value.set(inputWhiteColor.value)
+}
 
-  @Watch('white')
-  onWhite (value: number) {
-    this.currentWhiteColor.set(this.valueToHexColor(value))
-  }
+function handleSubmitPrimary () {
+  inputPrimaryColor.value = currentPrimaryColor.value.hexString
+}
 
-  get currentRed (): number {
-    return this.convertValueRange(this.currentPrimaryColor.red, 'out')
-  }
+function handleSubmitWhite () {
+  inputWhiteValue.value = currentWhiteColor.value.red
+}
 
-  set currentRed (value: number) {
-    this.currentPrimaryColor.red = this.convertValueRange(value, 'in')
-  }
-
-  get currentGreen (): number {
-    return this.convertValueRange(this.currentPrimaryColor.green, 'out')
-  }
-
-  set currentGreen (value: number) {
-    this.currentPrimaryColor.green = this.convertValueRange(value, 'in')
-  }
-
-  get currentBlue (): number {
-    return this.convertValueRange(this.currentPrimaryColor.blue, 'out')
-  }
-
-  set currentBlue (value: number) {
-    this.currentPrimaryColor.blue = this.convertValueRange(value, 'in')
-  }
-
-  get currentWhite (): number {
-    return this.convertValueRange(this.currentWhiteColor.red, 'out')
-  }
-
-  set currentWhite (value: number) {
-    this.currentWhiteColor.set(this.valueToHexColor(this.convertValueRange(value, 'in')))
-  }
-
-  get inputWhiteColor (): string {
-    return this.valueToHexColor(this.inputWhiteValue)
-  }
-
-  get controlColor (): string {
-    return (
-      this.supportedChannels === 'W'
-        ? this.inputWhiteColor
-        : this.inputPrimaryColor
-    )
-  }
-
-  get valueRange (): ColorPickerValueRange {
-    return this.$typedState.config.uiSettings.general.colorPickerValueRange
-  }
-
-  set valueRange (value: ColorPickerValueRange) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.colorPickerValueRange',
-      value,
-      server: true
-    })
-  }
-
-  handleSubmitPrimary () {
-    this.inputPrimaryColor = this.currentPrimaryColor.hexString
-  }
-
-  handleSubmitWhite () {
-    this.inputWhiteValue = this.currentWhiteColor.red
-  }
-
-  handleReset () {
-    this.currentPrimaryColor.set(this.inputPrimaryColor)
-    this.currentWhiteColor.set(this.inputWhiteColor)
-  }
-
-  valueToHexColor (value: number): string {
-    value = Math.round(Math.min(Math.max(value, 0), 255))
-
-    return `#${value.toString(16).padStart(2, '0').repeat(3)}`
-  }
-
-  created () {
-    this.handleReset()
-  }
-
-  startMouseDrag (event: MouseEvent) {
-    this.lastPointerPosition = { x: event.clientX, y: event.clientY }
-    window.addEventListener('mousemove', this.mouseMove)
-    window.addEventListener('mouseup', this.stopMouseDrag)
-  }
-
-  stopMouseDrag () {
-    window.removeEventListener('mousemove', this.mouseMove)
-    window.removeEventListener('mouseup', this.stopMouseDrag)
-  }
-
-  startTouchDrag (event: TouchEvent) {
-    this.lastPointerPosition = { x: event.touches[0].clientX, y: event.touches[0].clientY }
-  }
-
-  relativeMove (newPosition: PointerPosition) {
-    const parent = this.card.$el.parentElement
-
-    if (parent) {
-      parent.style.left = (parseFloat(parent.style.left) + (newPosition.x - this.lastPointerPosition.x)) + 'px'
-      parent.style.top = (parseFloat(parent.style.top) + (newPosition.y - this.lastPointerPosition.y)) + 'px'
-    }
-  }
-
-  mouseMove (event: MouseEvent) {
-    const newPosition = { x: event.clientX, y: event.clientY }
-    this.relativeMove(newPosition)
-    this.lastPointerPosition = newPosition
-  }
-
-  touchMove (event: TouchEvent) {
-    event.preventDefault()
-    const newPosition = { x: event.touches[0].clientX, y: event.touches[0].clientY }
-    this.relativeMove(newPosition)
-    this.lastPointerPosition = newPosition
-  }
-
-  convertValueRange (value: number, direction: 'in' | 'out') {
-    if (this.valueRange === 'absolute') return value
-
-    let factor = 1
-    if (this.valueRange === 'percentage') factor = 255
-    if (direction === 'out') factor = 1 / factor
-
-    return Math.round(value * factor * 1000) / 1000
+// Drag functionality
+function relativeMove (newPosition: PointerPosition) {
+  const parent = card.value?.$el.parentElement
+  if (parent) {
+    parent.style.left = (parseFloat(parent.style.left) + (newPosition.x - lastPointerPosition.x)) + 'px'
+    parent.style.top = (parseFloat(parent.style.top) + (newPosition.y - lastPointerPosition.y)) + 'px'
   }
 }
+
+function mouseMove (event: MouseEvent) {
+  const newPosition = { x: event.clientX, y: event.clientY }
+  relativeMove(newPosition)
+  Object.assign(lastPointerPosition, newPosition)
+}
+
+function stopMouseDrag () {
+  window.removeEventListener('mousemove', mouseMove)
+  window.removeEventListener('mouseup', stopMouseDrag)
+}
+
+function startMouseDrag (event: MouseEvent) {
+  Object.assign(lastPointerPosition, { x: event.clientX, y: event.clientY })
+  window.addEventListener('mousemove', mouseMove)
+  window.addEventListener('mouseup', stopMouseDrag)
+}
+
+function startTouchDrag (event: TouchEvent) {
+  Object.assign(lastPointerPosition, { x: event.touches[0].clientX, y: event.touches[0].clientY })
+}
+
+function touchMove (event: TouchEvent) {
+  event.preventDefault()
+  const newPosition = { x: event.touches[0].clientX, y: event.touches[0].clientY }
+  relativeMove(newPosition)
+  Object.assign(lastPointerPosition, newPosition)
+}
+
+// created equivalent
+handleReset()
 </script>
 
 <style lang="scss" scoped>

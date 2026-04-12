@@ -26,23 +26,29 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { Heater } from '@/store/printer/types'
-import { Component, Vue, VModel, Prop } from 'vue-property-decorator'
 
-@Component({})
-export default class HeaterPidCalibrateDialog extends Vue {
-  targetTemperature = 100
+const props = defineProps<{
+  value?: boolean
+  heater: Heater
+}>()
 
-  @VModel({ type: Boolean })
-  open?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+  (e: 'save', heater: Heater, targetTemperature: number): void
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly heater!: Heater
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  handleSave () {
-    this.$emit('save', this.heater, this.targetTemperature)
-    this.open = false
-  }
+const targetTemperature = ref(100)
+
+function handleSave () {
+  emit('save', props.heater, targetTemperature.value)
+  open.value = false
 }
 </script>

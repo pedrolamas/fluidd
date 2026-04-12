@@ -30,19 +30,13 @@
   </v-overlay>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+defineOptions({ inheritAttrs: false })
 
-@Component({
-  inheritAttrs: false
-})
-export default class AppDragOverlay extends Vue {
-  @Prop({ type: String, required: true })
-  readonly message!: string
-
-  @Prop({ type: String, required: true })
-  readonly icon!: string
-}
+defineProps<{
+  message: string
+  icon: string
+}>()
 </script>
 
 <style lang="scss" scoped>

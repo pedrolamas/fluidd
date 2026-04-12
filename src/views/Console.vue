@@ -6,15 +6,6 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import ConsoleCard from '@/components/widgets/console/ConsoleCard.vue'
-
-@Component({
-  components: {
-    ConsoleCard
-  }
-})
-export default class Console extends Vue {
-}
 </script>

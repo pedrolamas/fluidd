@@ -39,32 +39,32 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = defineProps<{
+  value?: unknown
+  resetValue?: unknown
+  label: string
+  disabled?: boolean
+  loading?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: unknown): void
+  (e: 'change', value: unknown): void
+}>()
+
+const inputValue = computed({
+  get: () => props.value,
+  set: (v: unknown) => emit('input', v)
 })
-export default class AppNamedSelect extends Vue {
-  @VModel({ })
-  inputValue?: unknown
 
-  @Prop({ })
-  readonly resetValue?: unknown
-
-  @Prop({ type: String, required: true })
-  readonly label!: string
-
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-
-  handleReset () {
-    if (this.resetValue !== undefined) {
-      this.$emit('change', this.resetValue)
-    }
+function handleReset () {
+  if (props.resetValue !== undefined) {
+    emit('change', props.resetValue)
   }
 }
 </script>

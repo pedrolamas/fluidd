@@ -11,16 +11,12 @@
   </v-chip>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+defineOptions({ inheritAttrs: false })
 
-@Component({
-  inheritAttrs: false
-})
-export default class AppChipColor extends Vue {
-  @Prop({ type: String, required: true })
-  color!: string
-}
+defineProps<{
+  color: string
+}>()
 </script>
 
 <style lang="scss" scoped>

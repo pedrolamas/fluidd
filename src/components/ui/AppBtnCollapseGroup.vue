@@ -1,4 +1,4 @@
-<template v-if="hasDefaultSlot">
+<template v-if="$slots.default">
   <!-- not collapsed -->
   <div
     v-if="!collapsed"
@@ -37,24 +37,14 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+defineOptions({ inheritAttrs: false })
 
-@Component({
-  inheritAttrs: false
+withDefaults(defineProps<{
+  collapsed?: boolean
+  menuIcon?: string
+  disabled?: boolean
+}>(), {
+  menuIcon: '$menu'
 })
-export default class AppBtnCollapseGroup extends Vue {
-  @Prop({ type: Boolean })
-  readonly collapsed?: boolean
-
-  @Prop({ type: String, default: '$menu' })
-  readonly menuIcon!: string
-
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  get hasDefaultSlot () {
-    return !!this.$slots.default
-  }
-}
 </script>

@@ -35,108 +35,105 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Vue, Component, Prop, Watch, Ref } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
 import { Globals } from '@/globals'
 import type { VTextField } from 'vuetify/lib'
 import type { GcodeCommands } from '@/store/printer/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class ConsoleCommand extends Vue {
-  @Prop({ type: String })
-  readonly value!: string
+const { typedState, typedGetters, typedDispatch } = useStore()
 
-  @Ref('input')
-  readonly input!: VTextField
+const props = defineProps<{
+  value?: string
+  disabled?: boolean
+  autofocus?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+const emit = defineEmits<{
+  (e: 'input', val: string): void
+  (e: 'send', val: string): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly autofocus?: boolean
+const input = ref<VTextField>()
+const newValue = ref('')
+const commandHistoryCount = Globals.CONSOLE_COMMAND_HISTORY
+const history = ref<string[]>([])
+const originalHistory = ref<string[]>([])
+const isFirst = ref(true)
 
-  @Watch('value')
-  onValueChange (val: string) {
-    if (val) {
-      this.newValue = val
-      this.input.focus()
-    } else {
-      this.newValue = ''
+const availableCommands = computed<GcodeCommands>(
+  () => typedGetters['printer/getAvailableCommands']
+)
+
+watch(() => props.value, (val) => {
+  if (val) {
+    newValue.value = val
+    input.value?.focus()
+  } else {
+    newValue.value = ''
+  }
+})
+
+onMounted(() => {
+  newValue.value = props.value ?? ''
+  const savedHistory: string[] = typedState.console.commandHistory
+  history.value = [...savedHistory]
+  originalHistory.value = [...savedHistory]
+})
+
+function emitChange (val: string) {
+  newValue.value = val
+  emit('input', val)
+}
+
+function emitSend (val: string) {
+  if (val && val.length > 0) {
+    if (history.value.length >= commandHistoryCount) {
+      originalHistory.value.pop()
     }
+    originalHistory.value.unshift(val)
+    typedDispatch('console/onUpdateCommandHistory', [...originalHistory.value])
+    history.value = [...originalHistory.value]
+    isFirst.value = true
+    emit('send', val)
   }
+}
 
-  newValue = ''
-  commandHistoryCount = Globals.CONSOLE_COMMAND_HISTORY
-  history: string[] = []
-  originalHistory: string[] = []
-  isFirst = true
-
-  mounted () {
-    this.newValue = this.value
-    const savedHistory: string[] = this.$typedState.console.commandHistory
-    this.history = [...savedHistory]
-    this.originalHistory = [...savedHistory]
-  }
-
-  emitChange (val: string) {
-    this.newValue = val
-    this.$emit('input', val)
-  }
-
-  emitSend (val: string) {
-    if (val && val.length > 0) {
-      if (this.history.length >= this.commandHistoryCount) {
-        this.originalHistory.pop()
-      }
-      this.originalHistory.unshift(val)
-      this.$typedDispatch('console/onUpdateCommandHistory', [...this.originalHistory])
-      this.history = [...this.originalHistory]
-      this.isFirst = true
-      this.$emit('send', val)
+function historyUp () {
+  if (history.value.length >= 1) {
+    if (!isFirst.value) {
+      const f = history.value.shift()
+      if (f != null) history.value.push(f)
     }
+    emitChange(history.value[0])
+    isFirst.value = false
   }
+}
 
-  historyUp () {
-    if (this.history.length >= 1) {
-      if (!this.isFirst) {
-        const f = this.history.shift()
-        if (f != null) this.history.push(f)
-      }
-      this.emitChange(this.history[0])
-      this.isFirst = false
+function historyDown () {
+  if (history.value.length >= 1) {
+    if (!isFirst.value) {
+      const f = history.value.pop()
+      if (f != null) history.value.unshift(f)
     }
+    emitChange(history.value[0])
+    isFirst.value = false
   }
+}
 
-  historyDown () {
-    if (this.history.length >= 1) {
-      if (!this.isFirst) {
-        const f = this.history.pop()
-        if (f != null) this.history.unshift(f)
-      }
-      this.emitChange(this.history[0])
-      this.isFirst = false
-    }
-  }
+function autoComplete () {
+  if (newValue.value.length) {
+    const commands = Object.keys(availableCommands.value)
+      .filter(command => command.startsWith(newValue.value.toUpperCase()))
 
-  get availableCommands (): GcodeCommands {
-    return this.$typedGetters['printer/getAvailableCommands']
-  }
-
-  autoComplete () {
-    const availableCommands = this.availableCommands
-
-    if (this.newValue.length) {
-      const commands = Object.keys(availableCommands)
-        .filter(command => command.startsWith(this.newValue.toUpperCase()))
-
-      if (commands.length === 1) {
-        this.emitChange(commands[0])
-      } else if (commands.length > 0) {
-        const message = commands
-          .map(command => `// ${command}: ${availableCommands[command].help ?? ''}`)
-          .join('\n')
-        this.$typedDispatch('console/onAddConsoleEntry', { message, type: 'response' })
-      }
+    if (commands.length === 1) {
+      emitChange(commands[0])
+    } else if (commands.length > 0) {
+      const message = commands
+        .map(command => `// ${command}: ${availableCommands.value[command].help ?? ''}`)
+        .join('\n')
+      typedDispatch('console/onAddConsoleEntry', { message, type: 'response' })
     }
   }
 }

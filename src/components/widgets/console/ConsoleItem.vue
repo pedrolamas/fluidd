@@ -14,63 +14,64 @@
   </v-layout>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { Globals } from '@/globals'
+import { Filters } from '@/plugins/filters'
 import type { ConsoleEntry } from '@/store/console/types'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class ConsoleItem extends Vue {
-  @Prop({ type: Object, default: () => {} })
-  readonly value!: ConsoleEntry
+const { typedGetters } = useStore()
 
-  get knownCommands (): Moonraker.KlippyApis.GcodeHelpResponse {
-    return this.$typedGetters['console/getAllKnownCommands']
+const props = withDefaults(defineProps<{
+  value?: ConsoleEntry
+}>(), {
+  value: () => ({}) as ConsoleEntry
+})
+
+const emit = defineEmits<{
+  (e: 'click', command: string): void
+}>()
+
+const knownCommands = computed<Moonraker.KlippyApis.GcodeHelpResponse>(
+  () => typedGetters['console/getAllKnownCommands']
+)
+
+const itemMessage = computed(() => {
+  let message = props.value.message
+  if (props.value.type === 'response') {
+    message = props.value.message.replace(/([A-Z_][A-Z0-9_.]+)/g, (match, command) => {
+      if (command in knownCommands.value) return `<a class="primary--text text--lighten-1">${command.toUpperCase()}</a>`
+      return match
+    })
   }
+  return (props.value.type === 'command')
+    ? `${Globals.CONSOLE_SEND_PREFIX}<a class="primary--text text--lighten-1">${message}</a>`
+    : message
+})
 
-  get itemMessage () {
-    let message = this.value.message
-    if (this.value.type === 'response') {
-      message = this.value.message.replace(/([A-Z_][A-Z0-9_.]+)/g, (match, command) => {
-        if (command in this.knownCommands) return `<a class="primary--text text--lighten-1">${command.toUpperCase()}</a>`
-        return match
-      })
-    }
-    return (this.value.type === 'command')
-      ? `${Globals.CONSOLE_SEND_PREFIX}<a class="primary--text text--lighten-1">${message}</a>`
-      : message
+const itemTime = computed(() => (props.value.time)
+  ? Filters.formatTimeWithSeconds(props.value.time * 1000)
+  : ''
+)
+
+const itemClass = computed(() => {
+  if (props.value.message?.startsWith('!!')) {
+    return { 'error--text': true }
   }
-
-  get itemTime () {
-    return (this.value.time)
-      ? this.$filters.formatTimeWithSeconds(this.value.time * 1000)
-      : ''
+  if (props.value.type === 'command') {
+    return { 'primary--text': true }
   }
+  return { 'secondary--text': true }
+})
 
-  get itemClass () {
-    if (this.value.message.startsWith('!!')) {
-      return { 'error--text': true }
-    }
+function itemClick (event: Event) {
+  if (event.target instanceof HTMLAnchorElement) {
+    const command = event.target.innerHTML
+      .replace(/<br>/g, '\n')
+      .replace(/^\s+|\s+$/gm, '')
 
-    // if (this.value.message.startsWith('//')) {
-    //   return { 'secondary--text': true }
-    // }
-
-    if (this.value.type === 'command') {
-      return { 'primary--text': true }
-    }
-
-    return { 'secondary--text': true }
-  }
-
-  itemClick (event: Event) {
-    if (event.target instanceof HTMLAnchorElement) {
-      const command = event.target.innerHTML
-        .replace(/<br>/g, '\n')
-        .replace(/^\s+|\s+$/gm, '')
-
-      this.$emit('click', command)
-    }
+    emit('click', command)
   }
 }
 </script>

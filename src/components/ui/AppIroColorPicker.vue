@@ -4,52 +4,55 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, Ref, Watch, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import iro from '@jaames/iro'
 import type { IroColor } from '@irojs/iro-core'
 import type { ColorPickerProps, IroColorPicker } from '@jaames/iro/dist/ColorPicker'
 
-@Component({})
-export default class AppColorPicker extends Vue {
-  @VModel({ type: String, default: '#ffffff' })
-  inputValue!: string
+const props = withDefaults(defineProps<{
+  value?: string
+  options?: Partial<ColorPickerProps>
+}>(), {
+  value: '#ffffff'
+})
 
-  @Prop({ type: Object })
-  readonly options?: Partial<ColorPickerProps>
+const emit = defineEmits<{
+  (e: 'input', value: string): void
+}>()
 
-  @Ref('picker')
-  readonly picker!: HTMLElement
+const inputValue = computed({
+  get: () => props.value ?? '#ffffff',
+  set: (v: string) => emit('input', v)
+})
 
-  colorPicker: IroColorPicker | null = null
+const picker = ref<HTMLElement>()
+const colorPicker = ref<IroColorPicker | null>(null)
 
-  @Watch('value')
-  onValue (value: string) {
-    if (value && this.colorPicker) {
-      this.colorPicker.color.set(value)
-    }
+watch(() => props.value, (value) => {
+  if (value && colorPicker.value) {
+    colorPicker.value.color.set(value)
+  }
+})
+
+onMounted(() => {
+  const options: Partial<ColorPickerProps> = {
+    ...props.options,
+    color: inputValue.value,
+    sliderSize: 14
   }
 
-  mounted () {
-    const options: Partial<ColorPickerProps> = {
-      ...this.options,
-      color: this.inputValue,
-      sliderSize: 14
-    }
+  colorPicker.value = iro.ColorPicker(picker.value!, options)
+  colorPicker.value.on('input:end', handleColorChange)
+})
 
-    this.colorPicker = iro.ColorPicker(this.picker, options)
-
-    this.colorPicker.on('input:end', this.handleColorChange)
+onBeforeUnmount(() => {
+  if (colorPicker.value) {
+    colorPicker.value.off('input:end', handleColorChange)
   }
+})
 
-  beforeUnmount () {
-    if (this.colorPicker) {
-      this.colorPicker.off('input:end', this.handleColorChange)
-    }
-  }
-
-  handleColorChange (color: IroColor) {
-    this.inputValue = color.hexString
-  }
+function handleColorChange (color: IroColor) {
+  inputValue.value = color.hexString
 }
 </script>

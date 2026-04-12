@@ -36,36 +36,45 @@
   </v-text-field>
 </template>
 
-<script lang="ts">
-import { Component, VModel, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, getCurrentInstance } from 'vue'
 import clipboardCopy from '@/util/clipboard-copy'
 import sleep from '@/util/sleep'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = defineProps<{
+  value?: unknown
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: unknown): void
+}>()
+
+const inputValue = computed({
+  get: () => props.value,
+  set: (v: unknown) => emit('input', v)
 })
-export default class AppTextFieldWithCopy extends Vue {
-  @VModel()
-  inputValue!: unknown
 
-  hasCopied = false
-  abortController: AbortController | null = null
+const hasCopied = ref(false)
+const abortController = ref<AbortController | null>(null)
+const instance = getCurrentInstance()
 
-  async handleCopy () {
-    if (this.inputValue) {
-      if (await clipboardCopy(this.inputValue.toString(), this.$el)) {
-        this.abortController?.abort()
+async function handleCopy () {
+  if (props.value) {
+    if (await clipboardCopy(props.value.toString(), instance?.proxy?.$el as Element)) {
+      abortController.value?.abort()
 
-        this.hasCopied = true
+      hasCopied.value = true
 
-        try {
-          const abortController = this.abortController = new AbortController()
+      try {
+        const ctrl = new AbortController()
+        abortController.value = ctrl
 
-          await sleep(2000, abortController.signal)
+        await sleep(2000, ctrl.signal)
 
-          this.hasCopied = false
-        } catch {}
-      }
+        hasCopied.value = false
+      } catch {}
     }
   }
 }

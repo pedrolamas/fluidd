@@ -11,6 +11,7 @@ export default defineConfigWithVueTs(
   {
     name: 'app/files-to-ignore',
     ignores: [
+      '.venv/**',
       'dist/**',
       'dev-dist/**',
       'docs/.cache/**',
@@ -23,13 +24,24 @@ export default defineConfigWithVueTs(
   neostandard(),
   vueTsConfigs.recommended,
   {
+    // Views are page-level components not used as child components, so
+    // single-word names pose no conflict risk with HTML element names.
+    files: ['src/views/**/*.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off'
+    }
+  },
+  {
     rules: {
       'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
       'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
       camelcase: 'off',
       'no-use-before-define': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-empty-object-type': 'off'
+      '@typescript-eslint/no-empty-object-type': 'off',
+      // TypeScript optional props in <script setup> express optionality without
+      // a default value — requiring an explicit default is redundant.
+      'vue/require-default-prop': 'off'
     }
   }
 )

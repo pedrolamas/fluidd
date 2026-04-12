@@ -59,50 +59,42 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
 import { get } from 'lodash-es'
 import type { DataTableHeader } from 'vuetify'
 
-export type GetterFunction = (item: unknown, header: DataTableHeader, defaultGetter: DefaultGetterFunction) => unknown
-
-const defaultGetter = (item: unknown, header: DataTableHeader): unknown => get(item, header.value)
+// Use `any` for item and return type so callers can pass narrowly-typed getters
+// and slot consumers can use the value freely — matches pre-migration @Prop({ type: Function }) behavior.
+const defaultGetter = (item: any, header: DataTableHeader<any>): any => get(item, header.value)
 
 export type DefaultGetterFunction = typeof defaultGetter
+export type GetterFunction = (item: any, header: DataTableHeader<any>, defaultGetter: DefaultGetterFunction) => any
+</script>
 
-@Component({
-  inheritAttrs: false
-})
-export default class AppDataTableRow extends Vue {
-  @Prop({ type: Array, required: true })
-  readonly headers!: DataTableHeader[]
+<script setup lang="ts">
+import { computed } from 'vue'
 
-  @Prop({ type: Object, required: true })
-  readonly item!: unknown
+defineOptions({ inheritAttrs: false })
 
-  @Prop({ type: Boolean })
-  readonly isSelected!: boolean
+const props = defineProps<{
+  headers: DataTableHeader[]
+  item: unknown
+  isSelected?: boolean
+  customGetter?: GetterFunction
+}>()
 
-  @Prop({ type: Function })
-  readonly customGetter?: GetterFunction
-
-  isEmpty (value: unknown) {
-    return (
-      value == null ||
-      value === '' ||
-      (
-        Array.isArray(value) &&
-        value.length === 0
-      )
-    )
-  }
-
-  get items () {
-    const getter = this.customGetter ?? defaultGetter
-
-    return this.headers.map(header => ({
-      header,
-      value: getter(this.item, header, defaultGetter)
-    }))
-  }
+function isEmpty (value: unknown) {
+  return (
+    value == null ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0)
+  )
 }
+
+const items = computed(() => {
+  const getter = props.customGetter ?? defaultGetter
+  return props.headers.map(header => ({
+    header,
+    value: getter(props.item, header, defaultGetter)
+  }))
+})
 </script>

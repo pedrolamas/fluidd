@@ -20,14 +20,10 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+defineOptions({ inheritAttrs: false })
 
-@Component({
-  inheritAttrs: false
-})
-export default class AppDataTableCellColors extends Vue {
-  @Prop({ type: Array, required: true })
-  readonly colors!: string[]
-}
+defineProps<{
+  colors: string[]
+}>()
 </script>

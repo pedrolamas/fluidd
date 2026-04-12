@@ -43,25 +43,31 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { Heater } from '@/store/printer/types'
 import type { NullableOrEmpty } from '@/util/is-null-or-empty'
-import { Component, Vue, VModel, Prop } from 'vue-property-decorator'
 
-@Component({})
-export default class HeaterMpcCalibrateDialog extends Vue {
-  targetTemperature = 100
-  fanBreakpoints: NullableOrEmpty<number> = null
+const props = defineProps<{
+  value?: boolean
+  heater: Heater
+}>()
 
-  @VModel({ type: Boolean })
-  open?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+  (e: 'save', heater: Heater, targetTemperature: number, fanBreakpoints: NullableOrEmpty<number>): void
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly heater!: Heater
+const open = computed({
+  get: () => props.value,
+  set: (v) => emit('input', v)
+})
 
-  handleSave () {
-    this.$emit('save', this.heater, this.targetTemperature, this.fanBreakpoints)
-    this.open = false
-  }
+const targetTemperature = ref(100)
+const fanBreakpoints = ref<NullableOrEmpty<number>>(null)
+
+function handleSave () {
+  emit('save', props.heater, targetTemperature.value, fanBreakpoints.value)
+  open.value = false
 }
 </script>

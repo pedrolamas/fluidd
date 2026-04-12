@@ -30,32 +30,34 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Ref, Vue, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, watch } from 'vue'
 
-@Component({})
-export default class AppFocusableContainer extends Vue {
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+defineProps<{
+  disabled?: boolean
+}>()
 
-  @Ref('input-slot')
-  readonly inputSlot!: HTMLDivElement
+const emit = defineEmits<{
+  (e: 'focus'): void
+  (e: 'blur'): void
+}>()
 
-  hasFocus = false
+const inputSlot = ref<HTMLDivElement>()
+const hasFocus = ref(false)
 
-  @Watch('hasFocus')
-  onHasFocusChanged (value: boolean) {
-    if (value) {
-      this.$emit('focus')
-    } else {
-      this.$emit('blur')
-    }
+watch(hasFocus, (value) => {
+  if (value) {
+    emit('focus')
+  } else {
+    emit('blur')
   }
+})
 
-  focus () {
-    this.inputSlot.focus()
-  }
+function focus () {
+  inputSlot.value?.focus()
 }
+
+defineExpose({ focus })
 </script>
 
 <style lang="scss" scoped>

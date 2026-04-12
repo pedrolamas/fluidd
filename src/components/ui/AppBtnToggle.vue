@@ -11,17 +11,22 @@
   </v-btn-toggle>
 </template>
 
-<script lang="ts">
-import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({
-  inheritAttrs: false
-})
-export default class AppBtnToggle extends Vue {
-  @VModel()
-  inputValue?: unknown
+defineOptions({ inheritAttrs: false })
 
-  @Prop({ type: Boolean })
+const props = defineProps<{
+  value?: unknown
   disabled?: boolean
-}
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: unknown): void
+}>()
+
+const inputValue = computed({
+  get: () => props.value,
+  set: (v: unknown) => emit('input', v)
+})
 </script>

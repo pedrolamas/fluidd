@@ -6,7 +6,7 @@ export function useI18n () {
   const proxy = instance.proxy!
 
   return {
-    t: proxy.$t.bind(proxy) as typeof proxy.$t,
-    tc: proxy.$tc.bind(proxy) as typeof proxy.$tc,
+    t: (key: string, ...args: any[]): string => proxy.$t(key, ...args as any) as string,
+    tc: (key: string, ...args: any[]): string => proxy.$tc(key, ...args as any) as string,
   }
 }

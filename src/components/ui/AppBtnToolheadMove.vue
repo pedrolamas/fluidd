@@ -15,7 +15,7 @@
         <v-icon
           v-if="icon"
           :small="smallIcon"
-          :class="{ 'mr-1': hasDefaultSlot }"
+          :class="{ 'mr-1': $slots.default }"
         >
           {{ icon }}
         </v-icon>
@@ -26,28 +26,14 @@
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
-
-@Component({})
-export default class AppBtnToolheadMove extends Vue {
-  @Prop({ type: String, required: true })
-  readonly icon!: string
-
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  @Prop({ type: String, default: 'btncolor' })
-  readonly color!: string
-
-  @Prop({ type: String })
-  readonly tooltip?: string
-
-  @Prop({ type: Boolean })
-  readonly smallIcon?: boolean
-
-  get hasDefaultSlot () {
-    return !!this.$slots.default || !!this.$scopedSlots.default
-  }
-}
+<script setup lang="ts">
+withDefaults(defineProps<{
+  icon: string
+  disabled?: boolean
+  color?: string
+  tooltip?: string
+  smallIcon?: boolean
+}>(), {
+  color: 'btncolor'
+})
 </script>

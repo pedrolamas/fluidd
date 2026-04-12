@@ -80,183 +80,145 @@
   </v-form>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Watch, Ref, VModel, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import type { InputValidationRules } from 'vuetify'
 import type { VForm } from 'vuetify/lib'
+import { Rules } from '@/plugins/filters'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = withDefaults(defineProps<{
+  value: number
+  resetValue?: number
+  label: string
+  rules?: InputValidationRules[]
+  disabled?: boolean
+  locked?: boolean
+  loading?: boolean
+  min?: number
+  max?: number
+  overridable?: boolean
+  step?: number
+}>(), {
+  min: 0,
+  max: 100,
+  step: 1
 })
-export default class AppNamedSlider extends Vue {
-  @VModel({ type: Number, required: true })
-  inputValue!: number
 
-  @Prop({ type: Number })
-  readonly resetValue?: number
+const emit = defineEmits<{
+  (e: 'input', value: number): void
+  (e: 'submit', value: number): void
+  (e: 'change', value: number | string): void
+  (e: 'start', value: number): void
+  (e: 'end', value: number): void
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly label!: string
+const form = ref<VForm>()
+const currentValue = ref(props.value.toString())
+const sliderValue = ref(props.value)
+const internalLocked = ref(props.locked)
+const internalMax = ref(props.max)
+const overridden = ref(false)
+const hasFocus = ref(false)
 
-  @Prop({ type: Array })
-  readonly rules?: InputValidationRules[]
-
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  @Prop({ type: Boolean })
-  readonly locked?: boolean
-
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-
-  @Prop({ type: Number, default: 0 })
-  readonly min!: number
-
-  @Prop({ type: Number, default: 100 })
-  readonly max!: number
-
-  @Prop({ type: Boolean })
-  readonly overridable?: boolean
-
-  @Prop({ type: Number, default: 1 })
-  readonly step!: number
-
-  @Ref('form')
-  readonly form!: VForm
-
-  @Watch('value')
-  onValue (value: number) {
-    if (!this.hasFocus) {
-      this.currentValue = value.toString()
-    }
+const textRules = computed(() => {
+  const rules = [
+    ...(props.rules ?? []),
+    Rules.required,
+    Rules.numberValid,
+    Rules.numberGreaterThanOrEqual(props.min)
+  ]
+  if (!props.overridable) {
+    rules.push(Rules.numberLessThanOrEqual(props.max))
   }
+  return rules
+})
 
-  @Watch('currentValue')
-  onCurrentValue (value: string) {
-    const valueAsNumber = +value
-
-    if (!Number.isNaN(valueAsNumber)) {
-      this.checkOverride(valueAsNumber)
-      this.sliderValue = valueAsNumber
-    }
+function checkOverride (value: number) {
+  if (value > props.max && props.overridable) {
+    overridden.value = true
+    internalMax.value = value
+  } else {
+    overridden.value = false
+    internalMax.value = props.max
   }
+}
 
-  @Watch('sliderValue')
-  onSliderValue (value: number) {
-    if (!this.hasFocus) {
-      this.currentValue = value.toString()
-    }
-    this.$emit('input', value)
+watch(() => props.value, (value) => {
+  if (!hasFocus.value) {
+    currentValue.value = value.toString()
   }
+})
 
-  @Watch('locked')
-  onLocked (value: boolean) {
-    this.internalLocked = value
+watch(currentValue, (value) => {
+  const n = +value
+  if (!Number.isNaN(n)) {
+    checkOverride(n)
+    sliderValue.value = n
   }
+})
 
-  @Watch('max')
-  onMax () {
-    this.checkOverride(this.sliderValue)
+watch(sliderValue, (value) => {
+  if (!hasFocus.value) {
+    currentValue.value = value.toString()
   }
+  emit('input', value)
+})
 
-  currentValue = ''
-  sliderValue = 0
-  internalLocked? = false
-  internalMax = 0
-  overridden = false
-  hasFocus = false
+watch(() => props.locked, (value) => {
+  internalLocked.value = value
+})
 
-  get textRules () {
-    // Apply a min and max rule as per the slider.
-    const rules = [
-      ...this.rules || [],
-      this.$rules.required,
-      this.$rules.numberValid,
-      this.$rules.numberGreaterThanOrEqual(this.min)
-    ]
-    if (!this.overridable) {
-      rules.push(
-        this.$rules.numberLessThanOrEqual(this.max)
-      )
-    }
-    return rules
+watch(() => props.max, () => {
+  checkOverride(sliderValue.value)
+})
+
+function submitValue (value: number) {
+  if (form.value?.validate()) {
+    currentValue.value = value.toString()
+    internalLocked.value = props.locked
+    emit('submit', value)
   }
+}
 
-  checkOverride (value: number) {
-    if (value > this.max && this.overridable) {
-      // This is overridable, and the user wants to increase
-      // past the given max. So, disable the slider - and let it be.
-      this.overridden = true
-      this.internalMax = value
-    } else {
-      // This is not overridable, or the user has reverted back to a value
-      // within the given max. So, re-enable the slider - and let it be.
-      this.overridden = false
-      this.internalMax = this.max
-    }
+function handleReset () {
+  if (props.resetValue !== undefined) {
+    emit('change', props.resetValue)
+    submitValue(props.resetValue)
   }
+}
 
-  submitValue (value: number) {
-    if (this.form.validate()) {
-      this.currentValue = value.toString()
-
-      this.internalLocked = this.locked
-
-      this.$emit('submit', value)
-    }
+function handleFocus (event: FocusEvent) {
+  hasFocus.value = true
+  if (event.target instanceof HTMLInputElement) {
+    event.target.select()
   }
+}
 
-  handleReset () {
-    if (this.resetValue !== undefined) {
-      this.$emit('change', this.resetValue)
-
-      this.submitValue(this.resetValue)
-    }
+function handleBlur () {
+  if (hasFocus.value) {
+    emit('change', currentValue.value)
+    currentValue.value = props.value.toString()
+    hasFocus.value = false
   }
+}
 
-  handleFocus (event: FocusEvent) {
-    this.hasFocus = true
+function handleSubmit (value: number) {
+  submitValue(value)
+}
 
-    if (event.target instanceof HTMLInputElement) {
-      event.target.select()
-    }
-  }
+function handleStart (value: number) {
+  hasFocus.value = false
+  emit('start', value)
+}
 
-  handleBlur () {
-    if (this.hasFocus) {
-      this.$emit('change', this.currentValue)
+function handleEnd (value: number) {
+  emit('end', value)
+}
 
-      this.currentValue = this.inputValue.toString()
-
-      this.hasFocus = false
-    }
-  }
-
-  handleSubmit (value: number) {
-    this.submitValue(value)
-  }
-
-  handleStart (value: number) {
-    this.hasFocus = false
-    this.$emit('start', value)
-  }
-
-  handleEnd (value: number) {
-    this.$emit('end', value)
-  }
-
-  handleChange (value: number) {
-    this.$emit('change', value)
-
-    this.submitValue(value)
-  }
-
-  created () {
-    this.currentValue = this.inputValue.toString()
-    this.sliderValue = this.inputValue
-    this.internalLocked = this.locked
-    this.internalMax = this.max
-  }
+function handleChange (value: number) {
+  emit('change', value)
+  submitValue(value)
 }
 </script>

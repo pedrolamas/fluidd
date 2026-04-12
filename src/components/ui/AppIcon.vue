@@ -6,20 +6,15 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 import type { ThemeConfig } from '@/store/config/types'
 
-@Component({})
-export default class AppIcon extends Vue {
-  get theme (): ThemeConfig {
-    return this.$typedState.config.uiSettings.theme
-  }
+const { typedState } = useStore()
 
-  get logoSrc () {
-    return `${import.meta.env.BASE_URL}${this.theme.logo.src}`
-  }
-}
+const theme = computed<ThemeConfig>(() => typedState.config.uiSettings.theme)
+const logoSrc = computed(() => `${import.meta.env.BASE_URL}${theme.value.logo.src}`)
 </script>
 
 <style lang="scss" scoped>

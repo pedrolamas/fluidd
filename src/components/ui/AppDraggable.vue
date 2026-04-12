@@ -1,159 +1,142 @@
 <template>
-  <div class="app-draggable">
+  <div
+    ref="root"
+    class="app-draggable"
+  >
     <slot />
   </div>
 </template>
 
 <script lang="ts">
-import { Component, Prop, VModel, Vue, Watch } from 'vue-property-decorator'
-import Sortable from 'sortablejs'
-
 const instanceKey = Symbol('instanceKey')
 
+type DraggableHandle = { readonly items: unknown[] }
+
 type TargetHtmlElement = HTMLElement & {
-  [instanceKey]: AppDraggable | null
+  [instanceKey]: DraggableHandle | null
 }
 
-const isTargetHtmlElement = (element: HTMLElement): element is TargetHtmlElement => instanceKey in element
+export const isTargetHtmlElement = (element: HTMLElement): element is TargetHtmlElement => instanceKey in element
+</script>
 
-@Component({})
-export default class AppDraggable extends Vue {
-  @VModel({ type: Array, default: () => [] })
-  items!: unknown[]
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import Sortable from 'sortablejs'
 
-  @Prop({ type: Object })
-  readonly options?: Sortable.Options
+const props = withDefaults(defineProps<{
+  value?: unknown[]
+  options?: Sortable.Options
+  target?: string
+}>(), {
+  value: () => []
+})
 
-  @Prop({ type: String })
-  readonly target?: string
+const emit = defineEmits<{
+  (e: 'input', items: unknown[]): void
+  (e: 'start', event: Sortable.SortableEvent): void
+  (e: 'add', event: Sortable.SortableEvent): void
+  (e: 'remove', event: Sortable.SortableEvent): void
+  (e: 'update', event: Sortable.SortableEvent): void
+  (e: 'end', event: Sortable.SortableEvent): void
+}>()
 
-  @Watch('options')
-  onOptions (value: Sortable.Options) {
-    if (this.sortable) {
-      for (const prop in value) {
-        const propAsOptionsKey = prop as keyof Sortable.Options
+const items = computed({
+  get: () => props.value ?? [],
+  set: (v: unknown[]) => emit('input', v)
+})
 
-        this.sortable.option(propAsOptionsKey, value[propAsOptionsKey])
-      }
+const root = ref<HTMLElement>()
+const sortable = ref<Sortable | null>(null)
+
+watch(() => props.options, (value) => {
+  if (sortable.value && value) {
+    for (const prop in value) {
+      const key = prop as keyof Sortable.Options
+      sortable.value.option(key, value[key])
     }
   }
+})
 
-  @Watch('target')
-  onTarget () {
-    this.dettach()
-    this.attach()
-  }
+watch(() => props.target, () => {
+  dettach()
+  attach()
+})
 
-  sortable: Sortable | null = null
-
-  handleStart (event: Sortable.SortableEvent) {
-    this.$emit('start', event)
-  }
-
-  handleAdd (event: Sortable.SortableEvent) {
-    const { oldIndex, newIndex, from } = event
-
-    if (
-      oldIndex === undefined ||
-      newIndex === undefined ||
-      !isTargetHtmlElement(from) ||
-      from[instanceKey] === null
-    ) {
-      return
-    }
-
-    const fromInstance = from[instanceKey]
-
-    const items = [...this.items]
-
-    items.splice(newIndex, 0, fromInstance.items[oldIndex])
-
-    this.items = items
-
-    this.$emit('add', event)
-  }
-
-  handleRemove (event: Sortable.SortableEvent) {
-    const { oldIndex } = event
-
-    if (oldIndex === undefined) {
-      return
-    }
-
-    const items = [...this.items]
-
-    items.splice(oldIndex, 1)
-
-    this.items = items
-
-    this.$emit('remove', event)
-  }
-
-  handleUpdate (event: Sortable.SortableEvent) {
-    const { oldIndex, newIndex } = event
-
-    if (
-      oldIndex === undefined ||
-      newIndex === undefined
-    ) {
-      return
-    }
-
-    const items = [...this.items]
-
-    const movedItem = items.splice(oldIndex, 1)[0]
-    items.splice(newIndex, 0, movedItem)
-
-    this.items = items
-
-    this.$emit('update', event)
-  }
-
-  handleEnd (event: Sortable.SortableEvent) {
-    this.$emit('end', event)
-  }
-
-  attach () {
-    const targetElement = (
-      this.target &&
-      this.$el.querySelector<TargetHtmlElement>(this.target)
-    ) || this.$el as TargetHtmlElement
-
-    targetElement[instanceKey] = this
-
-    const options: Sortable.Options = {
-      animation: 200,
-      handle: '.handle',
-      ghostClass: 'app-draggable__ghost',
-      chosenClass: 'app-draggable__chosen',
-      ...this.options,
-      onStart: this.handleStart,
-      onAdd: this.handleAdd,
-      onRemove: this.handleRemove,
-      onUpdate: this.handleUpdate,
-      onEnd: this.handleEnd
-    }
-
-    this.sortable = Sortable.create(targetElement, options)
-  }
-
-  dettach () {
-    const targetElement = this.sortable?.el
-
-    if (targetElement && isTargetHtmlElement(targetElement)) {
-      targetElement[instanceKey] = null
-    }
-
-    this.sortable?.destroy()
-    this.sortable = null
-  }
-
-  mounted () {
-    this.attach()
-  }
-
-  unmounted () {
-    this.dettach()
-  }
+function handleStart (event: Sortable.SortableEvent) {
+  emit('start', event)
 }
+
+function handleAdd (event: Sortable.SortableEvent) {
+  const { oldIndex, newIndex, from } = event
+
+  if (
+    oldIndex === undefined ||
+    newIndex === undefined ||
+    !isTargetHtmlElement(from) ||
+    from[instanceKey] === null
+  ) return
+
+  const fromInstance = from[instanceKey]
+  const newItems = [...items.value]
+  newItems.splice(newIndex, 0, fromInstance.items[oldIndex])
+  items.value = newItems
+  emit('add', event)
+}
+
+function handleRemove (event: Sortable.SortableEvent) {
+  const { oldIndex } = event
+  if (oldIndex === undefined) return
+  const newItems = [...items.value]
+  newItems.splice(oldIndex, 1)
+  items.value = newItems
+  emit('remove', event)
+}
+
+function handleUpdate (event: Sortable.SortableEvent) {
+  const { oldIndex, newIndex } = event
+  if (oldIndex === undefined || newIndex === undefined) return
+  const newItems = [...items.value]
+  const movedItem = newItems.splice(oldIndex, 1)[0]
+  newItems.splice(newIndex, 0, movedItem)
+  items.value = newItems
+  emit('update', event)
+}
+
+function handleEnd (event: Sortable.SortableEvent) {
+  emit('end', event)
+}
+
+function attach () {
+  const el = root.value!
+  const targetElement = (
+    props.target && el.querySelector<TargetHtmlElement>(props.target)
+  ) || el as TargetHtmlElement
+
+  targetElement[instanceKey] = { get items () { return items.value } }
+
+  sortable.value = Sortable.create(targetElement, {
+    animation: 200,
+    handle: '.handle',
+    ghostClass: 'app-draggable__ghost',
+    chosenClass: 'app-draggable__chosen',
+    ...props.options,
+    onStart: handleStart,
+    onAdd: handleAdd,
+    onRemove: handleRemove,
+    onUpdate: handleUpdate,
+    onEnd: handleEnd
+  })
+}
+
+function dettach () {
+  const targetElement = sortable.value?.el
+  if (targetElement && isTargetHtmlElement(targetElement)) {
+    targetElement[instanceKey] = null
+  }
+  sortable.value?.destroy()
+  sortable.value = null
+}
+
+onMounted(() => attach())
+onUnmounted(() => dettach())
 </script>

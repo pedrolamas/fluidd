@@ -6,22 +6,16 @@
   />
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
 import QrcodeVue from 'qrcode.vue'
 
-@Component({
-  components: {
-    QrcodeVue
-  }
+withDefaults(defineProps<{
+  value?: string
+  size?: number
+}>(), {
+  value: '',
+  size: 260
 })
-export default class AppQrCode extends Vue {
-  @Prop({ type: String, default: '' })
-  readonly value!: string
-
-  @Prop({ type: Number, default: 260 })
-  readonly size!: number
-}
 </script>
 
 <style lang="scss" scoped>

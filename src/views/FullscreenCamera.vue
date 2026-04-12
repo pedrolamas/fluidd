@@ -10,23 +10,17 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useRoute } from 'vue-router/composables'
+import { useStore } from '@/composables/useStore'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
 
-@Component({
-  components: {
-    CameraItem
-  }
-})
-export default class FullscreenCamera extends Vue {
-  camera: Moonraker.Webcam.Entry | null = null
+const route = useRoute()
+const { typedGetters } = useStore()
 
-  created () {
-    const cameraId = this.$route.params.cameraId
-    const camera: Moonraker.Webcam.Entry | undefined = this.$typedGetters['webcams/getWebcamById'](cameraId)
+const camera = ref<Moonraker.Webcam.Entry | null>(null)
 
-    this.camera = camera ?? null
-  }
-}
+const cameraId = route.params.cameraId
+camera.value = typedGetters['webcams/getWebcamById'](cameraId) ?? null
 </script>

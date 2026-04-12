@@ -16,59 +16,32 @@
   </v-btn>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { Filters } from '@/plugins/filters'
+import { useVuetify } from '@/composables/useVuetify'
 
-@Component({
-  inheritAttrs: false
-})
-export default class AppBtn extends Vue {
-  @Prop({ type: String })
+defineOptions({ inheritAttrs: false })
+
+const props = defineProps<{
   color?: string
-
-  @Prop({ type: Boolean })
   fab?: boolean
-
-  @Prop({ type: Boolean })
   icon?: boolean
-
-  @Prop({ type: Boolean })
   outlined?: boolean
-
-  @Prop({ type: Boolean })
   text?: boolean
-
-  @Prop({ type: Boolean })
   plain?: boolean
+}>()
 
-  get colorToApply () {
-    if (this.color != null) {
-      return this.color
-    }
+const vuetify = useVuetify()
 
-    return (
-      this.fab ||
-      this.icon ||
-      this.plain
-    )
-      ? undefined
-      : 'btncolor'
-  }
+const colorToApply = computed(() => {
+  if (props.color != null) return props.color
+  return (props.fab || props.icon || props.plain) ? undefined : 'btncolor'
+})
 
-  get primaryColorIsLight () {
-    if (
-      this.fab ||
-      this.icon ||
-      this.outlined ||
-      this.text ||
-      this.color !== 'primary'
-    ) {
-      return false
-    }
-
-    const color = this.$vuetify.theme.currentTheme.primary?.toString() ?? ''
-
-    return !this.$filters.isColorDark(color)
-  }
-}
+const primaryColorIsLight = computed(() => {
+  if (props.fab || props.icon || props.outlined || props.text || props.color !== 'primary') return false
+  const color = vuetify.theme.currentTheme.primary?.toString() ?? ''
+  return !Filters.isColorDark(color)
+})
 </script>

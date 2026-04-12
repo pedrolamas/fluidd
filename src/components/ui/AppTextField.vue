@@ -25,90 +25,75 @@
   </v-form>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, useListeners } from 'vue'
 import type { VForm } from 'vuetify/lib'
-import { Component, Vue, VModel, Watch, Ref, Prop } from 'vue-property-decorator'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = withDefaults(defineProps<{
+  value?: unknown
+  small?: boolean
+  xSmall?: boolean
+  submitOnEnter?: boolean
+  submitOnChange?: boolean
+}>(), {
+  submitOnEnter: true
 })
-export default class AppTextField extends Vue {
-  @VModel()
-  inputValue!: unknown
 
-  @Prop({ type: Boolean })
-  readonly small?: boolean
+const emit = defineEmits<{
+  (e: 'input', value: unknown): void
+  (e: 'submit', value: unknown): void
+  (e: 'change', value: unknown): void
+  (e: 'focus', event: FocusEvent): void
+  (e: 'blur', event: FocusEvent): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly xSmall?: boolean
+const form = ref<VForm>()
+const currentValue = ref<unknown>('')
+const hasFocus = ref(false)
 
-  @Prop({ type: Boolean, default: true })
-  readonly submitOnEnter?: boolean
+const listeners = useListeners()
+const filteredListeners = computed(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { focus, blur, change, ...rest } = listeners
+  return rest
+})
 
-  @Prop({ type: Boolean })
-  readonly submitOnChange?: boolean
-
-  @Ref('form')
-  readonly form!: VForm
-
-  @Watch('value')
-  onValue (value: unknown) {
-    if (!this.hasFocus) {
-      this.currentValue = value
-    }
+watch(() => props.value, (value) => {
+  if (!hasFocus.value) {
+    currentValue.value = value
   }
+})
 
-  currentValue: unknown = ''
-  hasFocus = false
-
-  get filteredListeners () {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { focus, blur, change, ...listeners } = this.$listeners
-
-    return listeners
-  }
-
-  handleSubmit () {
-    if (
-      this.submitOnEnter &&
-      !this.submitOnChange &&
-      this.form.validate()
-    ) {
-      this.$emit('submit', this.currentValue)
-    }
-  }
-
-  handleChange () {
-    this.$emit('change', this.currentValue)
-
-    if (
-      this.submitOnChange &&
-      this.form.validate()
-    ) {
-      this.$emit('submit', this.currentValue)
-    }
-  }
-
-  handleFocus (event: FocusEvent) {
-    this.hasFocus = true
-
-    if (event.target instanceof HTMLInputElement) {
-      event.target.select()
-
-      this.$emit('focus', event)
-    }
-  }
-
-  handleBlur (event: FocusEvent) {
-    this.currentValue = this.inputValue
-
-    this.hasFocus = false
-
-    this.$emit('blur', event)
-  }
-
-  mounted () {
-    this.currentValue = this.inputValue
+function handleSubmit () {
+  if (props.submitOnEnter && !props.submitOnChange && form.value?.validate()) {
+    emit('submit', currentValue.value)
   }
 }
+
+function handleChange () {
+  emit('change', currentValue.value)
+  if (props.submitOnChange && form.value?.validate()) {
+    emit('submit', currentValue.value)
+  }
+}
+
+function handleFocus (event: FocusEvent) {
+  hasFocus.value = true
+  if (event.target instanceof HTMLInputElement) {
+    event.target.select()
+    emit('focus', event)
+  }
+}
+
+function handleBlur (event: FocusEvent) {
+  currentValue.value = props.value
+  hasFocus.value = false
+  emit('blur', event)
+}
+
+onMounted(() => {
+  currentValue.value = props.value
+})
 </script>

@@ -6,15 +6,6 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
 import GcodePreviewCard from '@/components/widgets/gcode-preview/GcodePreviewCard.vue'
-
-@Component({
-  components: {
-    GcodePreviewCard
-  }
-})
-export default class GcodePreview extends Vue {
-}
 </script>

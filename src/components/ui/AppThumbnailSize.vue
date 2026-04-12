@@ -40,15 +40,20 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({})
-export default class FileSystemToolbar extends Vue {
-  @VModel({ type: Number, required: true })
-  thumbnailSize!: number
+const props = defineProps<{
+  value: number
+  disabled?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-}
+const emit = defineEmits<{
+  (e: 'input', value: number): void
+}>()
+
+const thumbnailSize = computed({
+  get: () => props.value,
+  set: (v: number) => emit('input', v)
+})
 </script>

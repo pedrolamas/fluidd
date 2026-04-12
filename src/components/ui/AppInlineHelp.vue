@@ -21,27 +21,15 @@
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
-
-@Component({})
-export default class AppInlineHelp extends Vue {
-  @Prop({ type: String })
-  readonly tooltip?: string
-
-  @Prop({ type: String, default: 'primary' })
-  readonly type!: string
-
-  @Prop({ type: Boolean })
-  readonly top?: boolean
-
-  @Prop({ type: Boolean })
-  readonly bottom?: boolean
-
-  @Prop({ type: Boolean })
-  readonly left?: boolean
-
-  @Prop({ type: Boolean })
-  readonly right?: boolean
-}
+<script setup lang="ts">
+withDefaults(defineProps<{
+  tooltip?: string
+  type?: string
+  top?: boolean
+  bottom?: boolean
+  left?: boolean
+  right?: boolean
+}>(), {
+  type: 'primary'
+})
 </script>

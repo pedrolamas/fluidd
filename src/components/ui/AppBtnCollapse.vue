@@ -26,18 +26,27 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop, PropSync } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({})
-export default class AppBtnCollapse extends Vue {
-  @PropSync('collapsed', { type: Boolean })
-  collapsedModel?: boolean
+const props = defineProps<{
+  collapsed?: boolean
+  enabled?: boolean
+  inLayout?: boolean
+}>()
 
-  @PropSync('enabled', { type: Boolean, default: true })
-  enabledModel?: boolean
+const emit = defineEmits<{
+  (e: 'update:collapsed', value: boolean | undefined): void
+  (e: 'update:enabled', value: boolean | undefined): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly inLayout?: boolean
-}
+const collapsedModel = computed({
+  get: () => props.collapsed,
+  set: (v) => emit('update:collapsed', v)
+})
+
+const enabledModel = computed({
+  get: () => props.enabled ?? true,
+  set: (v) => emit('update:enabled', v)
+})
 </script>

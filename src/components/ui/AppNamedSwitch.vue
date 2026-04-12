@@ -19,23 +19,24 @@
   </v-layout>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = defineProps<{
+  value?: boolean
+  label: string
+  disabled?: boolean
+  loading?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: boolean | undefined): void
+}>()
+
+const inputValue = computed({
+  get: () => props.value,
+  set: (v: boolean | undefined) => emit('input', v)
 })
-export default class AppNamedSwitch extends Vue {
-  @VModel({ type: Boolean })
-  inputValue?: boolean
-
-  @Prop({ type: String, required: true })
-  readonly label!: string
-
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-}
 </script>

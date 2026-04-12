@@ -10,14 +10,10 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
-
-@Component({})
-export default class AppDraggable extends Vue {
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-}
+<script setup lang="ts">
+defineProps<{
+  disabled?: boolean
+}>()
 </script>
 
 <style lang="scss" scoped>

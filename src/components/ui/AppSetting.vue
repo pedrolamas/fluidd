@@ -46,44 +46,28 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Vue, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed, useSlots, useListeners } from 'vue'
 
-@Component({
-  inheritAttrs: false
+defineOptions({ inheritAttrs: false })
+
+const props = withDefaults(defineProps<{
+  title?: string
+  subTitle?: string
+  help?: string
+  accentColor?: string
+  rCols?: number
+}>(), {
+  title: '',
+  rCols: 6
 })
-export default class AppSetting extends Vue {
-  @Prop({ type: String, default: '' })
-  readonly title!: string
 
-  @Prop({ type: String })
-  readonly subTitle!: string
+const slots = useSlots()
+const listeners = useListeners()
 
-  @Prop({ type: String })
-  readonly help!: string
-
-  @Prop({ type: String })
-  readonly accentColor!: string
-
-  @Prop({ type: Number, default: 6 })
-  readonly rCols!: number
-
-  get cols () {
-    return [12 - this.rCols, this.rCols]
-  }
-
-  get hasClick () {
-    return this.$listeners && this.$listeners.click
-  }
-
-  get hasSubTitle () {
-    return (
-      this.$slots['sub-title'] ||
-      this.$scopedSlots['sub-title'] ||
-      this.subTitle
-    )
-  }
-}
+const cols = computed(() => [12 - props.rCols, props.rCols])
+const hasClick = computed(() => !!listeners.click)
+const hasSubTitle = computed(() => !!(slots['sub-title'] || props.subTitle))
 </script>
 
 <style lang="scss" scoped>
