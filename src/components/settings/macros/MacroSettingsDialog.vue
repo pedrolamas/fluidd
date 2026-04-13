@@ -82,18 +82,11 @@ import { useStore } from '@/composables/useStore'
 import { useI18n } from '@/composables/useI18n'
 import { useVuetify } from '@/composables/useVuetify'
 
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
+
 const props = defineProps<{
-  value?: boolean
   macro: Macro
 }>()
-const emit = defineEmits<{
-  (e: 'input', v: boolean | undefined): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
 
 const macro = reactive({ ...props.macro })
 

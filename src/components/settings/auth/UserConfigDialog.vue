@@ -51,19 +51,14 @@ import { computed } from 'vue'
 import type { AppUser } from '@/store/auth/types'
 import { Rules } from '@/plugins/filters'
 
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
+
 const props = defineProps<{
-  value?: boolean
   user: AppUser
 }>()
 const emit = defineEmits<{
-  (e: 'input', v: boolean | undefined): void
   (e: 'save', user: AppUser): void
 }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
 
 const user = computed(() => props.user)
 

@@ -189,7 +189,6 @@ import FileEditorTextOnly from './FileEditorTextOnly.vue'
 import isWebAssemblySupported from '@/util/is-web-assembly-supported'
 
 const props = defineProps<{
-  value: boolean
   root: string
   path: string
   filename: string
@@ -199,7 +198,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean): void
   (e: 'save', content: string | null, service?: string): void
   (e: 'save-as', content: string | null): void
 }>()
@@ -217,10 +215,7 @@ const lastSavedContent = ref<string | null>(null)
 const editorReady = ref(false)
 const peripheralsDialogOpen = ref(false)
 
-const open = computed({
-  get: () => props.value,
-  set: (value: boolean) => emit('input', value)
-})
+const { modelValue: open } = defineModels<{ modelValue: boolean }>()
 
 const ready = computed(() =>
   !props.loading &&

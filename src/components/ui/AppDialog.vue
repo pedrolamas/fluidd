@@ -109,14 +109,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, useListeners } from 'vue'
+import { ref, useListeners } from 'vue'
 import type { VForm } from 'vuetify/lib'
 import { useBrowserMixin } from '@/composables/useBrowserMixin'
 
 defineOptions({ inheritAttrs: false })
 
-const props = withDefaults(defineProps<{
-  value?: boolean
+withDefaults(defineProps<{
   disabled?: boolean
   title?: string
   helpTooltip?: string
@@ -132,14 +131,11 @@ const props = withDefaults(defineProps<{
   noActions?: boolean
   loading?: boolean | string
   titleShadow?: boolean
-  valid?: boolean
 }>(), {
   scrollable: true
 })
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
-  (e: 'update:valid', value: boolean | undefined): void
   (e: 'cancel'): void
   (e: 'save'): void
 }>()
@@ -147,15 +143,10 @@ const emit = defineEmits<{
 const { isMobileViewport } = useBrowserMixin()
 const listeners = useListeners()
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
-
-const validModel = computed({
-  get: () => props.valid,
-  set: (v) => emit('update:valid', v)
-})
+const { modelValue: open, valid: validModel } = defineModels<{
+  modelValue?: boolean
+  valid?: boolean
+}>()
 
 const form = ref<VForm>()
 

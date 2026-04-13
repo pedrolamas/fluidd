@@ -12,21 +12,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
-const props = defineProps<{
-  value?: unknown
+defineProps<{
   disabled?: boolean
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: unknown): void
-}>()
-
-const inputValue = computed({
-  get: () => props.value,
-  set: (v: unknown) => emit('input', v)
-})
+const { modelValue: inputValue } = defineModels<{ modelValue?: unknown }>()
 </script>

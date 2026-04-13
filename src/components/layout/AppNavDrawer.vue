@@ -153,18 +153,7 @@ import { useBrowserMixin } from '@/composables/useBrowserMixin'
 import { useStore } from '@/composables/useStore'
 import { useRoute } from 'vue-router/composables'
 
-const props = defineProps<{
-  value?: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (value: boolean | undefined) => emit('input', value)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { socketConnected, authenticated } = useStateMixin()
 const { isMobileViewport } = useBrowserMixin()

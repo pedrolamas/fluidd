@@ -66,15 +66,7 @@ import { useStore } from '@/composables/useStore'
 import { useI18n } from '@/composables/useI18n'
 import { Rules } from '@/plugins/filters'
 
-const props = defineProps<{ value?: boolean }>()
-const emit = defineEmits<{
-  (e: 'input', v: boolean | undefined): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { typedState } = useStore()
 const { tc } = useI18n()

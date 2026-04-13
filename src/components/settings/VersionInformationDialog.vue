@@ -107,19 +107,11 @@ import { useI18n } from '@/composables/useI18n'
 import { Filters } from '@/plugins/filters'
 import type { VersionInfo } from '@/store/version/types'
 
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
+
 const props = defineProps<{
-  value?: boolean
   component: VersionInfo
 }>()
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (value) => emit('input', value ?? false)
-})
 
 const { typedGetters } = useStore()
 const { t } = useI18n()

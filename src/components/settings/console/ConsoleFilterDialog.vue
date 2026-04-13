@@ -82,19 +82,14 @@ import { useStore } from '@/composables/useStore'
 import { useI18n } from '@/composables/useI18n'
 import { Rules } from '@/plugins/filters'
 
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
+
 const props = defineProps<{
-  value?: boolean
   filter: ConsoleFilter
 }>()
 const emit = defineEmits<{
-  (e: 'input', v: boolean | undefined): void
   (e: 'save', filter: ConsoleFilter): void
 }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
 
 const filter = computed(() => props.filter)
 

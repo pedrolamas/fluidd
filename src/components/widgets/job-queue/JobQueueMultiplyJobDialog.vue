@@ -26,21 +26,16 @@
 import { ref, computed } from 'vue'
 
 const props = defineProps<{
-  value?: boolean
   job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean): void
   (e: 'save', job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[], copies: number): void
 }>()
 
 const copies = ref(1)
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v ?? false)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const jobCount = computed(() =>
   Array.isArray(props.job) ? props.job.length : 1

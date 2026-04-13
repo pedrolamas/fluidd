@@ -187,19 +187,14 @@
 import { computed } from 'vue'
 import { Rules } from '@/plugins/filters'
 
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
+
 const props = defineProps<{
-  value?: boolean
   camera: Moonraker.Webcam.Entry
 }>()
 const emit = defineEmits<{
-  (e: 'input', v: boolean | undefined): void
   (e: 'save', camera: Moonraker.Webcam.Entry): void
 }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
 
 const camera = computed(() => props.camera)
 

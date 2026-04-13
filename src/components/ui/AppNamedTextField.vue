@@ -40,12 +40,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
-  value?: unknown
   label: string
   resetValue?: unknown
   disabled?: boolean
@@ -53,14 +51,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: unknown): void
   (e: 'submit', value: unknown): void
 }>()
 
-const inputValue = computed({
-  get: () => props.value,
-  set: (v: unknown) => emit('input', v)
-})
+const { modelValue: inputValue } = defineModels<{ modelValue?: unknown }>()
 
 function handleReset () {
   if (props.resetValue !== undefined) {

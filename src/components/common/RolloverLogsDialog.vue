@@ -37,19 +37,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { SocketActions } from '@/api/socketActions'
 import { useStateMixin } from '@/composables/useStateMixin'
 
 const { printerPrinting, printerPaused } = useStateMixin()
 
-const props = defineProps<{ value?: boolean }>()
-const emit = defineEmits<{ (e: 'input', v: boolean | undefined): void }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const application = ref('')
 

@@ -57,19 +57,14 @@ type File = Moonraker.Files.RootFile & {
 }
 
 const props = defineProps<{
-  value?: boolean
   root: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean): void
   (e: 'path-change', path: string): void
 }>()
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v ?? false)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { hasWait } = useStateMixin()
 const { typedGetters } = useStore()

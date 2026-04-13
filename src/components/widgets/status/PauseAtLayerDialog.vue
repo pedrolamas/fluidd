@@ -100,18 +100,7 @@ type PrintStatsMacroVariables = {
   pause_at_layer?: PauseAtLayer,
 }
 
-const props = defineProps<{
-  value: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (value) => emit('input', value)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { sendGcode } = useStateMixin()
 const { typedState, typedGetters } = useStore()

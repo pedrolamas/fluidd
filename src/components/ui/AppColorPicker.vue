@@ -180,7 +180,6 @@ interface PointerPosition { x: number; y: number }
 const { typedState, typedDispatch } = useStore()
 
 const props = withDefaults(defineProps<{
-  value: string
   white?: number
   title?: string
   dot?: boolean
@@ -193,14 +192,10 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: 'input', value: string): void
   (e: 'update:white', value: number): void
 }>()
 
-const inputPrimaryColor = computed({
-  get: () => props.value,
-  set: (v: string) => emit('input', v)
-})
+const { modelValue: inputPrimaryColor } = defineModels<{ modelValue: string }>()
 
 const inputWhiteValue = computed({
   get: () => props.white ?? 0,
@@ -271,7 +266,7 @@ const controlColor = computed(() =>
   props.supportedChannels === 'W' ? inputWhiteColor.value : inputPrimaryColor.value
 )
 
-watch(() => props.value, (value) => { currentPrimaryColor.value.set(value) })
+watch(inputPrimaryColor, (value) => { currentPrimaryColor.value.set(value) })
 watch(() => props.white, (value) => { currentWhiteColor.value.set(valueToHexColor(value ?? 0)) })
 
 function handleReset () {

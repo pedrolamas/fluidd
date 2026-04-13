@@ -23,9 +23,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-const props = withDefaults(defineProps<{
-  value?: boolean
+const { modelValue: open } = defineModels<{
+  modelValue?: boolean
+}>()
+
+withDefaults(defineProps<{
   type?: string
   text?: string
   timeout?: number
@@ -33,15 +35,6 @@ const props = withDefaults(defineProps<{
   type: 'dark',
   text: 'Saved!',
   timeout: 1500
-})
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
 })
 </script>
 

@@ -35,23 +35,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 
-const props = defineProps<{
-  value?: boolean
+defineProps<{
   positionX: number
   positionY: number
   job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
+defineEmits<{
   (e: 'multiply', job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]): void
   (e: 'remove', job: Moonraker.JobQueue.QueuedJob | Moonraker.JobQueue.QueuedJob[]): void
 }>()
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v ?? false)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 </script>

@@ -64,23 +64,18 @@ import { useStore } from '@/composables/useStore'
 import type { Heater, KlippyApp } from '@/store/printer/types'
 
 const props = defineProps<{
-  value: boolean,
   positionX: number,
   positionY: number,
   heater: Heater
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
+defineEmits<{
   (e: 'turn-off', heater: Heater): void
   (e: 'pid-calibrate', heater: Heater): void
   (e: 'mpc-calibrate', heater: Heater): void
 }>()
 
-const open = computed({
-  get: () => props.value,
-  set: (value) => emit('input', value)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { klippyReady, printerPrinting } = useStateMixin()
 const { typedGetters } = useStore()

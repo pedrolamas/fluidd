@@ -45,15 +45,7 @@
 import { computed } from 'vue'
 import { useStore } from '@/composables/useStore'
 
-const props = defineProps<{ value?: boolean }>()
-const emit = defineEmits<{
-  (e: 'input', v: boolean | undefined): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { typedState, typedDispatch } = useStore()
 

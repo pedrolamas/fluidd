@@ -46,20 +46,15 @@ import { computed } from 'vue'
 import type { AppFile } from '@/store/files/types'
 
 const props = defineProps<{
-  value?: boolean
   progress: number
   file: AppFile
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
+defineEmits<{
   (e: 'cancel'): void
 }>()
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const percent = computed(() => Math.floor((props.progress / props.file.size) * 100))
 </script>

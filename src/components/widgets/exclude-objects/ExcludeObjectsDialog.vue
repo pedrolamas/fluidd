@@ -43,7 +43,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 import type { ExcludeObjectPart } from '@/store/printer/types'
 import { useStore } from '@/composables/useStore'
@@ -56,13 +55,7 @@ const { sendGcode } = useStateMixin()
 const confirm = useConfirm()
 const { tc } = useI18n()
 
-const props = defineProps<{ value?: boolean }>()
-const emit = defineEmits<{ (e: 'input', v: boolean | undefined): void }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const parts = computed<ExcludeObjectPart[]>(() => typedGetters['printer/getExcludeObjectParts'])
 

@@ -20,23 +20,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
-const props = defineProps<{
-  value?: boolean
+defineProps<{
   label: string
   disabled?: boolean
   loading?: boolean
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
-}>()
-
-const inputValue = computed({
-  get: () => props.value,
-  set: (v: boolean | undefined) => emit('input', v)
-})
+const { modelValue: inputValue } = defineModels<{ modelValue?: boolean }>()
 </script>

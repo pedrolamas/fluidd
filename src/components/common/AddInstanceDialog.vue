@@ -78,19 +78,11 @@ import webSocketWrapper from '@/util/web-socket-wrapper'
 import { useStore } from '@/composables/useStore'
 import { useI18n } from '@/composables/useI18n'
 
-const props = defineProps<{
-  value?: boolean
-}>()
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean): void
   (e: 'resolve', value: ReturnType<typeof Filters.getApiUrls>): void
 }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v ?? false)
-})
 
 const { typedState } = useStore()
 const { t } = useI18n()

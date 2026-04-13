@@ -212,24 +212,14 @@ import { useI18n } from '@/composables/useI18n'
 import { defaultWritableSettings } from '@/store/timelapse/state'
 import type { TimelapseLastFrame } from '@/store/timelapse/types'
 
-const props = defineProps<{
-  value: boolean
+defineProps<{
   renderable: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
 }>()
 
 const { typedState, typedGetters } = useStore()
 const { tc } = useI18n()
 
-const open = computed({
-  get: (): boolean => props.value,
-  set: (value: boolean) => {
-    emit('input', value)
-  }
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
   typedState.timelapse.settings ?? defaultWritableSettings

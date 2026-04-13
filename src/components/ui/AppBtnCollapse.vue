@@ -30,20 +30,17 @@
 import { computed } from 'vue'
 
 const props = defineProps<{
-  collapsed?: boolean
   enabled?: boolean
   inLayout?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:collapsed', value: boolean | undefined): void
   (e: 'update:enabled', value: boolean | undefined): void
 }>()
 
-const collapsedModel = computed({
-  get: () => props.collapsed,
-  set: (v) => emit('update:collapsed', v)
-})
+const { collapsed: collapsedModel } = defineModels<{
+  collapsed?: boolean
+}>()
 
 const enabledModel = computed({
   get: () => props.enabled ?? true,

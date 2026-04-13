@@ -41,19 +41,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 
-const props = defineProps<{
-  value: number
+defineProps<{
   disabled?: boolean
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: number): void
-}>()
-
-const thumbnailSize = computed({
-  get: () => props.value,
-  set: (v: number) => emit('input', v)
-})
+const { modelValue: thumbnailSize } = defineModels<{ modelValue: number }>()
 </script>

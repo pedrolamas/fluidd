@@ -23,10 +23,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 
 const props = defineProps<{
-  value?: boolean
   title: string
   label: string
   name: string
@@ -34,14 +33,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
   (e: 'save', name: string): void
 }>()
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const newName = ref('')
 

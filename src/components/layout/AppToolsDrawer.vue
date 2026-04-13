@@ -31,18 +31,7 @@ import { computed } from 'vue'
 import { useStateMixin } from '@/composables/useStateMixin'
 import { useStore } from '@/composables/useStore'
 
-const props = defineProps<{
-  value?: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
-}>()
-
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v ?? false)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const { socketConnected, authenticated } = useStateMixin()
 const { typedState } = useStore()

@@ -56,12 +56,7 @@ import { debounce } from 'lodash-es'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
 const props = defineProps<{
-  value: boolean
   name: string
-}>()
-
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
 }>()
 
 const { sendGcode } = useStateMixin()
@@ -71,10 +66,7 @@ const color = ref('#000000')
 const material = ref('')
 const weight = ref(0)
 
-const show = computed({
-  get: () => props.value,
-  set: (value: boolean) => emit('input', value)
-})
+const { modelValue: show } = defineModels<{ modelValue: boolean }>()
 
 const lane = computed(() => getAfcLaneObject(props.name))
 

@@ -212,15 +212,13 @@ import type { FileBrowserEntry, RootProperties } from '@/store/files/types'
  * NOTE: Generally, moonraker expects the paths to include the root.
  */
 const props = defineProps<{
-  value: boolean
   root: string
   file: FileBrowserEntry | FileBrowserEntry[]
   positionX: number
   positionY: number
 }>()
 
-const emit = defineEmits<{
-  (e: 'input', value: boolean): void
+defineEmits<{
   (e: 'print', file: FileBrowserEntry | FileBrowserEntry[]): void
   (e: 'enqueue', file: FileBrowserEntry | FileBrowserEntry[]): void
   (e: 'preheat', file: FileBrowserEntry | FileBrowserEntry[]): void
@@ -241,10 +239,7 @@ const { printerPrinting, printerPaused, klippyReady } = useStateMixin()
 const { getThumbUrl } = useFilesMixin()
 const { typedGetters } = useStore()
 
-const open = computed({
-  get: () => props.value,
-  set: (value: boolean) => emit('input', value)
-})
+const { modelValue: open } = defineModels<{ modelValue: boolean }>()
 
 const rootProperties = computed<RootProperties>(() =>
   typedGetters['files/getRootProperties'](props.root)

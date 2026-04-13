@@ -37,32 +37,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, getCurrentInstance } from 'vue'
+import { ref, getCurrentInstance } from 'vue'
 import clipboardCopy from '@/util/clipboard-copy'
 import sleep from '@/util/sleep'
 
 defineOptions({ inheritAttrs: false })
 
-const props = defineProps<{
-  value?: unknown
-}>()
-
-const emit = defineEmits<{
-  (e: 'input', value: unknown): void
-}>()
-
-const inputValue = computed({
-  get: () => props.value,
-  set: (v: unknown) => emit('input', v)
-})
+const { modelValue: inputValue } = defineModels<{ modelValue?: unknown }>()
 
 const hasCopied = ref(false)
 const abortController = ref<AbortController | null>(null)
 const instance = getCurrentInstance()
 
 async function handleCopy () {
-  if (props.value) {
-    if (await clipboardCopy(props.value.toString(), instance?.proxy?.$el as Element)) {
+  if (inputValue.value) {
+    if (await clipboardCopy(inputValue.value.toString(), instance?.proxy?.$el as Element)) {
       abortController.value?.abort()
 
       hasCopied.value = true

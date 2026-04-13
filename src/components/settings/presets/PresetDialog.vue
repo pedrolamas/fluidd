@@ -101,20 +101,15 @@ import { Filters, Rules } from '@/plugins/filters'
 import type { TemperaturePreset } from '@/store/config/types'
 import type { Fan, Heater } from '@/store/printer/types'
 
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
+
 const props = defineProps<{
-  value?: boolean
   preset: TemperaturePreset
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean): void
   (e: 'save', preset: TemperaturePreset): void
 }>()
-
-const open = computed({
-  get: () => props.value,
-  set: (value) => emit('input', value ?? false)
-})
 
 const preset = reactive<TemperaturePreset>(JSON.parse(JSON.stringify(props.preset)) as TemperaturePreset)
 

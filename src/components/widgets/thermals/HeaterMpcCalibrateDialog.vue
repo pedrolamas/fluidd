@@ -44,24 +44,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import type { Heater } from '@/store/printer/types'
 import type { NullableOrEmpty } from '@/util/is-null-or-empty'
 
 const props = defineProps<{
-  value?: boolean
   heater: Heater
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean | undefined): void
   (e: 'save', heater: Heater, targetTemperature: number, fanBreakpoints: NullableOrEmpty<number>): void
 }>()
 
-const open = computed({
-  get: () => props.value,
-  set: (v) => emit('input', v)
-})
+const { modelValue: open } = defineModels<{ modelValue?: boolean }>()
 
 const targetTemperature = ref(100)
 const fanBreakpoints = ref<NullableOrEmpty<number>>(null)
