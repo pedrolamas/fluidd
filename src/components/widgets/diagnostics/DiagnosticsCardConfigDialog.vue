@@ -75,38 +75,49 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Prop, VModel, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
 import CardConfigStep from './config/CardConfigStep.vue'
 import AxesConfigStep from './config/AxesConfigStep.vue'
 import MetricsConfigStep from './config/MetricsConfigStep.vue'
-import BrowserMixin from '@/mixins/browser'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class DiagnosticsCardConfigDialog extends Mixins(BrowserMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value?: boolean
+  config: DiagnosticsCardConfig
+}>()
 
-  @Prop({ type: Object, required: true })
-  readonly config!: DiagnosticsCardConfig
+const emit = defineEmits<{
+  (e: 'save', config: DiagnosticsCardConfig): void
+  (e: 'delete', id: string): void
+  (e: 'input', v: boolean | undefined): void
+}>()
 
-  currentStep = 1
-  steps = [
-    { name: this.$t('app.setting.label.card'), component: CardConfigStep },
-    { name: this.$t('app.setting.label.axes'), component: AxesConfigStep },
-    { name: this.$t('app.setting.label.metrics'), component: MetricsConfigStep }
-  ]
+const open = computed({
+  get: () => props.value ?? false,
+  set: (v) => emit('input', v)
+})
 
-  handleSave () {
-    this.$emit('save', this.config)
-    this.open = false
-  }
+const { isMobileViewport } = useBrowserMixin()
+const { t } = useI18n()
 
-  handleDelete () {
-    this.$emit('delete', this.config.id)
-    this.open = false
-  }
+const currentStep = ref(1)
+const steps = [
+  { name: t('app.setting.label.card'), component: CardConfigStep },
+  { name: t('app.setting.label.axes'), component: AxesConfigStep },
+  { name: t('app.setting.label.metrics'), component: MetricsConfigStep }
+]
+
+function handleSave () {
+  emit('save', props.config)
+  open.value = false
+}
+
+function handleDelete () {
+  emit('delete', props.config.id)
+  open.value = false
 }
 </script>
 

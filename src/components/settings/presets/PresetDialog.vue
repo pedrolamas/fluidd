@@ -116,9 +116,9 @@ const open = computed({
   set: (value) => emit('input', value ?? false)
 })
 
-const preset = reactive<TemperaturePreset>(JSON.parse(JSON.stringify(props.preset)))
+const preset = reactive<TemperaturePreset>(JSON.parse(JSON.stringify(props.preset)) as TemperaturePreset)
 
-watch(() => props.preset, (v) => Object.assign(preset, JSON.parse(JSON.stringify(v))), { deep: true })
+watch(() => props.preset, (v: TemperaturePreset) => Object.assign(preset, JSON.parse(JSON.stringify(v))), { deep: true })
 
 const { typedGetters, store } = useStore()
 const { t } = useI18n()

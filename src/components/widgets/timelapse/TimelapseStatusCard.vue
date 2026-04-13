@@ -69,87 +69,82 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useStore } from '@/composables/useStore'
 import type { TimelapseLastFrame } from '@/store/timelapse/types'
 import { SocketActions } from '@/api/socketActions'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
-import FilesMixin from '@/mixins/files'
 import { defaultWritableSettings } from '@/store/timelapse/state'
+import { Waits } from '@/globals'
 
-@Component({
-  components: {
-    CameraItem,
-    FileSystem
+defineEmits<{
+  (e: 'openRenderDialog', value: boolean): void
+}>()
+
+const { hasWait } = useStateMixin()
+const { createFileUrl } = useFilesMixin()
+const { typedState, typedGetters } = useStore()
+
+const selectedFrameNumber = ref(0)
+
+function saveFrames () {
+  SocketActions.machineTimelapseSaveFrames()
+}
+
+const savingFrames = computed(() => hasWait(Waits.onTimelapseSaveFrame))
+
+const selectedFrame = computed({
+  get: () => selectedFrameNumber.value || frameCount.value || 0,
+  set: (value: number) => {
+    selectedFrameNumber.value = value === frameCount.value ? 0 : value
   }
 })
-export default class StatusCard extends Mixins(StateMixin, FilesMixin) {
-  selectedFrameNumber = 0
 
-  saveFrames () {
-    SocketActions.machineTimelapseSaveFrames()
+const previewUrl = computed(() => {
+  const file = lastFrame.value?.file
+
+  if (file) {
+    const fullFile = selectedFrame.value
+      ? `frame${selectedFrame.value.toString().padStart(6, '0')}.${file.split('.').pop()}`
+      : file
+
+    return createFileUrl(fullFile, 'timelapse_frames')
+  }
+  return ''
+})
+
+const isRendering = computed(() => renderStatus.value && renderStatus.value.status !== 'success')
+
+const frameCount = computed(() => lastFrame.value?.uniqueCount)
+
+const camera = computed((): Moonraker.Webcam.Entry | undefined =>
+  typedGetters['webcams/getWebcamById'](settings.value.camera)
+)
+
+const settings = computed((): Moonraker.Timelapse.WriteableSettings =>
+  typedState.timelapse.settings ?? defaultWritableSettings
+)
+
+const lastFrame = computed((): TimelapseLastFrame | null =>
+  typedGetters['timelapse/getLastFrame']
+)
+
+const renderStatus = computed((): Moonraker.Timelapse.RenderResponse | null =>
+  typedState.timelapse.renderStatus
+)
+
+const renderProgress = computed(() => {
+  const rs = renderStatus.value
+
+  if (rs?.status === 'running') {
+    return rs.progress
   }
 
-  get savingFrames () {
-    return this.hasWait(this.$waits.onTimelapseSaveFrame)
-  }
-
-  get selectedFrame () {
-    return this.selectedFrameNumber || this.frameCount || 0
-  }
-
-  set selectedFrame (value: number) {
-    this.selectedFrameNumber = value === this.frameCount ? 0 : value
-  }
-
-  get previewUrl () {
-    const file = this.lastFrame?.file
-
-    if (file) {
-      const fullFile = this.selectedFrame
-        ? `frame${this.selectedFrame.toString().padStart(6, '0')}.${file.split('.').pop()}`
-        : file
-
-      return this.createFileUrl(fullFile, 'timelapse_frames')
-    }
-  }
-
-  get isRendering () {
-    return this.renderStatus && this.renderStatus.status !== 'success'
-  }
-
-  get frameCount () {
-    return this.lastFrame?.uniqueCount
-  }
-
-  get camera (): Moonraker.Webcam.Entry | undefined {
-    return this.$typedGetters['webcams/getWebcamById'](this.settings.camera)
-  }
-
-  get settings (): Moonraker.Timelapse.WriteableSettings {
-    return this.$typedState.timelapse.settings ?? defaultWritableSettings
-  }
-
-  get lastFrame (): TimelapseLastFrame | null {
-    return this.$typedGetters['timelapse/getLastFrame']
-  }
-
-  get renderStatus (): Moonraker.Timelapse.RenderResponse | null {
-    return this.$typedState.timelapse.renderStatus
-  }
-
-  get renderProgress () {
-    const renderStatus = this.renderStatus
-
-    if (renderStatus?.status === 'running') {
-      return renderStatus.progress
-    }
-
-    return 0
-  }
-}
+  return 0
+})
 </script>
 
 <style lang="scss" scoped>

@@ -69,7 +69,7 @@
       <template v-if="toolheadControlStyle === 'cross'">
         <app-setting :title="$t('app.setting.label.toolhead_move_distances')">
           <v-combobox
-            ref="toolheadMoveDistances"
+            ref="toolheadMoveDistancesElement"
             v-model="toolheadMoveDistances"
             filled
             dense
@@ -81,10 +81,10 @@
             append-icon=""
             deletable-chips
             :rules="[
-              $rules.lengthGreaterThanOrEqual(1),
-              $rules.lengthLessThanOrEqual(6),
-              $rules.numberArrayValid,
-              $rules.numberArrayGreaterThan(0)
+              Rules.lengthGreaterThanOrEqual(1),
+              Rules.lengthLessThanOrEqual(6),
+              Rules.numberArrayValid,
+              Rules.numberArrayGreaterThan(0)
             ]"
           />
         </app-setting>
@@ -96,8 +96,8 @@
             :value="defaultToolheadMoveLength"
             :items="toolheadMoveDistances"
             :rules="[
-              $rules.required,
-              $rules.numberValid
+              Rules.required,
+              Rules.numberValid
             ]"
             filled
             dense
@@ -114,7 +114,7 @@
       <template v-else-if="toolheadControlStyle === 'bars'">
         <app-setting :title="$t('app.setting.label.toolhead_xy_move_distances')">
           <v-combobox
-            ref="toolheadXYMoveDistances"
+            ref="toolheadXYMoveDistancesElement"
             v-model="toolheadXYMoveDistances"
             filled
             dense
@@ -126,10 +126,10 @@
             append-icon=""
             deletable-chips
             :rules="[
-              $rules.lengthGreaterThanOrEqual(1),
-              $rules.lengthLessThanOrEqual(3),
-              $rules.numberArrayValid,
-              $rules.numberArrayGreaterThan(0)
+              Rules.lengthGreaterThanOrEqual(1),
+              Rules.lengthLessThanOrEqual(3),
+              Rules.numberArrayValid,
+              Rules.numberArrayGreaterThan(0)
             ]"
           />
         </app-setting>
@@ -138,7 +138,7 @@
 
         <app-setting :title="$t('app.setting.label.toolhead_z_move_distances')">
           <v-combobox
-            ref="toolheadZMoveDistances"
+            ref="toolheadZMoveDistancesElement"
             v-model="toolheadZMoveDistances"
             filled
             dense
@@ -150,10 +150,10 @@
             append-icon=""
             deletable-chips
             :rules="[
-              $rules.lengthGreaterThanOrEqual(1),
-              $rules.lengthLessThanOrEqual(3),
-              $rules.numberArrayValid,
-              $rules.numberArrayGreaterThan(0)
+              Rules.lengthGreaterThanOrEqual(1),
+              Rules.lengthLessThanOrEqual(3),
+              Rules.numberArrayValid,
+              Rules.numberArrayGreaterThan(0)
             ]"
           />
         </app-setting>
@@ -164,7 +164,7 @@
       <template v-else-if="toolheadControlStyle === 'circle'">
         <app-setting :title="$t('app.setting.label.toolhead_xy_move_distances')">
           <v-combobox
-            ref="toolheadCircleXYMoveDistances"
+            ref="toolheadCircleXYMoveDistancesElement"
             v-model="toolheadCircleXYMoveDistances"
             filled
             dense
@@ -176,10 +176,10 @@
             append-icon=""
             deletable-chips
             :rules="[
-              $rules.lengthGreaterThanOrEqual(4),
-              $rules.lengthLessThanOrEqual(4),
-              $rules.numberArrayValid,
-              $rules.numberArrayGreaterThan(0)
+              Rules.lengthGreaterThanOrEqual(4),
+              Rules.lengthLessThanOrEqual(4),
+              Rules.numberArrayValid,
+              Rules.numberArrayGreaterThan(0)
             ]"
           />
         </app-setting>
@@ -188,7 +188,7 @@
 
         <app-setting :title="$t('app.setting.label.toolhead_z_move_distances')">
           <v-combobox
-            ref="toolheadCircleZMoveDistances"
+            ref="toolheadCircleZMoveDistancesElement"
             v-model="toolheadCircleZMoveDistances"
             filled
             dense
@@ -200,10 +200,10 @@
             append-icon=""
             deletable-chips
             :rules="[
-              $rules.lengthGreaterThanOrEqual(4),
-              $rules.lengthLessThanOrEqual(4),
-              $rules.numberArrayValid,
-              $rules.numberArrayGreaterThan(0)
+              Rules.lengthGreaterThanOrEqual(4),
+              Rules.lengthLessThanOrEqual(4),
+              Rules.numberArrayValid,
+              Rules.numberArrayGreaterThan(0)
             ]"
           />
         </app-setting>
@@ -225,9 +225,9 @@
         <app-text-field
           :value="defaultToolheadXYSpeed"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(1)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(1)
           ]"
           filled
           dense
@@ -245,9 +245,9 @@
         <app-text-field
           :value="defaultToolheadZSpeed"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(1)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(1)
           ]"
           filled
           dense
@@ -263,7 +263,7 @@
 
       <app-setting :title="$t('app.setting.label.z_adjust_values')">
         <v-combobox
-          ref="zAdjustValues"
+          ref="zAdjustValuesElement"
           v-model="zAdjustValues"
           filled
           dense
@@ -275,10 +275,10 @@
           append-icon=""
           deletable-chips
           :rules="[
-            $rules.lengthGreaterThanOrEqual(1),
-            $rules.lengthLessThanOrEqual(4),
-            $rules.numberArrayValid,
-            $rules.numberArrayGreaterThan(0)
+            Rules.lengthGreaterThanOrEqual(1),
+            Rules.lengthLessThanOrEqual(4),
+            Rules.numberArrayValid,
+            Rules.numberArrayGreaterThan(0)
           ]"
         />
       </app-setting>
@@ -289,9 +289,9 @@
         <app-text-field
           :value="defaultExtrudeLength"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(1)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(1)
           ]"
           filled
           dense
@@ -309,9 +309,9 @@
         <app-text-field
           :value="defaultExtrudeSpeed"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(1)
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(1)
           ]"
           filled
           dense
@@ -390,356 +390,296 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Ref, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import { defaultState } from '@/store/config/state'
 import type { VCombobox } from 'vuetify/lib'
-import ToolheadMixin from '@/mixins/toolhead'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Rules } from '@/plugins/filters'
 import type { GeneralConfig, ToolheadControlStyle } from '@/store/config/types'
 
-@Component({
-  components: {}
-})
-export default class ToolHeadSettings extends Mixins(ToolheadMixin) {
-  @Ref('toolheadMoveDistances')
-  readonly toolheadMoveDistancesElement!: VCombobox
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { t } = useI18n()
 
-  @Ref('toolheadXYMoveDistances')
-  readonly toolheadXYMoveDistancesElement!: VCombobox
+const toolheadMoveDistancesElement = ref<VCombobox>()
+const toolheadXYMoveDistancesElement = ref<VCombobox>()
+const toolheadZMoveDistancesElement = ref<VCombobox>()
+const toolheadCircleXYMoveDistancesElement = ref<VCombobox>()
+const toolheadCircleZMoveDistancesElement = ref<VCombobox>()
+const zAdjustValuesElement = ref<VCombobox>()
 
-  @Ref('toolheadZMoveDistances')
-  readonly toolheadZMoveDistancesElement!: VCombobox
+const defaultExtrudeSpeed = computed(() => typedState.config.uiSettings.general.defaultExtrudeSpeed)
 
-  @Ref('toolheadCircleXYMoveDistances')
-  readonly toolheadCircleXYMoveDistancesElement!: VCombobox
+function setDefaultExtrudeSpeed (value: string) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.defaultExtrudeSpeed',
+    value: +value,
+    server: true
+  })
+}
 
-  @Ref('toolheadCircleZMoveDistances')
-  readonly toolheadCircleZMoveDistancesElement!: VCombobox
+const defaultExtrudeLength = computed(() => typedState.config.uiSettings.general.defaultExtrudeLength)
 
-  @Ref('zAdjustValues')
-  readonly zAdjustValuesElement!: VCombobox
+function setDefaultExtrudeLength (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.defaultExtrudeLength',
+    value: +value,
+    server: true
+  })
+}
 
-  get defaultExtrudeSpeed (): number {
-    return this.$typedState.config.uiSettings.general.defaultExtrudeSpeed
-  }
+const defaultToolheadMoveLength = computed(() => typedState.config.uiSettings.general.defaultToolheadMoveLength)
 
-  setDefaultExtrudeSpeed (value: string) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.defaultExtrudeSpeed',
-      value: +value,
-      server: true
-    })
-  }
+function setDefaultToolheadMoveLength (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.defaultToolheadMoveLength',
+    value: +value,
+    server: true
+  })
+}
 
-  get defaultExtrudeLength (): number {
-    return this.$typedState.config.uiSettings.general.defaultExtrudeLength
-  }
+const defaultToolheadXYSpeed = computed(() => typedState.config.uiSettings.general.defaultToolheadXYSpeed)
 
-  setDefaultExtrudeLength (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.defaultExtrudeLength',
-      value: +value,
-      server: true
-    })
-  }
+function setDefaultToolheadXYSpeed (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.defaultToolheadXYSpeed',
+    value: +value,
+    server: true
+  })
+}
 
-  get defaultToolheadMoveLength (): number {
-    return this.$typedState.config.uiSettings.general.defaultToolheadMoveLength
-  }
+const defaultToolheadZSpeed = computed(() => typedState.config.uiSettings.general.defaultToolheadZSpeed)
 
-  setDefaultToolheadMoveLength (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.defaultToolheadMoveLength',
-      value: +value,
-      server: true
-    })
-  }
+function setDefaultToolheadZSpeed (value: number) {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.defaultToolheadZSpeed',
+    value: +value,
+    server: true
+  })
+}
 
-  get defaultToolheadXYSpeed (): number {
-    return this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
-  }
-
-  setDefaultToolheadXYSpeed (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.defaultToolheadXYSpeed',
-      value: +value,
-      server: true
-    })
-  }
-
-  get defaultToolheadZSpeed (): number {
-    return this.$typedState.config.uiSettings.general.defaultToolheadZSpeed
-  }
-
-  setDefaultToolheadZSpeed (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.defaultToolheadZSpeed',
-      value: +value,
-      server: true
-    })
-  }
-
-  get zAdjustValues (): number[] {
-    return this.$typedState.config.uiSettings.general.zAdjustDistances
-  }
-
-  set zAdjustValues (value: (number | string)[]) {
-    if (!this.zAdjustValuesElement.validate(true)) {
+const zAdjustValues = computed({
+  get: () => typedState.config.uiSettings.general.zAdjustDistances,
+  set: (value: (number | string)[]) => {
+    if (!zAdjustValuesElement.value?.validate(true)) {
       return
     }
 
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.zAdjustDistances',
       value: [...new Set(value.map(Number))].sort((a, b) => a - b),
       server: true
     })
   }
+})
 
-  get toolheadCircleXYHomingEnabled (): boolean {
-    return this.$typedState.config.uiSettings.general.toolheadCircleXYHomingEnabled
+const toolheadCircleXYHomingEnabled = computed({
+  get: () => typedState.config.uiSettings.general.toolheadCircleXYHomingEnabled,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.toolheadCircleXYHomingEnabled',
+    value,
+    server: true
+  })
+})
+
+const toolheadControlStyle = computed({
+  get: () => typedState.config.uiSettings.general.toolheadControlStyle as ToolheadControlStyle,
+  set: (value: ToolheadControlStyle) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.toolheadControlStyle',
+    value,
+    server: true
+  })
+})
+
+const availableToolheadControlStyles = computed(() => [
+  {
+    value: 'cross',
+    text: t('app.general.label.cross')
+  },
+  {
+    value: 'bars',
+    text: t('app.general.label.bars')
+  },
+  {
+    value: 'circle',
+    text: t('app.general.label.circle')
   }
+])
 
-  set toolheadCircleXYHomingEnabled (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.toolheadCircleXYHomingEnabled',
-      value,
-      server: true
-    })
-  }
-
-  get toolheadControlStyle (): ToolheadControlStyle {
-    return this.$typedState.config.uiSettings.general.toolheadControlStyle
-  }
-
-  set toolheadControlStyle (value: ToolheadControlStyle) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.toolheadControlStyle',
-      value,
-      server: true
-    })
-  }
-
-  get availableToolheadControlStyles () {
-    return [
-      {
-        value: 'cross',
-        text: this.$t('app.general.label.cross')
-      },
-      {
-        value: 'bars',
-        text: this.$t('app.general.label.bars')
-      },
-      {
-        value: 'circle',
-        text: this.$t('app.general.label.circle')
-      }
-    ]
-  }
-
-  get toolheadMoveDistances (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadMoveDistances
-  }
-
-  set toolheadMoveDistances (value: (number | string)[]) {
-    if (!this.toolheadMoveDistancesElement.validate(true)) {
+const toolheadMoveDistances = computed({
+  get: () => typedState.config.uiSettings.general.toolheadMoveDistances,
+  set: (value: (number | string)[]) => {
+    if (!toolheadMoveDistancesElement.value?.validate(true)) {
       return
     }
 
-    const toolheadMoveDistances = [...new Set(value.map(Number))]
+    const distances = [...new Set(value.map(Number))]
       .sort((a, b) => a - b)
 
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.toolheadMoveDistances',
-      value: toolheadMoveDistances,
+      value: distances,
       server: true
     })
 
-    if (toolheadMoveDistances.includes(this.defaultToolheadMoveLength) === false) {
-      this.setDefaultToolheadMoveLength(toolheadMoveDistances[0])
+    if (distances.includes(defaultToolheadMoveLength.value) === false) {
+      setDefaultToolheadMoveLength(distances[0])
     }
   }
+})
 
-  get toolheadXYMoveDistances (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadXYMoveDistances
-  }
-
-  set toolheadXYMoveDistances (value: (number | string)[]) {
-    if (!this.toolheadXYMoveDistancesElement.validate(true)) {
+const toolheadXYMoveDistances = computed({
+  get: () => typedState.config.uiSettings.general.toolheadXYMoveDistances,
+  set: (value: (number | string)[]) => {
+    if (!toolheadXYMoveDistancesElement.value?.validate(true)) {
       return
     }
 
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.toolheadXYMoveDistances',
       value: [...new Set(value.map(Number))].sort((a, b) => a - b),
       server: true
     })
   }
+})
 
-  get toolheadCircleXYMoveDistances (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadCircleXYMoveDistances
-  }
-
-  set toolheadCircleXYMoveDistances (value: (number | string)[]) {
-    if (!this.toolheadCircleXYMoveDistancesElement.validate(true)) {
+const toolheadCircleXYMoveDistances = computed({
+  get: () => typedState.config.uiSettings.general.toolheadCircleXYMoveDistances,
+  set: (value: (number | string)[]) => {
+    if (!toolheadCircleXYMoveDistancesElement.value?.validate(true)) {
       return
     }
 
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.toolheadCircleXYMoveDistances',
       value: [...new Set(value.map(Number))].sort((a, b) => a - b),
       server: true
     })
   }
+})
 
-  get toolheadZMoveDistances (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadZMoveDistances
-  }
-
-  set toolheadZMoveDistances (value: (number | string)[]) {
-    if (!this.toolheadZMoveDistancesElement.validate(true)) {
+const toolheadZMoveDistances = computed({
+  get: () => typedState.config.uiSettings.general.toolheadZMoveDistances,
+  set: (value: (number | string)[]) => {
+    if (!toolheadZMoveDistancesElement.value?.validate(true)) {
       return
     }
 
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.toolheadZMoveDistances',
       value: [...new Set(value.map(Number))].sort((a, b) => a - b),
       server: true
     })
   }
+})
 
-  get toolheadCircleZMoveDistances (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadCircleZMoveDistances
-  }
-
-  set toolheadCircleZMoveDistances (value: (number | string)[]) {
-    if (!this.toolheadCircleZMoveDistancesElement.validate(true)) {
+const toolheadCircleZMoveDistances = computed({
+  get: () => typedState.config.uiSettings.general.toolheadCircleZMoveDistances,
+  set: (value: (number | string)[]) => {
+    if (!toolheadCircleZMoveDistancesElement.value?.validate(true)) {
       return
     }
 
-    this.$typedDispatch('config/saveByPath', {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.general.toolheadCircleZMoveDistances',
       value: [...new Set(value.map(Number))].sort((a, b) => a - b),
       server: true
     })
   }
+})
 
-  get useGcodeCoords (): boolean {
-    return this.$typedState.config.uiSettings.general.useGcodeCoords
+const useGcodeCoords = computed({
+  get: () => typedState.config.uiSettings.general.useGcodeCoords,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.useGcodeCoords',
+    value,
+    server: true
+  })
+})
+
+const invertX = computed({
+  get: () => typedState.config.uiSettings.general.axis.x.inverted,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.axis.x.inverted',
+    value,
+    server: true
+  })
+})
+
+const invertY = computed({
+  get: () => typedState.config.uiSettings.general.axis.y.inverted,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.axis.y.inverted',
+    value,
+    server: true
+  })
+})
+
+const invertZ = computed({
+  get: () => typedState.config.uiSettings.general.axis.z.inverted,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.axis.z.inverted',
+    value,
+    server: true
+  })
+})
+
+const printerSupportsForceMove = computed(() => {
+  const printerSettings: Klipper.SettingsState = typedGetters['printer/getPrinterSettings']
+  return printerSettings.force_move?.enable_force_move ?? false
+})
+
+const showManualProbeDialogAutomatically = computed({
+  get: () => typedState.config.uiSettings.general.showManualProbeDialogAutomatically,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showManualProbeDialogAutomatically',
+    value,
+    server: true
+  })
+})
+
+const showBedScrewsAdjustDialogAutomatically = computed({
+  get: () => typedState.config.uiSettings.general.showBedScrewsAdjustDialogAutomatically,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showBedScrewsAdjustDialogAutomatically',
+    value,
+    server: true
+  })
+})
+
+const showScrewsTiltAdjustDialogAutomatically = computed({
+  get: () => typedState.config.uiSettings.general.showScrewsTiltAdjustDialogAutomatically,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showScrewsTiltAdjustDialogAutomatically',
+    value,
+    server: true
+  })
+})
+
+const forceMoveToggleWarning = computed({
+  get: () => typedState.config.uiSettings.general.forceMoveToggleWarning,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.forceMoveToggleWarning',
+    value,
+    server: true
+  })
+})
+
+function handleReset () {
+  const { instanceName, chartVisible, hideTempWaits }: GeneralConfig = typedState.config.uiSettings.general
+
+  const value: GeneralConfig = {
+    ...defaultState().uiSettings.general,
+    instanceName,
+    chartVisible,
+    hideTempWaits
   }
 
-  set useGcodeCoords (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.useGcodeCoords',
-      value,
-      server: true
-    })
-  }
-
-  get invertX (): boolean {
-    return this.$typedState.config.uiSettings.general.axis.x.inverted
-  }
-
-  set invertX (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.axis.x.inverted',
-      value,
-      server: true
-    })
-  }
-
-  get invertY (): boolean {
-    return this.$typedState.config.uiSettings.general.axis.y.inverted
-  }
-
-  set invertY (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.axis.y.inverted',
-      value,
-      server: true
-    })
-  }
-
-  get invertZ (): boolean {
-    return this.$typedState.config.uiSettings.general.axis.z.inverted
-  }
-
-  set invertZ (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.axis.z.inverted',
-      value,
-      server: true
-    })
-  }
-
-  get printerSupportsForceMove (): boolean {
-    const printerSettings: Klipper.SettingsState = this.$typedGetters['printer/getPrinterSettings']
-
-    return printerSettings.force_move?.enable_force_move ?? false
-  }
-
-  get showManualProbeDialogAutomatically (): boolean {
-    return this.$typedState.config.uiSettings.general.showManualProbeDialogAutomatically
-  }
-
-  set showManualProbeDialogAutomatically (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showManualProbeDialogAutomatically',
-      value,
-      server: true
-    })
-  }
-
-  get showBedScrewsAdjustDialogAutomatically (): boolean {
-    return this.$typedState.config.uiSettings.general.showBedScrewsAdjustDialogAutomatically
-  }
-
-  set showBedScrewsAdjustDialogAutomatically (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showBedScrewsAdjustDialogAutomatically',
-      value,
-      server: true
-    })
-  }
-
-  get showScrewsTiltAdjustDialogAutomatically (): boolean {
-    return this.$typedState.config.uiSettings.general.showScrewsTiltAdjustDialogAutomatically
-  }
-
-  set showScrewsTiltAdjustDialogAutomatically (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showScrewsTiltAdjustDialogAutomatically',
-      value,
-      server: true
-    })
-  }
-
-  get forceMoveToggleWarning (): boolean {
-    return this.$typedState.config.uiSettings.general.forceMoveToggleWarning
-  }
-
-  set forceMoveToggleWarning (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.forceMoveToggleWarning',
-      value,
-      server: true
-    })
-  }
-
-  handleReset () {
-    const { instanceName, chartVisible, hideTempWaits }: GeneralConfig = this.$typedState.config.uiSettings.general
-
-    const value: GeneralConfig = {
-      ...defaultState().uiSettings.general,
-      instanceName,
-      chartVisible,
-      hideTempWaits
-    }
-
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general',
-      value,
-      server: true
-    })
-  }
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general',
+    value,
+    server: true
+  })
 }
 </script>

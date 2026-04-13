@@ -147,12 +147,13 @@
       <file-editor
         v-if="contents !== undefined && !useTextOnlyEditor"
         ref="editor"
-        v-model="updatedContent"
+        :value="updatedContent ?? ''"
         :path="path"
         :filename="filename"
         :readonly="readonly"
         :can-save-and-restart="canSaveAndRestart"
         :code-lens="codeLens"
+        @input="updatedContent = $event ?? null"
         @ready="editorReady = true"
         @save="emitSave()"
         @save-as="emitSave({ saveAs: true })"
@@ -176,162 +177,156 @@
   </v-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, Ref, VModel, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 import FileEditor from './FileEditor.vue'
 import FileEditorTextOnly from './FileEditorTextOnly.vue'
 import isWebAssemblySupported from '@/util/is-web-assembly-supported'
 
-@Component({
-  components: {
-    FileEditor,
-    FileEditorTextOnly
+const props = defineProps<{
+  value: boolean
+  root: string
+  path: string
+  filename: string
+  contents: string
+  loading?: boolean
+  readonly?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'save', content: string | null, service?: string): void
+  (e: 'save-as', content: string | null): void
+}>()
+
+const { printerPrinting, emergencyStop } = useStateMixin()
+const { isMobileUserAgent } = useBrowserMixin()
+const { typedState, typedGetters } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
+
+const editor = ref<InstanceType<typeof FileEditor>>()
+
+const updatedContent = ref<string | null>(null)
+const lastSavedContent = ref<string | null>(null)
+const editorReady = ref(false)
+const peripheralsDialogOpen = ref(false)
+
+const open = computed({
+  get: () => props.value,
+  set: (value: boolean) => emit('input', value)
+})
+
+const ready = computed(() =>
+  !props.loading &&
+  editorReady.value &&
+  !isUploading.value
+)
+
+watch(ready, (value) => {
+  if (value) {
+    editor.value?.focus()
   }
 })
-export default class FileEditorDialog extends Mixins(StateMixin, BrowserMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
 
-  @Prop({ type: String, required: true })
-  readonly root!: string
+const isWebAssemblySupportedValue = computed(() => isWebAssemblySupported())
 
-  @Prop({ type: String, required: true })
-  readonly path!: string
+const useTextOnlyEditor = computed(() =>
+  isMobileUserAgent.value || !isWebAssemblySupportedValue.value
+)
 
-  @Prop({ type: String, required: true })
-  readonly filename!: string
+const isUploading = computed(() =>
+  typedState.files.uploads.length > 0
+)
 
-  @Prop({ type: String, required: true })
-  readonly contents!: string
+const configMap = computed(() =>
+  typedGetters['server/getConfigMapByFilename'](props.filename)
+)
 
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
+const canSaveAndRestart = computed(() =>
+  !props.readonly &&
+  !printerPrinting.value &&
+  configMap.value?.serviceSupported === true
+)
 
-  @Prop({ type: Boolean })
-  readonly readonly?: boolean
+const canShowPeripheralsDialog = computed(() =>
+  !props.readonly &&
+  configMap.value?.serviceSupported === true
+)
 
-  @Ref('editor')
-  readonly editor?: FileEditor
+const codeLens = computed(() =>
+  typedState.config.uiSettings.editor.codeLens
+)
 
-  updatedContent: string | null = null
-  lastSavedContent: string | null = null
-  editorReady = false
-  peripheralsDialogOpen = false
+const showDirtyEditorWarning = computed(() => {
+  const confirmDirtyEditorClose: boolean = typedState.config.uiSettings.editor.confirmDirtyEditorClose
 
-  get ready () {
-    return (
-      !this.loading &&
-      this.editorReady &&
-      !this.isUploading
+  return (
+    confirmDirtyEditorClose &&
+    updatedContent.value !== lastSavedContent.value
+  )
+})
+
+// init
+updatedContent.value = props.contents
+lastSavedContent.value = props.contents
+
+function handleBeforeUnload (event: Event) {
+  if (showDirtyEditorWarning.value) {
+    event.preventDefault()
+    return ((event || window.event).returnValue = true)
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
+async function emitClose () {
+  const result = (
+    !showDirtyEditorWarning.value ||
+    await confirm(
+      tc('app.general.simple_form.msg.unsaved_changes'),
+      { title: tc('app.general.label.unsaved_changes'), color: 'card-heading', icon: '$error' }
     )
+  )
+
+  if (result) {
+    open.value = false
   }
+}
 
-  @Watch('ready')
-  onReady (value: boolean) {
-    if (value) {
-      this.editor?.focus()
-    }
-  }
+function emitSave (options?: boolean | { restart?: boolean, saveAs?: boolean }) {
+  if (editorReady.value) {
+    const [restart, saveAs] = typeof options === 'object' && options != null
+      ? [options.restart === true, options.saveAs === true]
+      : [options === true, false]
 
-  get isWebAssemblySupported () {
-    return isWebAssemblySupported()
-  }
-
-  get useTextOnlyEditor () {
-    return this.isMobileUserAgent || !this.isWebAssemblySupported
-  }
-
-  get isUploading (): boolean {
-    return this.$typedState.files.uploads.length > 0
-  }
-
-  get configMap () {
-    return this.$typedGetters['server/getConfigMapByFilename'](this.filename)
-  }
-
-  get canSaveAndRestart (): boolean {
-    return (
-      !this.readonly &&
-      !this.printerPrinting &&
-      this.configMap?.serviceSupported === true
-    )
-  }
-
-  get canShowPeripheralsDialog (): boolean {
-    return (
-      !this.readonly &&
-      this.configMap?.serviceSupported === true
-    )
-  }
-
-  get codeLens (): boolean {
-    return this.$typedState.config.uiSettings.editor.codeLens
-  }
-
-  created () {
-    this.updatedContent = this.contents
-    this.lastSavedContent = this.contents
-  }
-
-  mounted () {
-    window.addEventListener('beforeunload', this.handleBeforeUnload)
-  }
-
-  beforeDestroy () {
-    window.removeEventListener('beforeunload', this.handleBeforeUnload)
-  }
-
-  get showDirtyEditorWarning () {
-    const confirmDirtyEditorClose: boolean = this.$typedState.config.uiSettings.editor.confirmDirtyEditorClose
-
-    return (
-      confirmDirtyEditorClose &&
-      this.updatedContent !== this.lastSavedContent
-    )
-  }
-
-  async emitClose () {
-    const result = (
-      !this.showDirtyEditorWarning ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.unsaved_changes'),
-        { title: this.$tc('app.general.label.unsaved_changes'), color: 'card-heading', icon: '$error' }
-      )
-    )
-
-    if (result) {
-      this.open = false
-    }
-  }
-
-  handleBeforeUnload (event: Event) {
-    if (this.showDirtyEditorWarning) {
-      event.preventDefault() // show browser-native "Leave site?" modal
-      return ((event || window.event).returnValue = true) // fallback
-    }
-  }
-
-  emitSave (options?: boolean | { restart?: boolean, saveAs?: boolean }) {
-    if (this.editorReady) {
-      const [restart, saveAs] = typeof options === 'object' && options != null
-        ? [options.restart === true, options.saveAs === true]
-        : [options === true, false]
-
-      if (this.configMap?.serviceSupported && restart) {
-        this.$emit('save', this.updatedContent, this.configMap.service)
-        this.open = false
+    if (configMap.value?.serviceSupported && restart) {
+      emit('save', updatedContent.value, configMap.value.service)
+      open.value = false
+    } else {
+      if (saveAs) {
+        emit('save-as', updatedContent.value)
       } else {
-        this.$emit(saveAs ? 'save-as' : 'save', this.updatedContent)
+        emit('save', updatedContent.value)
       }
-
-      this.lastSavedContent = this.updatedContent
     }
-  }
 
-  handleCommandPalette () {
-    this.editor?.showCommandPalette()
+    lastSavedContent.value = updatedContent.value
   }
+}
+
+function handleCommandPalette () {
+  editor.value?.showCommandPalette()
 }
 </script>

@@ -30,7 +30,7 @@ import downloadUrl from '@/util/download-url'
 import { Filters } from '@/plugins/filters'
 
 const props = defineProps<{
-  data: []
+  data: any[]
   graphics?: GraphicComponentOption[]
   options?: Record<string, unknown>
   height?: string | number

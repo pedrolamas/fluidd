@@ -11,7 +11,7 @@
       <v-col class="text-center">
         <app-btn
           :disabled="!klippyReady || printerPrinting"
-          :loading="hasWait($waits.onHomeAll)"
+          :loading="hasWait(Waits.onHomeAll)"
           :color="!allHomed ? 'primary' : undefined"
           class="px-2 mr-2"
           @click="homeAll"
@@ -27,10 +27,10 @@
 
         <app-btn
           :disabled="!klippyReady || printerPrinting"
-          :loading="hasWait($waits.onHomeXY)"
+          :loading="hasWait(Waits.onHomeXY)"
           :color="!xyHomed ? 'primary' : undefined"
           class="px-2"
-          @click="sendGcode('G28 X Y', $waits.onHomeXY)"
+          @click="sendGcode('G28 X Y', Waits.onHomeXY)"
         >
           <v-icon
             small
@@ -52,26 +52,22 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import ToolheadControlBarsAxis from './ToolheadControlBarsAxis.vue'
 import ToolheadControlBarsStepper from './ToolheadControlBarsStepper.vue'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { Waits } from '@/globals'
 import type { Stepper } from '@/store/printer/types'
 
-@Component({
-  components: {
-    ToolheadControlBarsAxis,
-    ToolheadControlBarsStepper
-  }
-})
-export default class ToolheadControlBars extends Mixins(StateMixin, ToolheadMixin) {
-  get steppers (): Stepper[] {
-    const steppers: Stepper[] = this.$typedGetters['printer/getSteppers']
+const { typedGetters } = useStore()
+const { klippyReady, printerPrinting, hasWait, sendGcode, homeAll } = useStateMixin()
+const { allHomed, xyHomed, forceMoveEnabled } = useToolheadMixin()
 
-    return steppers
-      .filter(stepper => stepper.key.startsWith('stepper_'))
-  }
-}
+const steppers = computed<Stepper[]>(() => {
+  const all: Stepper[] = typedGetters['printer/getSteppers']
+  return all.filter(stepper => stepper.key.startsWith('stepper_'))
+})
 </script>

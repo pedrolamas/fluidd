@@ -25,50 +25,45 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
 import type { OutputPin as IOutputPin } from '@/store/printer/types'
+import { Waits } from '@/globals'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class OutputPin extends Mixins(StateMixin, BrowserMixin) {
-  @Prop({ type: Object, required: true })
-  readonly pin!: IOutputPin
+const props = defineProps<{
+  pin: IOutputPin
+}>()
 
-  get pwm () {
-    return (
-      this.pin.pwm ||
-      this.pwmTypes.includes(this.pin.type)
-    )
+const { klippyReady, hasWait, sendGcode } = useStateMixin()
+const { isMobileUserAgent } = useBrowserMixin()
+
+const pwmTypes = ['pwm_cycle_time', 'pwm_tool']
+
+const pwm = computed(() => {
+  return (
+    props.pin.pwm ||
+    pwmTypes.includes(props.pin.type)
+  )
+})
+
+const value = computed(() => Math.round(props.pin.value * 100))
+
+const resetValue = computed(() => Math.round(props.pin.resetValue / props.pin.scale * 100))
+
+function handleChange (target: number | boolean) {
+  let val: number
+
+  if (typeof target === 'boolean') {
+    val = target
+      ? props.pin.scale
+      : 0
+  } else {
+    val = Math.round(target * props.pin.scale) / 100
   }
 
-  get pwmTypes () {
-    return [
-      'pwm_cycle_time',
-      'pwm_tool'
-    ]
-  }
-
-  get value () {
-    return Math.round(this.pin.value * 100)
-  }
-
-  get resetValue () {
-    return Math.round(this.pin.resetValue / this.pin.scale * 100)
-  }
-
-  handleChange (target: number | boolean) {
-    if (typeof target === 'boolean') {
-      target = target
-        ? this.pin.scale
-        : 0
-    } else {
-      target = Math.round(target * this.pin.scale) / 100
-    }
-
-    this.sendGcode(`SET_PIN PIN=${encodeGcodeParamValue(this.pin.name)} VALUE=${target}`, `${this.$waits.onSetOutputPin}${this.pin.name}`)
-  }
+  sendGcode(`SET_PIN PIN=${encodeGcodeParamValue(props.pin.name)} VALUE=${val}`, `${Waits.onSetOutputPin}${props.pin.name}`)
 }
 </script>

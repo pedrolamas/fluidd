@@ -42,10 +42,11 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
 import ToolheadControlCross from './ToolheadControlCross.vue'
 import ToolheadControlBars from './ToolheadControlBars.vue'
 import ToolheadControlCircle from './ToolheadControlCircle.vue'
@@ -60,31 +61,15 @@ import ExtruderSteppers from './ExtruderSteppers.vue'
 import ToolChangeCommands from './ToolChangeCommands.vue'
 import type { ToolheadControlStyle } from '@/store/config/types'
 
-@Component({
-  components: {
-    ToolheadControlCross,
-    ToolheadControlBars,
-    ToolheadControlCircle,
-    ExtruderMoves,
-    ExtruderSelection,
-    ToolheadPosition,
-    ZHeightAdjust,
-    SpeedAndFlowAdjust,
-    PressureAdvanceAdjust,
-    ExtruderStats,
-    ExtruderSteppers,
-    ToolChangeCommands
-  }
-})
-export default class Toolhead extends Mixins(StateMixin, ToolheadMixin) {
-  get showPressureAdvance (): boolean {
-    return this.activeExtruder?.pressure_advance !== undefined
-  }
+const { typedState } = useStore()
+const { printerPrinting } = useStateMixin()
+const { hasExtruder, hasMultipleExtruders, activeExtruder } = useToolheadMixin()
 
-  get toolheadControlStyle (): ToolheadControlStyle {
-    return this.$typedState.config.uiSettings.general.toolheadControlStyle
-  }
-}
+const showPressureAdvance = computed(() => activeExtruder.value?.pressure_advance !== undefined)
+
+const toolheadControlStyle = computed(() =>
+  typedState.config.uiSettings.general.toolheadControlStyle as ToolheadControlStyle
+)
 </script>
 
 <style type="scss" scoped>

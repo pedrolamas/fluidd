@@ -107,9 +107,9 @@ const props = defineProps<{
   config: DiagnosticsCardConfig
 }>()
 
-const config = reactive<DiagnosticsCardConfig>(JSON.parse(JSON.stringify(props.config)))
+const config = reactive<DiagnosticsCardConfig>(JSON.parse(JSON.stringify(props.config)) as DiagnosticsCardConfig)
 
-watch(() => props.config, (v) => Object.assign(config, JSON.parse(JSON.stringify(v))), { deep: true })
+watch(() => props.config, (v) => Object.assign(config, JSON.parse(JSON.stringify(v)) as DiagnosticsCardConfig), { deep: true })
 
 const { t } = useI18n()
 

@@ -179,141 +179,97 @@
   </svg>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-@Component({
-  components: {},
+defineEmits<{
+  (e: 'click'): void
+}>()
+
+const props = withDefaults(defineProps<{
+  map: number[]
+  groups: number[]
+  startX?: number
+  startY?: number
+  verticalSpacing?: number
+  groupSpacing?: number
+  mapSpace?: number
+  leader?: number
+  showEsGroups?: boolean
+  selectedTool?: number
+  selectedGate?: number
+}>(), {
+  startX: 10,
+  startY: 8,
+  verticalSpacing: 12,
+  groupSpacing: 12,
+  mapSpace: 80,
+  leader: 10,
+  showEsGroups: true,
+  selectedTool: -1,
+  selectedGate: -1,
 })
-export default class MmuTtgMap extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ required: false, default: 10 })
-  readonly startX!: number
 
-  @Prop({ required: false, default: 8 })
-  readonly startY!: number
+const toolX = computed(() => props.startX + 14)
+const gateX = computed(() => props.startX + 2 * props.leader + props.mapSpace + 40)
+const groupX = computed(() => props.startX + 2 * props.leader + props.mapSpace + 65)
 
-  @Prop({ required: false, default: 12 })
-  readonly verticalSpacing!: number
+const width = computed(() => groupX.value + getEndlessSpoolGroups().length * props.groupSpacing)
+const height = computed(() => props.startY + props.map.length * props.verticalSpacing + 6)
 
-  @Prop({ required: false, default: 12 })
-  readonly groupSpacing!: number
+const currentGroup = computed(() =>
+  props.selectedGate >= 0 ? props.groups[props.selectedGate] : -1
+)
 
-  @Prop({ required: false, default: 80 })
-  readonly mapSpace!: number
+function generateMappingPathD (tool: number): string {
+  const xOffset = 28
+  const x1 = props.startX + xOffset
+  const y1 = props.startY + tool * props.verticalSpacing + 4
+  const tX = x1 + props.leader
+  const gX = tX + props.mapSpace
+  const gate = props.map[tool]
+  const tSpace = 2
+  const gSpace = 2
+  return (
+    `M ${x1} ${y1} L ${tX} ${y1} ` +
+    `L ${tX + gate * tSpace} ${y1} ` +
+    `L ${gX - (props.map.length - gate) * gSpace} ${props.startY + gate * props.verticalSpacing + 4} ` +
+    `L ${gX + props.leader} ${props.startY + gate * props.verticalSpacing + 4}`
+  )
+}
 
-  @Prop({ required: false, default: 10 })
-  readonly leader!: number
-
-  @Prop({ required: false, default: true })
-  readonly showEsGroups!: boolean
-
-  @Prop({ required: true })
-  readonly map!: number[]
-
-  @Prop({ required: true })
-  readonly groups!: number[]
-
-  @Prop({ required: false, default: -1 })
-  readonly selectedTool!: number
-
-  @Prop({ required: false, default: -1 })
-  readonly selectedGate!: number
-
-  get toolX (): number {
-    return this.startX + 14
-  }
-
-  get gateX (): number {
-    return this.startX + 2 * this.leader + this.mapSpace + 40
-  }
-
-  get groupX (): number {
-    return this.startX + 2 * this.leader + this.mapSpace + 65
-  }
-
-  get width (): number {
-    return this.groupX + this.getEndlessSpoolGroups().length * this.groupSpacing // Single gate groups aren't displayed
-  }
-
-  get height (): number {
-    return this.startY + this.map.length * this.verticalSpacing + 6
-  }
-
-  get currentGroup (): number {
-    if (this.selectedGate >= 0) {
-      return this.groups[this.selectedGate]
-    } else {
-      return -1
-    }
-  }
-
-  generateMappingPathD (tool: number): string {
-    const xOffset = 28
-    const x1 = this.startX + xOffset
-    const y1 = this.startY + tool * this.verticalSpacing + 4 // yOffset of 4 to align line with text
-    const tX = x1 + this.leader // X position for tool column
-    const gX = tX + this.mapSpace // X position for gate column
-    const gate = this.map[tool] // Gate corresponding to the tool
-    const tSpace = 2 // Horizontal "break" spacing tool side
-    const gSpace = 2 // Horizontal "break" spacing gate side
-
-    return (
-            `M ${x1} ${y1} L ${tX} ${y1} ` + // Draw leader line
-            `L ${tX + gate * tSpace} ${y1} ` + // Horizontal to gateX column
-            `L ${gX - (this.map.length - gate) * gSpace} ${this.startY + gate * this.verticalSpacing + 4} ` + // To gate column
-            `L ${gX + this.leader} ${this.startY + gate * this.verticalSpacing + 4}`
-    ) // Add trailer
-  }
-
-  generateEndlessSpoolPathD (group: number, index: number): string {
-    const tick = 5 // Dash size
-    const x1 = this.gateX + 24 + index * this.groupSpacing // X distance from TTG map
-    const y1 = this.startY + 4 // Align line with text
-
-    let dStr = ''
-    let y0: number | null = null
-    const gatesInGroup = this.findAllGatesInGroup(group)
-    if (gatesInGroup.length > 1) {
-      gatesInGroup.forEach((gate) => {
-        const y = y1 + gate * this.verticalSpacing
-        dStr += `M ${x1 + tick} ${y} L ${x1} ${y} `
-        if (y0 !== null) {
-          dStr += `M ${x1 + tick} ${y0} L ${x1 + tick} ${y} `
-        }
-        y0 = y
-      })
-    }
-    return dStr
-  }
-
-  // Find groups with more than one gate
-  private getEndlessSpoolGroups (): number[] {
-    const countMap: { [key: number]: number } = {}
-    this.groups.forEach((num) => {
-      if (countMap[num]) {
-        countMap[num]++
-      } else {
-        countMap[num] = 1
-      }
+function generateEndlessSpoolPathD (group: number, index: number): string {
+  const tick = 5
+  const x1 = gateX.value + 24 + index * props.groupSpacing
+  const y1 = props.startY + 4
+  let dStr = ''
+  let y0: number | null = null
+  const gatesInGroup = findAllGatesInGroup(group)
+  if (gatesInGroup.length > 1) {
+    gatesInGroup.forEach((gate) => {
+      const y = y1 + gate * props.verticalSpacing
+      dStr += `M ${x1 + tick} ${y} L ${x1} ${y} `
+      if (y0 !== null) dStr += `M ${x1 + tick} ${y0} L ${x1 + tick} ${y} `
+      y0 = y
     })
-    const duplicates = Object.keys(countMap)
-      .filter((key) => countMap[+key] > 1)
-      .map(Number)
-      .sort((a, b) => a - b)
-    return duplicates
   }
+  return dStr
+}
 
-  private findAllGatesInGroup (group: number): number[] {
-    const gatesInGroup: number[] = []
-    this.groups.forEach((g, index) => {
-      if (g === group) {
-        gatesInGroup.push(index)
-      }
-    })
-    return gatesInGroup
-  }
+function getEndlessSpoolGroups (): number[] {
+  const countMap: { [key: number]: number } = {}
+  props.groups.forEach((num) => {
+    countMap[num] = (countMap[num] ?? 0) + 1
+  })
+  return Object.keys(countMap).filter((key) => countMap[+key] > 1).map(Number).sort((a, b) => a - b)
+}
+
+function findAllGatesInGroup (group: number): number[] {
+  const gatesInGroup: number[] = []
+  props.groups.forEach((g, index) => {
+    if (g === group) gatesInGroup.push(index)
+  })
+  return gatesInGroup
 }
 </script>
 

@@ -119,62 +119,64 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
 import type { RootProperties } from '@/store/files/types'
 import { getFilesWithPathFromHTMLInputElement } from '@/util/file-system-entry'
-import { Component, Prop, Ref, Mixins } from 'vue-property-decorator'
 
-@Component({})
-export default class FileSystemAddMenu extends Mixins(StateMixin, BrowserMixin) {
-  @Prop({ type: String, required: true })
-  readonly root!: string
+const props = defineProps<{
+  root: string
+  disabled?: boolean
+}>()
 
-  // If the controls are disabled or not.
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+const emit = defineEmits<{
+  (e: 'add-file'): void
+  (e: 'add-dir'): void
+  (e: 'upload', files: any[], print: boolean): void
+}>()
 
-  @Ref('uploadFile')
-  readonly uploadFile!: HTMLInputElement
+const { printerPrinting, printerPaused, klippyReady } = useStateMixin()
+const { isIOS } = useBrowserMixin()
+const { typedGetters } = useStore()
 
-  andPrint = false
+const uploadFile = ref<HTMLInputElement>()
+const andPrint = ref(false)
 
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.root)
-  }
+const rootProperties = computed<RootProperties>(() =>
+  typedGetters['files/getRootProperties'](props.root)
+)
 
-  get accepts () {
-    return this.isIOS
-      ? undefined
-      : this.rootProperties.accepts.join(',')
-  }
+const accepts = computed(() =>
+  isIOS.value
+    ? undefined
+    : rootProperties.value.accepts.join(',')
+)
 
-  get printerReady () {
-    return (
-      !this.printerPrinting &&
-      !this.printerPaused &&
-      this.klippyReady
-    )
-  }
+const printerReady = computed(() =>
+  !printerPrinting.value &&
+  !printerPaused.value &&
+  klippyReady.value
+)
 
-  emulateClick (startPrint: boolean, folder = false) {
-    this.andPrint = startPrint
-    this.uploadFile.multiple = !startPrint // Can't start print with multiple files
-    this.uploadFile.webkitdirectory = folder
-    this.uploadFile.click()
-  }
+function emulateClick (startPrint: boolean, folder = false) {
+  andPrint.value = startPrint
+  uploadFile.value!.multiple = !startPrint
+  uploadFile.value!.webkitdirectory = folder
+  uploadFile.value!.click()
+}
 
-  async fileChanged (event: Event) {
-    if (event.target instanceof HTMLInputElement) {
-      const files = await getFilesWithPathFromHTMLInputElement(event.target)
+async function fileChanged (event: Event) {
+  if (event.target instanceof HTMLInputElement) {
+    const files = await getFilesWithPathFromHTMLInputElement(event.target)
 
-      if (files) {
-        this.$emit('upload', files, this.andPrint)
-      }
-
-      event.target.value = ''
+    if (files) {
+      emit('upload', files, andPrint.value)
     }
+
+    event.target.value = ''
   }
 }
 </script>

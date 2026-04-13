@@ -109,67 +109,60 @@
   </v-toolbar>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StatesMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
 import type { FileBrowserEntry, RootProperties } from '@/store/files/types'
 
-@Component({})
-export default class FileSystemBulkActions extends Mixins(StatesMixin) {
-  @Prop({ type: String, required: true })
-  readonly root!: string
+const props = defineProps<{
+  root: string
+  path: string
+  selected: FileBrowserEntry[]
+}>()
 
-  // The current path
-  @Prop({ type: String })
-  readonly path!: string
+defineEmits<{
+  (e: 'remove', selected: FileBrowserEntry[]): void
+  (e: 'create-zip', selected: FileBrowserEntry[]): void
+  (e: 'refresh-metadata', selected: FileBrowserEntry[]): void
+  (e: 'perform-time-analysis', selected: FileBrowserEntry[]): void
+  (e: 'enqueue', selected: FileBrowserEntry[]): void
+}>()
 
-  @Prop({ type: [Object, Array], required: true })
-  readonly selected!: FileBrowserEntry[]
+const { typedGetters } = useStore()
 
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.root)
-  }
+const rootProperties = computed<RootProperties>(() =>
+  typedGetters['files/getRootProperties'](props.root)
+)
 
-  get canCreateZip (): boolean {
-    return (
-      (
-        this.selected.length > 1 ||
-        this.selected[0].type !== 'file' ||
-        this.selected[0].extension !== '.zip'
-      ) &&
-      !this.rootProperties.readonly &&
-      this.$typedGetters['server/getIsMinApiVersion']('1.1.0')
-    )
-  }
+const canCreateZip = computed(() =>
+  (
+    props.selected.length > 1 ||
+    props.selected[0].type !== 'file' ||
+    props.selected[0].extension !== '.zip'
+  ) &&
+  !rootProperties.value.readonly &&
+  typedGetters['server/getIsMinApiVersion']('1.1.0')
+)
 
-  get isGcodesRootWithAcceptedFiles () {
-    return (
-      this.root === 'gcodes' &&
-      this.selected.some(x =>
-        x.type !== 'directory' &&
-        this.rootProperties.accepts.includes(x.extension)
-      )
-    )
-  }
+const isGcodesRootWithAcceptedFiles = computed(() =>
+  props.root === 'gcodes' &&
+  props.selected.some(x =>
+    x.type !== 'directory' &&
+    rootProperties.value.accepts.includes(x.extension)
+  )
+)
 
-  get canAddToQueue (): boolean {
-    return (
-      this.isGcodesRootWithAcceptedFiles &&
-      this.$typedGetters['server/componentSupport']('job_queue')
-    )
-  }
+const canAddToQueue = computed(() =>
+  isGcodesRootWithAcceptedFiles.value &&
+  typedGetters['server/componentSupport']('job_queue')
+)
 
-  get canRefreshMetadata (): boolean {
-    return (
-      this.isGcodesRootWithAcceptedFiles
-    )
-  }
+const canRefreshMetadata = computed(() =>
+  isGcodesRootWithAcceptedFiles.value
+)
 
-  get canPerformTimeAnalysys (): boolean {
-    return (
-      this.isGcodesRootWithAcceptedFiles &&
-      this.$typedGetters['server/componentSupport']('analysis')
-    )
-  }
-}
+const canPerformTimeAnalysys = computed(() =>
+  isGcodesRootWithAcceptedFiles.value &&
+  typedGetters['server/componentSupport']('analysis')
+)
 </script>

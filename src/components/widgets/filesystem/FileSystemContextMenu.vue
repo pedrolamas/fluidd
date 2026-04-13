@@ -201,136 +201,134 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
-import FilesMixin from '@/mixins/files'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
 import type { FileBrowserEntry, RootProperties } from '@/store/files/types'
 
 /**
  * NOTE: Generally, moonraker expects the paths to include the root.
  */
-@Component({})
-export default class FileSystemContextMenu extends Mixins(StateMixin, FilesMixin) {
-  @VModel({ type: Boolean })
-  open?: boolean
+const props = defineProps<{
+  value: boolean
+  root: string
+  file: FileBrowserEntry | FileBrowserEntry[]
+  positionX: number
+  positionY: number
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly root!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'print', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'enqueue', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'preheat', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'view', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'edit', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'refresh-metadata', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'perform-time-analysis', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'preview-gcode', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'create-zip', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'download', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'rename', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'duplicate', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'remove', file: FileBrowserEntry | FileBrowserEntry[]): void
+  (e: 'view-thumbnail', file: FileBrowserEntry | FileBrowserEntry[]): void
+}>()
 
-  @Prop({ type: [Object, Array], required: true })
-  readonly file!: FileBrowserEntry | FileBrowserEntry[]
+const { printerPrinting, printerPaused, klippyReady } = useStateMixin()
+const { getThumbUrl } = useFilesMixin()
+const { typedGetters } = useStore()
 
-  @Prop({ type: Number, required: true })
-  readonly positionX!: number
+const open = computed({
+  get: () => props.value,
+  set: (value: boolean) => emit('input', value)
+})
 
-  @Prop({ type: Number, required: true })
-  readonly positionY!: number
+const rootProperties = computed<RootProperties>(() =>
+  typedGetters['files/getRootProperties'](props.root)
+)
 
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.root)
-  }
+const canPrint = computed(() =>
+  props.root === 'gcodes' &&
+  !Array.isArray(props.file) &&
+  props.file.type !== 'directory' &&
+  rootProperties.value.accepts.includes(props.file.extension)
+)
 
-  get canPrint () {
-    return (
-      this.root === 'gcodes' &&
-      !Array.isArray(this.file) &&
-      this.file.type !== 'directory' &&
-      this.rootProperties.accepts.includes(this.file.extension)
+const canEdit = computed(() =>
+  !Array.isArray(props.file) &&
+  props.file.type !== 'directory' &&
+  (
+    props.file.permissions === undefined ||
+    props.file.permissions.includes('r')
+  )
+)
+
+const canView = computed(() =>
+  !Array.isArray(props.file) &&
+  props.file.type !== 'directory' &&
+  rootProperties.value.canView.includes(props.file.extension) &&
+  (
+    props.file.permissions === undefined ||
+    props.file.permissions.includes('r')
+  )
+)
+
+const canPreheat = computed(() =>
+  props.root === 'gcodes' &&
+  !Array.isArray(props.file) &&
+  'first_layer_extr_temp' in props.file &&
+  'first_layer_bed_temp' in props.file
+)
+
+const printerReady = computed(() =>
+  !printerPrinting.value &&
+  !printerPaused.value &&
+  klippyReady.value
+)
+
+const canPreviewGcode = computed(() =>
+  props.root === 'gcodes' &&
+  !Array.isArray(props.file) &&
+  props.file.type === 'file' &&
+  props.file.extension === '.gcode'
+)
+
+const canCreateZip = computed(() =>
+  (
+    Array.isArray(props.file) ||
+    props.file.type !== 'file' ||
+    props.file.extension !== '.zip'
+  ) &&
+  !rootProperties.value.readonly &&
+  typedGetters['server/getIsMinApiVersion']('1.1.0')
+)
+
+const isGcodesRootWithAcceptedFiles = computed(() => {
+  const files = Array.isArray(props.file) ? props.file : [props.file]
+
+  return (
+    props.root === 'gcodes' &&
+    files.some(x =>
+      x.type !== 'directory' &&
+      rootProperties.value.accepts.includes(x.extension)
     )
-  }
+  )
+})
 
-  get canEdit () {
-    return (
-      !Array.isArray(this.file) &&
-      this.file.type !== 'directory' &&
-      (
-        this.file.permissions === undefined ||
-        this.file.permissions.includes('r')
-      )
-    )
-  }
+const canAddToQueue = computed(() =>
+  isGcodesRootWithAcceptedFiles.value &&
+  typedGetters['server/componentSupport']('job_queue')
+)
 
-  get canView () {
-    return (
-      !Array.isArray(this.file) &&
-      this.file.type !== 'directory' &&
-      this.rootProperties.canView.includes(this.file.extension) &&
-      (
-        this.file.permissions === undefined ||
-        this.file.permissions.includes('r')
-      )
-    )
-  }
+const canRefreshMetadata = computed(() =>
+  isGcodesRootWithAcceptedFiles.value
+)
 
-  get canPreheat () {
-    return (
-      this.root === 'gcodes' &&
-      !Array.isArray(this.file) &&
-      'first_layer_extr_temp' in this.file &&
-      'first_layer_bed_temp' in this.file
-    )
-  }
-
-  get printerReady () {
-    return (
-      !this.printerPrinting &&
-      !this.printerPaused &&
-      this.klippyReady
-    )
-  }
-
-  get canPreviewGcode () {
-    return (
-      this.root === 'gcodes' &&
-      !Array.isArray(this.file) &&
-      this.file.type === 'file' &&
-      this.file.extension === '.gcode'
-    )
-  }
-
-  get canCreateZip (): boolean {
-    return (
-      (
-        Array.isArray(this.file) ||
-        this.file.type !== 'file' ||
-        this.file.extension !== '.zip'
-      ) &&
-      !this.rootProperties.readonly &&
-      this.$typedGetters['server/getIsMinApiVersion']('1.1.0')
-    )
-  }
-
-  get isGcodesRootWithAcceptedFiles () {
-    const files = Array.isArray(this.file) ? this.file : [this.file]
-
-    return (
-      this.root === 'gcodes' &&
-      files.some(x =>
-        x.type !== 'directory' &&
-        this.rootProperties.accepts.includes(x.extension)
-      )
-    )
-  }
-
-  get canAddToQueue (): boolean {
-    return (
-      this.isGcodesRootWithAcceptedFiles &&
-      this.$typedGetters['server/componentSupport']('job_queue')
-    )
-  }
-
-  get canRefreshMetadata (): boolean {
-    return (
-      this.isGcodesRootWithAcceptedFiles
-    )
-  }
-
-  get canPerformTimeAnalysys (): boolean {
-    return (
-      this.isGcodesRootWithAcceptedFiles &&
-      this.$typedGetters['server/componentSupport']('analysis')
-    )
-  }
-}
+const canPerformTimeAnalysys = computed(() =>
+  isGcodesRootWithAcceptedFiles.value &&
+  typedGetters['server/componentSupport']('analysis')
+)
 </script>

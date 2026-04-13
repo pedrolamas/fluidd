@@ -15,7 +15,7 @@
           single-line
           hide-details="auto"
           :rules="[
-            $rules.required
+            Rules.required
           ]"
           :value="instanceName"
           :default-value="$globals.APP_NAME"
@@ -199,7 +199,7 @@
           dense
           hide-details="auto"
           :rules="[
-            $rules.lengthGreaterThanOrEqual(1),
+            Rules.lengthGreaterThanOrEqual(1),
           ]"
           :items="availablePrintProgressCalculation"
         />
@@ -218,7 +218,7 @@
           dense
           hide-details="auto"
           :rules="[
-            $rules.lengthGreaterThanOrEqual(1),
+            Rules.lengthGreaterThanOrEqual(1),
           ]"
           :items="availablePrintEtaCalculation"
         />
@@ -254,7 +254,7 @@
           outlined
           small
           color="primary"
-          @click="uploadSettingsFile.click()"
+          @click="uploadSettingsFile?.click()"
         >
           {{ $t('app.setting.btn.restore') }}
         </app-btn>
@@ -271,10 +271,8 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import { SupportedLocales, DateFormats, TimeFormats } from '@/globals'
 import type { OutputPin } from '@/store/printer/types'
 import type { PrintEtaCalculation, PrintInProgressLayout, PrintProgressCalculation } from '@/store/config/types'
@@ -285,387 +283,336 @@ import { EventBus } from '@/eventBus'
 import { isFluiddContent, toFluiddContent } from '@/util/fluidd-content'
 import { getAllLocales } from '@/plugins/i18n'
 import downloadUrl from '@/util/download-url'
+import { useStore } from '@/composables/useStore'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useI18n } from '@/composables/useI18n'
+import { Filters, Rules } from '@/plugins/filters'
 
-@Component({})
-export default class GeneralSettings extends Mixins(StateMixin, BrowserMixin) {
-  @Ref('uploadSettingsFile')
-  readonly uploadSettingsFile!: HTMLInputElement
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { isIOS } = useBrowserMixin()
+const { t, tc } = useI18n()
 
-  get instanceName (): string {
-    return this.$typedState.config.uiSettings.general.instanceName
-  }
+const uploadSettingsFile = ref<HTMLInputElement>()
 
-  setInstanceName (value: string) {
-    this.$typedDispatch('config/updateInstance', value)
-  }
+const instanceName = computed(() => typedState.config.uiSettings.general.instanceName)
 
-  get locale (): string {
-    return this.$typedState.config.uiSettings.general.locale
-  }
+function setInstanceName (value: string) {
+  typedDispatch('config/updateInstance', value)
+}
 
-  get supportedLocales () {
-    return [
-      { name: 'Browser default', code: 'default' },
-      ...SupportedLocales
-    ]
-  }
+const locale = computed(() => typedState.config.uiSettings.general.locale)
 
-  setLocale (value: string) {
-    this.$typedDispatch('config/onLocaleChange', value)
-  }
+const supportedLocales = computed(() => [
+  { name: 'Browser default', code: 'default' },
+  ...SupportedLocales
+])
 
-  get dateFormat (): string {
-    return this.$typedState.config.uiSettings.general.dateFormat
-  }
+function setLocale (value: string) {
+  typedDispatch('config/onLocaleChange', value)
+}
 
-  set dateFormat (value: string) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.dateFormat',
-      value,
-      server: true
-    })
-  }
+const dateFormat = computed({
+  get: () => typedState.config.uiSettings.general.dateFormat,
+  set: (value: string) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.dateFormat',
+    value,
+    server: true
+  })
+})
 
-  get availableDateFormats () {
-    const date = new Date()
+const availableDateFormats = computed(() => {
+  const date = new Date()
 
-    return Object.entries(DateFormats)
-      .map(([key, entry]) => ({
-        value: key,
-        text: `${date.toLocaleDateString(entry.locales ?? getAllLocales(), entry.options)}${entry.suffix ?? ''}`
-      }))
-  }
-
-  get timeFormat (): string {
-    return this.$typedState.config.uiSettings.general.timeFormat
-  }
-
-  set timeFormat (value: string) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.timeFormat',
-      value,
-      server: true
-    })
-  }
-
-  get availableTimeFormats () {
-    const date = new Date()
-
-    return Object.entries(TimeFormats)
-      .map(([key, entry]) => ({
-        value: key,
-        text: `${date.toLocaleTimeString(entry.locales ?? getAllLocales(), entry.options)}${entry.suffix ?? ''}`
-      }))
-  }
-
-  get enableKeyboardShortcuts (): boolean {
-    return this.$typedState.config.uiSettings.general.enableKeyboardShortcuts
-  }
-
-  set enableKeyboardShortcuts (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.enableKeyboardShortcuts',
-      value,
-      server: true
-    })
-  }
-
-  get confirmOnEstop (): boolean {
-    return this.$typedState.config.uiSettings.general.confirmOnEstop
-  }
-
-  set confirmOnEstop (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.confirmOnEstop',
-      value,
-      server: true
-    })
-  }
-
-  get printerPowerDevice (): string | null {
-    return this.$typedState.config.uiSettings.general.printerPowerDevice
-  }
-
-  set printerPowerDevice (value: string | null) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.printerPowerDevice',
-      value,
-      server: true
-    })
-  }
-
-  get printerPowerDevicesList () {
-    const devices: Moonraker.Power.Device[] = this.$typedGetters['power/getDevices']
-
-    const deviceEntries = devices.map(device => ({
-      text: `${this.$filters.prettyCase(device.device)} (${device.type})`,
-      value: device.device
+  return Object.entries(DateFormats)
+    .map(([key, entry]) => ({
+      value: key,
+      text: `${date.toLocaleDateString(entry.locales ?? getAllLocales(), entry.options)}${entry.suffix ?? ''}`
     }))
+})
 
-    const autoDeviceName = devices.some(device => device.device.toLowerCase() === 'printer')
-      ? 'Printer'
-      : this.$tc('app.setting.label.none')
+const timeFormat = computed({
+  get: () => typedState.config.uiSettings.general.timeFormat,
+  set: (value: string) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.timeFormat',
+    value,
+    server: true
+  })
+})
 
-    return [
-      {
-        text: `${this.$tc('app.setting.label.auto')} (${autoDeviceName})`,
-        value: null
-      },
-      ...deviceEntries
-    ]
+const availableTimeFormats = computed(() => {
+  const date = new Date()
+
+  return Object.entries(TimeFormats)
+    .map(([key, entry]) => ({
+      value: key,
+      text: `${date.toLocaleTimeString(entry.locales ?? getAllLocales(), entry.options)}${entry.suffix ?? ''}`
+    }))
+})
+
+const enableKeyboardShortcuts = computed({
+  get: () => typedState.config.uiSettings.general.enableKeyboardShortcuts,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.enableKeyboardShortcuts',
+    value,
+    server: true
+  })
+})
+
+const confirmOnEstop = computed({
+  get: () => typedState.config.uiSettings.general.confirmOnEstop,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.confirmOnEstop',
+    value,
+    server: true
+  })
+})
+
+const printerPowerDevice = computed({
+  get: () => typedState.config.uiSettings.general.printerPowerDevice,
+  set: (value: string | null) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.printerPowerDevice',
+    value,
+    server: true
+  })
+})
+
+const printerPowerDevicesList = computed(() => {
+  const devices: Moonraker.Power.Device[] = typedGetters['power/getDevices']
+
+  const deviceEntries = devices.map(device => ({
+    text: `${Filters.prettyCase(device.device)} (${device.type})`,
+    value: device.device
+  }))
+
+  const autoDeviceName = devices.some(device => device.device.toLowerCase() === 'printer')
+    ? 'Printer'
+    : tc('app.setting.label.none')
+
+  return [
+    {
+      text: `${tc('app.setting.label.auto')} (${autoDeviceName})`,
+      value: null
+    },
+    ...deviceEntries
+  ]
+})
+
+const topNavPowerToggle = computed({
+  get: () => typedState.config.uiSettings.general.topNavPowerToggle,
+  set: (value: string | null) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.topNavPowerToggle',
+    value,
+    server: true
+  })
+})
+
+const topNavPowerToggleDevicesList = computed(() => {
+  const devices: Moonraker.Power.Device[] = typedGetters['power/getDevices']
+  const deviceEntries = devices.length
+    ? [
+        { header: 'Moonraker' },
+        ...devices.map(device => ({
+          text: `${Filters.prettyCase(device.device)} (${device.type})`,
+          value: device.device
+        }))
+      ]
+    : []
+
+  const pins: OutputPin[] = typedGetters['printer/getAllPins']
+  const pinEntries = pins.length
+    ? [
+        { header: 'Klipper' },
+        ...pins.map(outputPin => ({
+          text: outputPin.prettyName,
+          value: `${outputPin.name}:klipper`
+        }))
+      ]
+    : []
+
+  return [
+    {
+      text: tc('app.setting.label.none'),
+      value: null
+    },
+    ...deviceEntries,
+    ...pinEntries
+  ]
+})
+
+const confirmOnPowerDeviceChange = computed({
+  get: () => typedState.config.uiSettings.general.confirmOnPowerDeviceChange,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.confirmOnPowerDeviceChange',
+    value,
+    server: true
+  })
+})
+
+const showSaveConfigAndRestart = computed({
+  get: () => typedState.config.uiSettings.general.showSaveConfigAndRestart,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showSaveConfigAndRestart',
+    value,
+    server: true
+  })
+})
+
+const showUploadAndPrint = computed({
+  get: () => typedState.config.uiSettings.general.showUploadAndPrint,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showUploadAndPrint',
+    value,
+    server: true
+  })
+})
+
+const confirmOnSaveConfigAndRestart = computed({
+  get: () => typedState.config.uiSettings.general.confirmOnSaveConfigAndRestart,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.confirmOnSaveConfigAndRestart',
+    value,
+    server: true
+  })
+})
+
+const sectionsToIgnorePendingConfigurationChanges = computed({
+  get: () => typedState.config.uiSettings.general.sectionsToIgnorePendingConfigurationChanges,
+  set: (value: string[]) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.sectionsToIgnorePendingConfigurationChanges',
+    value: [...new Set(value)].sort((a, b) => a.localeCompare(b)),
+    server: true
+  })
+})
+
+const printInProgressLayout = computed({
+  get: () => typedState.config.uiSettings.general.printInProgressLayout as PrintInProgressLayout,
+  set: (value: PrintInProgressLayout) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.printInProgressLayout',
+    value,
+    server: true
+  })
+})
+
+const availablePrintInProgressLayouts = computed(() => [
+  {
+    value: 'default',
+    text: t('app.general.label.default')
+  },
+  {
+    value: 'compact',
+    text: t('app.general.label.compact')
   }
+])
 
-  get topNavPowerToggle (): string | null {
-    return this.$typedState.config.uiSettings.general.topNavPowerToggle
+const availablePrintProgressCalculation = computed(() => [
+  {
+    value: 'file',
+    text: t('app.setting.timer_options.relative_file_position')
+  },
+  {
+    value: 'fileAbsolute',
+    text: t('app.setting.timer_options.absolute_file_position')
+  },
+  {
+    value: 'slicer',
+    text: t('app.setting.timer_options.slicer_m73')
+  },
+  {
+    value: 'filament',
+    text: t('app.setting.timer_options.filament')
   }
+])
 
-  set topNavPowerToggle (value: string | null) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.topNavPowerToggle',
-      value,
-      server: true
-    })
+const printProgressCalculation = computed({
+  get: () => typedState.config.uiSettings.general.printProgressCalculation as PrintProgressCalculation[],
+  set: (value: PrintProgressCalculation[]) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.printProgressCalculation',
+    value,
+    server: true
+  })
+})
+
+const availablePrintEtaCalculation = computed(() => [
+  {
+    value: 'file',
+    text: t('app.setting.timer_options.file')
+  },
+  {
+    value: 'slicer',
+    text: t('app.setting.timer_options.slicer')
   }
+])
 
-  get topNavPowerToggleDevicesList () {
-    const devices: Moonraker.Power.Device[] = this.$typedGetters['power/getDevices']
-    const deviceEntries = devices.length
-      ? [
-          { header: 'Moonraker' },
-          ...devices.map(device => ({
-            text: `${this.$filters.prettyCase(device.device)} (${device.type})`,
-            value: device.device
-          }))
-        ]
-      : []
+const printEtaCalculation = computed({
+  get: () => typedState.config.uiSettings.general.printEtaCalculation as PrintEtaCalculation[],
+  set: (value: PrintEtaCalculation[]) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.printEtaCalculation',
+    value,
+    server: true
+  })
+})
 
-    const pins: OutputPin[] = this.$typedGetters['printer/getAllPins']
-    const pinEntries = pins.length
-      ? [
-          { header: 'Klipper' },
-          ...pins.map(outputPin => ({
-            text: outputPin.prettyName,
-            value: `${outputPin.name}:klipper`
-          }))
-        ]
-      : []
+const enableDiagnostics = computed({
+  get: () => typedState.config.uiSettings.general.enableDiagnostics,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.enableDiagnostics',
+    value,
+    server: true
+  })
+})
 
-    return [
-      {
-        text: this.$tc('app.setting.label.none'),
-        value: null
-      },
-      ...deviceEntries,
-      ...pinEntries
-    ]
-  }
+async function handleBackupSettings () {
+  try {
+    const response = await SocketActions.serverDatabaseGetItem()
 
-  get confirmOnPowerDeviceChange (): boolean {
-    return this.$typedState.config.uiSettings.general.confirmOnPowerDeviceChange
-  }
+    const data = response.value
 
-  set confirmOnPowerDeviceChange (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.confirmOnPowerDeviceChange',
-      value,
-      server: true
-    })
-  }
+    if (data) {
+      const backupData = toFluiddContent('settings-backup', data)
+      const backupDataAsString = JSON.stringify(backupData)
 
-  get showSaveConfigAndRestart (): boolean {
-    return this.$typedState.config.uiSettings.general.showSaveConfigAndRestart
-  }
+      const filename = `backup-fluidd-v${import.meta.env.VERSION}-${instanceName.value}.json`
+      const url = `data:text/plain;charset=utf-8,${encodeURIComponent(backupDataAsString)}`
 
-  set showSaveConfigAndRestart (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showSaveConfigAndRestart',
-      value,
-      server: true
-    })
-  }
-
-  get showUploadAndPrint (): boolean {
-    return this.$typedState.config.uiSettings.general.showUploadAndPrint
-  }
-
-  set showUploadAndPrint (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showUploadAndPrint',
-      value,
-      server: true
-    })
-  }
-
-  get confirmOnSaveConfigAndRestart (): boolean {
-    return this.$typedState.config.uiSettings.general.confirmOnSaveConfigAndRestart
-  }
-
-  set confirmOnSaveConfigAndRestart (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.confirmOnSaveConfigAndRestart',
-      value,
-      server: true
-    })
-  }
-
-  get sectionsToIgnorePendingConfigurationChanges (): string[] {
-    return this.$typedState.config.uiSettings.general.sectionsToIgnorePendingConfigurationChanges
-  }
-
-  set sectionsToIgnorePendingConfigurationChanges (value: string[]) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.sectionsToIgnorePendingConfigurationChanges',
-      value: [...new Set(value)].sort((a, b) => a.localeCompare(b)),
-      server: true
-    })
-  }
-
-  get printInProgressLayout (): PrintInProgressLayout {
-    return this.$typedState.config.uiSettings.general.printInProgressLayout
-  }
-
-  set printInProgressLayout (value: PrintInProgressLayout) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.printInProgressLayout',
-      value,
-      server: true
-    })
-  }
-
-  get availablePrintInProgressLayouts () {
-    return [
-      {
-        value: 'default',
-        text: this.$t('app.general.label.default')
-      },
-      {
-        value: 'compact',
-        text: this.$t('app.general.label.compact')
-      }
-    ]
-  }
-
-  get availablePrintProgressCalculation () {
-    return [
-      {
-        value: 'file',
-        text: this.$t('app.setting.timer_options.relative_file_position')
-      },
-      {
-        value: 'fileAbsolute',
-        text: this.$t('app.setting.timer_options.absolute_file_position')
-      },
-      {
-        value: 'slicer',
-        text: this.$t('app.setting.timer_options.slicer_m73')
-      },
-      {
-        value: 'filament',
-        text: this.$t('app.setting.timer_options.filament')
-      }
-    ]
-  }
-
-  get printProgressCalculation (): PrintProgressCalculation[] {
-    return this.$typedState.config.uiSettings.general.printProgressCalculation
-  }
-
-  set printProgressCalculation (value: PrintProgressCalculation[]) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.printProgressCalculation',
-      value,
-      server: true
-    })
-  }
-
-  get availablePrintEtaCalculation () {
-    return [
-      {
-        value: 'file',
-        text: this.$t('app.setting.timer_options.file')
-      },
-      {
-        value: 'slicer',
-        text: this.$t('app.setting.timer_options.slicer')
-      }
-    ]
-  }
-
-  get printEtaCalculation (): PrintEtaCalculation[] {
-    return this.$typedState.config.uiSettings.general.printEtaCalculation
-  }
-
-  set printEtaCalculation (value: PrintEtaCalculation[]) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.printEtaCalculation',
-      value,
-      server: true
-    })
-  }
-
-  get enableDiagnostics (): boolean {
-    return this.$typedState.config.uiSettings.general.enableDiagnostics
-  }
-
-  set enableDiagnostics (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.enableDiagnostics',
-      value,
-      server: true
-    })
-  }
-
-  async handleBackupSettings () {
-    try {
-      const response = await SocketActions.serverDatabaseGetItem()
-
-      const data = response.value
-
-      if (data) {
-        const backupData = toFluiddContent('settings-backup', data)
-        const backupDataAsString = JSON.stringify(backupData)
-
-        const filename = `backup-fluidd-v${import.meta.env.VERSION}-${this.instanceName}.json`
-        const url = `data:text/plain;charset=utf-8,${encodeURIComponent(backupDataAsString)}`
-
-        downloadUrl(filename, url)
-      }
-    } catch (e) {
-      consola.error('[Settings] backup failed', e)
-
-      EventBus.$emit(this.$t('app.general.msg.fluidd_settings_backup_failed').toString(), { type: 'error' })
+      downloadUrl(filename, url)
     }
+  } catch (e) {
+    consola.error('[Settings] backup failed', e)
+
+    EventBus.$emit(t('app.general.msg.fluidd_settings_backup_failed').toString(), { type: 'error' })
   }
+}
 
-  async handleRestoreSettings () {
-    try {
-      if (this.uploadSettingsFile?.files?.length === 1) {
-        const backupDataAsString = await readFileAsTextAsync(this.uploadSettingsFile.files[0])
+async function handleRestoreSettings () {
+  try {
+    if (uploadSettingsFile.value?.files?.length === 1) {
+      const backupDataAsString = await readFileAsTextAsync(uploadSettingsFile.value.files[0])
 
-        if (backupDataAsString) {
-          const backupData = JSON.parse(backupDataAsString)
+      if (backupDataAsString) {
+        const backupData = JSON.parse(backupDataAsString)
 
-          if (
-            !isFluiddContent<Record<string, unknown>>('settings-backup', backupData)
-          ) {
-            EventBus.$emit(this.$t('app.general.msg.not_valid_fluidd_backup_file').toString(), { type: 'error' })
+        if (
+          !isFluiddContent<Record<string, unknown>>('settings-backup', backupData)
+        ) {
+          EventBus.$emit(t('app.general.msg.not_valid_fluidd_backup_file').toString(), { type: 'error' })
 
-            return
-          }
-
-          for (const key in backupData.data) {
-            await SocketActions.serverDatabasePostItem(key, backupData.data[key])
-          }
-
-          window.location.reload()
+          return
         }
-      }
-    } catch (e) {
-      consola.error('[Settings] restore failed', e)
 
-      EventBus.$emit(this.$t('app.general.msg.fluidd_settings_restore_failed').toString(), { type: 'error' })
-    } finally {
-      this.uploadSettingsFile.value = ''
+        for (const key in backupData.data) {
+          await SocketActions.serverDatabasePostItem(key, backupData.data[key])
+        }
+
+        window.location.reload()
+      }
+    }
+  } catch (e) {
+    consola.error('[Settings] restore failed', e)
+
+    EventBus.$emit(t('app.general.msg.fluidd_settings_restore_failed').toString(), { type: 'error' })
+  } finally {
+    if (uploadSettingsFile.value) {
+      uploadSettingsFile.value.value = ''
     }
   }
 }

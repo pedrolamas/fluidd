@@ -115,7 +115,6 @@ import { ref, computed, watch } from 'vue'
 import { useStore } from '@/composables/useStore'
 import type { CameraFullscreenAction } from '@/store/config/types'
 import { CameraComponents } from '@/dynamicImports'
-import type CameraMixin from '@/mixins/camera'
 import type { CameraConnectionStatus, CameraNameMenuItem } from '@/types'
 import { startCase } from 'lodash-es'
 
@@ -131,7 +130,7 @@ defineEmits<{
 
 const { typedState } = useStore()
 
-const componentInstance = ref<CameraMixin>()
+const componentInstance = ref<{ menuItemClick: (item: CameraNameMenuItem) => void }>()
 
 const status = ref<CameraConnectionStatus>('disconnected')
 const rawCameraUrl = ref('')

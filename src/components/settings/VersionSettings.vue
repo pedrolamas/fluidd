@@ -168,7 +168,7 @@
     <version-commit-history-dialog
       v-if="informationDialogState.open"
       v-model="informationDialogState.open"
-      :component="informationDialogState.component"
+      :component="informationComponent"
     />
   </div>
 </template>
@@ -188,6 +188,7 @@ const { typedState, typedGetters, typedDispatch } = useStore()
 const { t, tc } = useI18n()
 const { printerPrinting, hasWait } = useStateMixin()
 
+const informationComponent = computed<VersionInfo>(() => informationDialogState.component as VersionInfo)
 const informationDialogState = reactive<{ open: boolean; component: VersionInfo | null }>({
   open: false,
   component: null

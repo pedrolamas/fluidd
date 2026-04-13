@@ -15,58 +15,55 @@
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import FilesMixin from '@/mixins/files'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { HistoryItem } from '@/store/history/types'
 
 type JobHistoryItemState = 'error' | 'warning' | 'success' | 'info'
 
-@Component({})
-export default class JobHistoryItemStatus extends Mixins(FilesMixin) {
-  @Prop({ type: Object, required: true })
-  readonly job!: HistoryItem
+const props = defineProps<{
+  job: HistoryItem
+}>()
 
-  get icon () {
-    switch (this.job.status) {
-      case 'completed':
-        return '$checkedCircle'
+const icon = computed(() => {
+  switch (props.job.status) {
+    case 'completed':
+      return '$checkedCircle'
 
-      case 'printing':
-      case 'in_progress':
-        return '$inProgress'
+    case 'printing':
+    case 'in_progress':
+      return '$inProgress'
 
-      case 'cancelled':
-      case 'interrupted':
-        return '$cancelled'
+    case 'cancelled':
+    case 'interrupted':
+      return '$cancelled'
 
-      default:
-        return '$warning'
-    }
+    default:
+      return '$warning'
   }
+})
 
-  get state (): JobHistoryItemState {
-    switch (this.job.status) {
-      case 'cancelled':
-      case 'error':
-      case 'interrupted':
-      case 'server_exit':
-        return 'error'
+const state = computed((): JobHistoryItemState => {
+  switch (props.job.status) {
+    case 'cancelled':
+    case 'error':
+    case 'interrupted':
+    case 'server_exit':
+      return 'error'
 
-      case 'klippy_shutdown':
-      case 'klippy_disconnect':
-        return 'warning'
+    case 'klippy_shutdown':
+    case 'klippy_disconnect':
+      return 'warning'
 
-      case 'completed':
-        return 'success'
+    case 'completed':
+      return 'success'
 
-      case 'printing':
-      case 'in_progress':
-        return 'info'
+    case 'printing':
+    case 'in_progress':
+      return 'info'
 
-      default:
-        return 'success'
-    }
+    default:
+      return 'success'
   }
-}
+})
 </script>

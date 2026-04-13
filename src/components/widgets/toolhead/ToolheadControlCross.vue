@@ -187,83 +187,75 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
 
 type Axis = 'X' | 'Y' | 'Z'
 
-@Component({})
-export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMixin) {
-  moveLength: number | null = null
+const { klippyReady, printerPrinting, hasWait, sendGcode, sendMoveGcode, homeAll } = useStateMixin()
+const {
+  allHomed, xyHomed, xHomed, yHomed, zHomed,
+  xHasMultipleSteppers, yHasMultipleSteppers, zHasMultipleSteppers,
+  forceMoveEnabled
+} = useToolheadMixin()
+const { typedState, typedGetters } = useStore()
 
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
+const moveLength = ref<number | null>(null)
+
+const printerSettings = computed((): Klipper.SettingsState => typedGetters['printer/getPrinterSettings'])
+const hasRoundBed = computed((): boolean => typedGetters['printer/getHasRoundBed'])
+const canHomeXY = computed((): boolean => !hasRoundBed.value)
+
+const toolheadMoveDistances = computed((): number[] =>
+  typedState.config.uiSettings.general.toolheadMoveDistances
+)
+
+const toolheadMoveLength = computed({
+  get: (): number => {
+    if (moveLength.value != null) return moveLength.value
+    const defaultLen = typedState.config.uiSettings.general.defaultToolheadMoveLength
+    return toolheadMoveDistances.value.includes(defaultLen)
+      ? defaultLen
+      : toolheadMoveDistances.value[0]
+  },
+  set: (val: number) => {
+    moveLength.value = val
   }
+})
 
-  get hasRoundBed (): boolean {
-    return this.$typedGetters['printer/getHasRoundBed']
-  }
+function axisButtonColor (axisHomed: boolean): string | undefined {
+  if (forceMoveEnabled.value) return 'error'
 
-  get canHomeXY (): boolean {
-    return !this.hasRoundBed
-  }
+  return axisHomed ? 'primary' : undefined
+}
 
-  get toolheadMoveDistances (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadMoveDistances
-  }
+function axisButtonDisabled (axisHomed: boolean, axisMultipleSteppers: boolean): boolean {
+  return !klippyReady.value || (!axisHomed && !(forceMoveEnabled.value && !axisMultipleSteppers))
+}
 
-  get toolheadMoveLength (): number {
-    if (this.moveLength == null) {
-      const defaultToolheadMoveLength: number = this.$typedState.config.uiSettings.general.defaultToolheadMoveLength
+function moveAxisBy (axis: Axis, distance: number, negative = false) {
+  const rate: number = axis === 'Z'
+    ? typedState.config.uiSettings.general.defaultToolheadZSpeed
+    : typedState.config.uiSettings.general.defaultToolheadXYSpeed
+  const inverted: boolean = typedState.config.uiSettings.general.axis[axis.toLowerCase()].inverted || false
+  distance = negative !== inverted
+    ? -distance
+    : distance
 
-      this.moveLength = this.toolheadMoveDistances.includes(defaultToolheadMoveLength)
-        ? defaultToolheadMoveLength
-        : this.toolheadMoveDistances[0]
-    }
-
-    return this.moveLength
-  }
-
-  set toolheadMoveLength (val: number) {
-    this.moveLength = val
-  }
-
-  axisButtonColor (axisHomed: boolean): string | undefined {
-    if (this.forceMoveEnabled) return 'error'
-
-    return axisHomed ? 'primary' : undefined
-  }
-
-  axisButtonDisabled (axisHomed: boolean, axisMultipleSteppers: boolean): boolean {
-    return !this.klippyReady || (!axisHomed && !(this.forceMoveEnabled && !axisMultipleSteppers))
-  }
-
-  /**
-   * Send a move gcode script.
-   */
-  moveAxisBy (axis: Axis, distance: number, negative = false) {
-    const rate: number = axis === 'Z'
-      ? this.$typedState.config.uiSettings.general.defaultToolheadZSpeed
-      : this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
-    const inverted: boolean = this.$typedState.config.uiSettings.general.axis[axis.toLowerCase()].inverted || false
-    distance = negative !== inverted
-      ? -distance
-      : distance
-
-    if (this.forceMoveEnabled) {
-      const accel: number = axis === 'Z'
-        ? this.printerSettings.printer?.max_z_accel ?? 100
-        : this.$typedState.printer.printer.toolhead.max_accel
-      this.sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${distance} VELOCITY=${rate} ACCEL=${accel}`)
-    } else {
-      this.sendMoveGcode(
-        {
-          [axis]: distance
-        },
-        rate)
-    }
+  if (forceMoveEnabled.value) {
+    const accel: number = axis === 'Z'
+      ? printerSettings.value.printer?.max_z_accel ?? 100
+      : typedState.printer.printer.toolhead.max_accel
+    sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${distance} VELOCITY=${rate} ACCEL=${accel}`)
+  } else {
+    sendMoveGcode(
+      {
+        [axis]: distance
+      },
+      rate)
   }
 }
 </script>

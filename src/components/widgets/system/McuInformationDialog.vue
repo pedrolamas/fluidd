@@ -55,7 +55,7 @@ const emit = defineEmits<{
 }>()
 
 const open = computed({
-  get: () => props.value,
+  get: () => props.value ?? false,
   set: (value: boolean) => emit('input', value)
 })
 </script>

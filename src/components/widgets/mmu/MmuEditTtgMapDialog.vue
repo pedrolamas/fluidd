@@ -66,19 +66,19 @@
         <v-row>
           <v-col :cols="isMobileViewport ? 12 : 9">
             <v-row>
-              <template v-for="(g, t) in localTtgMap">
+              <template v-for="(g, toolIndex) in localTtgMap">
                 <v-col
-                  v-if="toolMetaData[t].inUse || allTools"
-                  :key="t"
+                  v-if="toolMetaData[toolIndex].inUse || allTools"
+                  :key="toolIndex"
                   cols="1"
                   class="no-padding min-width-card"
                 >
                   <v-card
-                    :class="toolCardClass(t)"
-                    @click="selectTool(t)"
+                    :class="toolCardClass(toolIndex)"
+                    @click="selectTool(toolIndex)"
                   >
                     <v-card-title class="justify-center">
-                      {{ toolText(t) }}
+                      {{ toolText(toolIndex) }}
                     </v-card-title>
                     <v-card-text>
                       <v-container
@@ -282,333 +282,287 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, Watch } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useMmuMixin } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
+import { useVuetify } from '@/composables/useVuetify'
 import { SocketActions } from '@/api/socketActions'
 import type { AppFileWithMeta } from '@/store/files/types'
 import type { SlicerToolDetails, MmuGateDetails } from '@/types'
-import Vue from 'vue'
 import MmuSpool from '@/components/widgets/mmu/MmuSpool.vue'
 import MmuTtgMap from '@/components/widgets/mmu/MmuTtgMap.vue'
 import MmuGateDialogRow from '@/components/widgets/mmu/MmuGateDialogRow.vue'
 import getFilePaths from '@/util/get-file-paths'
+import { useRouter, useRoute } from 'vue-router/composables'
 
-@Component({
-  components: { MmuSpool, MmuTtgMap, MmuGateDialogRow },
+const { isMobileViewport } = useBrowserMixin()
+const { sendGcode, hasWait } = useStateMixin()
+const { ttgMap, endlessSpoolGroups, gateMap, toolDetails, gateDetails, fromColorString, macroVarsAutomapStrategy } = useMmuMixin()
+const { typedState, typedCommit, typedGetters } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+const vuetify = useVuetify()
+const router = useRouter()
+const route = useRoute()
+
+const localTtgMap = ref<number[]>([])
+const localEndlessSpoolGroups = ref<number[]>([])
+const localGateMap = ref<MmuGateDetails[]>([])
+const toolMetaData = ref<SlicerToolDetails[]>([])
+const referencedTools = ref<number[]>([])
+const allTools = ref(true)
+const allToolsDisabled = ref(false)
+const skipAutomap = ref(false)
+const selectedTool = ref(-1)
+const selectedGate = ref(-1)
+
+const rowRefs = ref<Record<string, { $el: Element } | null>>({})
+
+const open = computed({
+  get: () => typedState.mmu.dialog.show,
+  set: (val: boolean) => {
+    typedCommit('mmu/setDialogState', {
+      ...typedState.spoolman.dialog,
+      show: val,
+    })
+  },
 })
-export default class MmuEditTtgMapDialog extends Mixins(BrowserMixin, StateMixin, MmuMixin) {
-  private localTtgMap: number[] = []
-  private localEndlessSpoolGroups: number[] = []
-  private localGateMap: MmuGateDetails[] = []
-  private toolMetaData: SlicerToolDetails[] = []
-  private referencedTools: number[] = []
-  private allTools: boolean = true
-  private allToolsDisabled: boolean = false
-  private skipAutomap: boolean = false
 
-  private selectedTool: number = -1
-  private selectedGate: number = -1
+const filename = computed(() => typedState.mmu.dialog.filename)
 
-  get open (): boolean {
-    return this.$typedState.mmu.dialog.show
+const file = computed<AppFileWithMeta | undefined>(() => {
+  if (filename.value != null) {
+    const { rootPath, filename: fname } = getFilePaths(filename.value, 'gcodes')
+    return typedGetters['files/getFile'](rootPath, fname)
   }
+  return undefined
+})
 
-  set open (val: boolean) {
-    this.$typedCommit('mmu/setDialogState', {
-      ...this.$typedState.spoolman.dialog,
-      show: val
-    })
-  }
+function initialize () {
+  if (open.value) {
+    localTtgMap.value = Array.from(ttgMap.value)
+    localEndlessSpoolGroups.value = Array.from(endlessSpoolGroups.value)
+    localGateMap.value = Array.from(gateMap.value)
 
-  get filename (): string | undefined {
-    return this.$typedState.mmu.dialog.filename
-  }
-
-  get file (): AppFileWithMeta | undefined {
-    if (this.filename != null) {
-      const { rootPath, filename } = getFilePaths(this.filename, 'gcodes')
-
-      return this.$typedGetters['files/getFile'](rootPath, filename)
+    toolMetaData.value = []
+    referencedTools.value = []
+    for (let i = 0; i < ttgMap.value.length; i++) {
+      toolMetaData.value[i] = toolDetails(i, file.value)
+      if (toolMetaData.value[i]?.inUse) referencedTools.value.push(i)
     }
-  }
 
-  @Watch('ttgMap')
-  onTtgMapChanged (): void {
-    this.initialize()
-  }
-
-  @Watch('endlessSpoolGroups')
-  onEndlessSpoolGroupsChanged (): void {
-    this.initialize()
-  }
-
-  @Watch('open')
-  onOpenChanged (): void {
-    this.initialize()
-  }
-
-  private initialize () {
-    if (this.open) {
-      this.localTtgMap = Array.from(this.ttgMap)
-      this.localEndlessSpoolGroups = Array.from(this.endlessSpoolGroups)
-      this.localGateMap = Array.from(this.gateMap)
-
-      // Form tool meta data either from gcode file if starting print or from Happy Hare
-      // slicer tool map after print start (should be the same info!)
-
-      this.toolMetaData = []
-      this.referencedTools = []
-      for (let i = 0; i < this.ttgMap.length; i++) {
-        this.toolMetaData[i] = this.toolDetails(i, this.file)
-        if (this.toolMetaData[i]?.inUse) this.referencedTools.push(i)
-      }
-
-      if (this.referencedTools.length > 0) {
-        this.allTools = false
-        this.allToolsDisabled = false
-      } else {
-        this.allTools = true
-        this.allToolsDisabled = true
-      }
-      this.selectedTool = -1
-      this.selectedGate = -1
-    }
-    this.skipAutomap = false
-  }
-
-  @Watch('allTools')
-  onAllToolsChanged (): void {
-    this.selectedTool = -1
-    this.selectedGate = -1
-  }
-
-  private toolCardClass (tool: number): string[] {
-    const classes = []
-    classes.push('no-padding')
-    classes.push(this.$vuetify.theme.dark ? 'card-dark-theme' : 'card-light-theme')
-    if (this.selectedTool === tool) classes.push('selected-card')
-    if (this.selectedTool !== tool && this.selectedTool >= 0) classes.push('disabled-card')
-    return classes
-  }
-
-  get gateItems () {
-    if (this.selectedTool < 0) return []
-    return this.gateMap
-  }
-
-  get gateTableHeaders () {
-    if (this.selectedTool < 0) return []
-    return [
-      {
-        text: this.$t('app.mmu.label.gate'),
-        align: 'start',
-        value: 'index',
-        sortable: false,
-      },
-      {
-        text: '',
-        align: 'center',
-        sortable: false,
-      },
-      {
-        text: this.$t('app.mmu.label.filament_info'),
-        align: 'start',
-        sortable: false,
-      },
-      {
-        text: this.$t('app.mmu.label.endless_spool'),
-        align: 'center',
-        sortable: false,
-      },
-    ]
-  }
-
-  private selectTool (tool: number) {
-    if (this.selectedTool === tool) {
-      this.selectedTool = -1
-      this.selectedGate = -1
+    if (referencedTools.value.length > 0) {
+      allTools.value = false
+      allToolsDisabled.value = false
     } else {
-      this.selectedTool = tool
-      this.selectedGate = this.localTtgMap[tool]
-      this.scrollToGateRow(this.selectedGate)
+      allTools.value = true
+      allToolsDisabled.value = true
     }
+    selectedTool.value = -1
+    selectedGate.value = -1
   }
+  skipAutomap.value = false
+}
 
-  private selectGate (gate: number) {
-    this.selectedGate = gate
-    Vue.set(this.localTtgMap, this.selectedTool, gate)
-  }
+watch(ttgMap, () => initialize())
+watch(endlessSpoolGroups, () => initialize())
+watch(open, () => initialize())
 
-  private selectEndlessSpool (gate: number) {
-    if (this.selectedGate !== -1 && this.selectedGate !== gate) {
-      // Adjust EndlessSpool groups if gate already selected
-      let group = this.localEndlessSpoolGroups[this.selectedGate]
-      if (this.localEndlessSpoolGroups[gate] === group) {
-        // Unselect (restore original group number if possible)
-        let newGroup = this.endlessSpoolGroups[gate]
-        if (newGroup === group) {
-          const usedGroups = new Set(this.localEndlessSpoolGroups)
-          let i = 0
-          while (usedGroups.has(i)) i++
-          newGroup = i
-        }
-        group = newGroup
-      }
-      Vue.set(this.localEndlessSpoolGroups, gate, group)
-      this.localGateMap[gate].endlessSpoolGroup = group
-    }
-  }
+watch(allTools, () => {
+  selectedTool.value = -1
+  selectedGate.value = -1
+})
 
-  private scrollToGateRow (gate: number) {
-    this.$nextTick(() => {
-      const targetRow = this.$refs[`row-${gate}`] as Vue | undefined
-      if (targetRow && 'scrollIntoView' in targetRow.$el) {
-        targetRow.$el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      }
-    })
-  }
+function toolCardClass (tool: number): string[] {
+  const classes = ['no-padding']
+  classes.push(vuetify.theme.dark ? 'card-dark-theme' : 'card-light-theme')
+  if (selectedTool.value === tool) classes.push('selected-card')
+  if (selectedTool.value !== tool && selectedTool.value >= 0) classes.push('disabled-card')
+  return classes
+}
 
-  private handleEscapePress (event: KeyboardEvent) {
-    if (event.key === 'Escape' || event.keyCode === 27) {
-      this.selectedTool = -1
-      this.selectedGate = -1
-    }
-  }
+const gateItems = computed(() => selectedTool.value < 0 ? [] : gateMap.value)
 
-  private esSpoolsText (gate: number): string {
-    const esGates: number[] = []
-    const group = this.localEndlessSpoolGroups[gate]
-    this.localEndlessSpoolGroups.forEach((g, index) => {
-      const cIndex = (gate + index) % this.localEndlessSpoolGroups.length
-      if (this.localEndlessSpoolGroups[cIndex] === group && cIndex !== gate) {
-        esGates.push(cIndex)
-      }
-    })
-    if (esGates.length) return esGates.join(',')
-    return 'none'
-  }
+const gateTableHeaders = computed(() => {
+  if (selectedTool.value < 0) return []
+  return [
+    { text: t('app.mmu.label.gate'), align: 'start', value: 'index', sortable: false },
+    { text: '', align: 'center', sortable: false },
+    { text: t('app.mmu.label.filament_info'), align: 'start', sortable: false },
+    { text: t('app.mmu.label.endless_spool'), align: 'center', sortable: false },
+  ]
+})
 
-  // Slicer tool...
-
-  get toolNameText (): string {
-    return this.toolMetaData[this.selectedTool].name
-  }
-
-  get toolDetailsText (): string {
-    const toolMaterialText = this.toolMetaData[this.selectedTool].material
-    let toolTempText = null
-    if (this.toolMetaData[this.selectedTool].temp >= 0) {
-      toolTempText = this.toolMetaData[this.selectedTool].temp + '\u00B0' + 'C'
-    }
-    return [toolMaterialText, toolTempText].filter((v) => v !== null).join(' | ')
-  }
-
-  get toolColor (): string {
-    return this.toolMetaData[this.selectedTool].color
-  }
-
-  get alerts (): string[] | null {
-    const maxTempDiff = 5
-    const maxColorDiff = 16000
-    const alerts = []
-
-    if (
-      this.toolMetaData[this.selectedTool].material.toUpperCase() !==
-            this.gateDetails(this.selectedGate).material.toUpperCase()
-    ) {
-      alerts.push('\u2022 ' + this.$t('app.mmu.msg.material'))
-    }
-
-    if (
-      Math.abs(this.toolMetaData[this.selectedTool].temp - this.gateDetails(this.selectedGate).temperature) >
-            maxTempDiff
-    ) {
-      alerts.push('\u2022 ' + this.$t('app.mmu.msg.temperature'))
-    }
-
-    const rgb1 = this.hexToRgb(this.fromColorString(this.toolMetaData[this.selectedTool].color))
-    const rgb2 = this.hexToRgb(this.fromColorString(this.gateDetails(this.selectedGate).color))
-    const colorDifference = this.weightedEuclideanDistance(rgb1, rgb2)
-    if (colorDifference > maxColorDiff) {
-      alerts.push('\u2022 ' + this.$t('app.mmu.msg.color'))
-    }
-
-    if (alerts.length > 0) {
-      alerts.unshift(this.$t('app.mmu.msg.mismatch'))
-      return alerts.map(alert => alert.toString())
-    }
-    return null
-  }
-
-  private hexToRgb (hex: string): number[] {
-    const r = parseInt(hex.slice(1, 3), 16)
-    const g = parseInt(hex.slice(3, 5), 16)
-    const b = parseInt(hex.slice(5, 7), 16)
-    return [r, g, b]
-  }
-
-  private weightedEuclideanDistance (
-    color1: number[],
-    color2: number[],
-    weights: number[] = [0.3, 0.59, 0.11]
-  ): number {
-    return color1.reduce((acc, curr, i) => acc + weights[i] * (curr - color2[i]) ** 2, 0)
-  }
-
-  // Actions...
-
-  async resetTtgMap () {
-    const result = await this.$confirm(
-      this.$tc('app.mmu.msg.reset_ttg_map_confirmation', 1),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) this.executeResetTtgMap()
-  }
-
-  executeResetTtgMap () {
-    this.initialize()
-    this.sendGcode('MMU_TTG_MAP RESET=1')
-  }
-
-  close () {
-    this.selectedTool = -1
-    this.selectedGate = -1
-    this.open = false
-  }
-
-  async commit () {
-    const mapStr = this.localTtgMap.join(',')
-    const esGrpStr = this.localEndlessSpoolGroups.join(',')
-
-    const gcode = `MMU_SLICER_TOOL_MAP SKIP_AUTOMAP=${this.skipAutomap ? 1 : 0}
-MMU_TTG_MAP MAP="${mapStr}" QUIET=1
-MMU_ENDLESS_SPOOL GROUPS="${esGrpStr}" QUIET=1`
-
-    this.sendGcode(gcode)
-
-    // Mimick Fluidd workflow: If called prior to print, start print now
-    if (this.filename) {
-      await SocketActions.printerPrintStart(this.filename)
-      if (this.$route.name !== 'home') {
-        this.$router.push({ name: 'home' })
-      }
-    }
-    this.close()
-  }
-
-  mounted () {
-    document.addEventListener('keydown', this.handleEscapePress)
-  }
-
-  beforeDestroy () {
-    document.removeEventListener('keydown', this.handleEscapePress)
+function selectTool (tool: number) {
+  if (selectedTool.value === tool) {
+    selectedTool.value = -1
+    selectedGate.value = -1
+  } else {
+    selectedTool.value = tool
+    selectedGate.value = localTtgMap.value[tool]
+    scrollToGateRow(selectedGate.value)
   }
 }
+
+function selectGate (gate: number) {
+  selectedGate.value = gate
+  localTtgMap.value = [...localTtgMap.value.slice(0, selectedTool.value), gate, ...localTtgMap.value.slice(selectedTool.value + 1)]
+}
+
+function selectEndlessSpool (gate: number) {
+  if (selectedGate.value !== -1 && selectedGate.value !== gate) {
+    let group = localEndlessSpoolGroups.value[selectedGate.value]
+    if (localEndlessSpoolGroups.value[gate] === group) {
+      let newGroup = endlessSpoolGroups.value[gate]
+      if (newGroup === group) {
+        const usedGroups = new Set(localEndlessSpoolGroups.value)
+        let i = 0
+        while (usedGroups.has(i)) i++
+        newGroup = i
+      }
+      group = newGroup
+    }
+    const newGroups = [...localEndlessSpoolGroups.value]
+    newGroups[gate] = group
+    localEndlessSpoolGroups.value = newGroups
+    localGateMap.value[gate].endlessSpoolGroup = group
+  }
+}
+
+function scrollToGateRow (gate: number) {
+  nextTick(() => {
+    const targetRow = rowRefs.value[`row-${gate}`]
+    if (targetRow && 'scrollIntoView' in targetRow.$el) {
+      targetRow.$el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  })
+}
+
+function handleEscapePress (event: KeyboardEvent) {
+  if (event.key === 'Escape' || event.keyCode === 27) {
+    selectedTool.value = -1
+    selectedGate.value = -1
+  }
+}
+
+function esSpoolsText (gate: number): string {
+  const esGates: number[] = []
+  const group = localEndlessSpoolGroups.value[gate]
+  localEndlessSpoolGroups.value.forEach((g, index) => {
+    const cIndex = (gate + index) % localEndlessSpoolGroups.value.length
+    if (localEndlessSpoolGroups.value[cIndex] === group && cIndex !== gate) {
+      esGates.push(cIndex)
+    }
+  })
+  if (esGates.length) return esGates.join(',')
+  return 'none'
+}
+
+const toolNameText = computed(() => toolMetaData.value[selectedTool.value]?.name ?? '')
+
+const toolDetailsText = computed(() => {
+  const meta = toolMetaData.value[selectedTool.value]
+  if (!meta) return ''
+  const toolMaterialText = meta.material
+  let toolTempText: string | null = null
+  if (meta.temp >= 0) toolTempText = meta.temp + '\u00B0' + 'C'
+  return [toolMaterialText, toolTempText].filter((v) => v !== null).join(' | ')
+})
+
+const toolColor = computed(() => toolMetaData.value[selectedTool.value]?.color ?? '')
+
+const alerts = computed<string[] | null>(() => {
+  if (selectedTool.value < 0) return null
+  const maxTempDiff = 5
+  const maxColorDiff = 16000
+  const result = []
+  const meta = toolMetaData.value[selectedTool.value]
+  if (!meta) return null
+  const gd = gateDetails(selectedGate.value)
+
+  if (meta.material.toUpperCase() !== gd.material.toUpperCase()) {
+    result.push('\u2022 ' + t('app.mmu.msg.material'))
+  }
+  if (Math.abs(meta.temp - gd.temperature) > maxTempDiff) {
+    result.push('\u2022 ' + t('app.mmu.msg.temperature'))
+  }
+  const rgb1 = hexToRgb(fromColorString(meta.color))
+  const rgb2 = hexToRgb(fromColorString(gd.color))
+  const colorDifference = weightedEuclideanDistance(rgb1, rgb2)
+  if (colorDifference > maxColorDiff) {
+    result.push('\u2022 ' + t('app.mmu.msg.color'))
+  }
+  if (result.length > 0) {
+    result.unshift(t('app.mmu.msg.mismatch').toString())
+    return result.map(a => a.toString())
+  }
+  return null
+})
+
+function hexToRgb (hex: string): number[] {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return [r, g, b]
+}
+
+function weightedEuclideanDistance (
+  color1: number[],
+  color2: number[],
+  weights: number[] = [0.3, 0.59, 0.11]
+): number {
+  return color1.reduce((acc, curr, i) => acc + weights[i] * (curr - color2[i]) ** 2, 0)
+}
+
+async function resetTtgMap () {
+  const result = await confirm(
+    tc('app.mmu.msg.reset_ttg_map_confirmation', 1),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+  if (result) executeResetTtgMap()
+}
+
+function executeResetTtgMap () {
+  initialize()
+  sendGcode('MMU_TTG_MAP RESET=1')
+}
+
+function close () {
+  selectedTool.value = -1
+  selectedGate.value = -1
+  open.value = false
+}
+
+async function commit () {
+  const mapStr = localTtgMap.value.join(',')
+  const esGrpStr = localEndlessSpoolGroups.value.join(',')
+  const gcode = `MMU_SLICER_TOOL_MAP SKIP_AUTOMAP=${skipAutomap.value ? 1 : 0}
+MMU_TTG_MAP MAP="${mapStr}" QUIET=1
+MMU_ENDLESS_SPOOL GROUPS="${esGrpStr}" QUIET=1`
+  sendGcode(gcode)
+  if (filename.value) {
+    await SocketActions.printerPrintStart(filename.value)
+    if (route.name !== 'home') {
+      router.push({ name: 'home' })
+    }
+  }
+  close()
+}
+
+const toolText = (tool: number) => tool === -1 ? 'T?' : tool === -2 ? 'Bypass' : 'T' + tool
+
+onMounted(() => {
+  document.addEventListener('keydown', handleEscapePress)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleEscapePress)
+})
 </script>
 
 <style scoped>

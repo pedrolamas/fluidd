@@ -113,127 +113,42 @@
   </v-menu>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useMmuMixin } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class MmuSettings extends Mixins(StateMixin, MmuMixin) {
-  get showClogDetection (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showClogDetection
-  }
+const { sensors, hasEncoder } = useMmuMixin()
+const { typedState, typedDispatch } = useStore()
 
-  set showClogDetection (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showClogDetection',
-      value,
-      server: true
-    })
-  }
-
-  get showTtgMap (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showTtgMap
-  }
-
-  set showTtgMap (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showTtgMap',
-      value,
-      server: true
-    })
-  }
-
-  get showDetails (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showDetails
-  }
-
-  set showDetails (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showDetails',
-      value,
-      server: true
-    })
-  }
-
-  get largeFilamentStatus (): boolean {
-    return this.$typedState.config.uiSettings.mmu.largeFilamentStatus
-  }
-
-  set largeFilamentStatus (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.largeFilamentStatus',
-      value,
-      server: true
-    })
-  }
-
-  get showUnavailableSpoolColor (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showUnavailableSpoolColor
-  }
-
-  set showUnavailableSpoolColor (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showUnavailableSpoolColor',
-      value,
-      server: true
-    })
-  }
-
-  get showName (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showName
-  }
-
-  set showName (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showName',
-      value,
-      server: true
-    })
-  }
-
-  get showLogos (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showLogos
-  }
-
-  set showLogos (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showLogos',
-      value,
-      server: true
-    })
-  }
-
-  get showClimate (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showClimate
-  }
-
-  set showClimate (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showClimate',
-      value,
-      server: true
-    })
-  }
-
-  get hasSyncFeedback (): boolean {
-    return this.hasFilamentCompressionSensor || this.hasFilamentTensionSensor || this.hasFilamentProportionalSensor
-  }
-
-  get hasFilamentProportionalSensor () {
-    return this.hasSensor('filament_proportional')
-  }
-
-  get hasFilamentCompressionSensor () {
-    return this.hasSensor('filament_compression')
-  }
-
-  get hasFilamentTensionSensor () {
-    return this.hasSensor('filament_tension')
-  }
-
-  private hasSensor (sensorName: string): boolean {
-    return sensorName in this.sensors
-  }
+function makeSetting (path: string) {
+  const parts = path.split('.')
+  return computed({
+    get: () => {
+      let obj: any = typedState.config.uiSettings
+      for (const part of parts.slice(1)) obj = obj?.[part]
+      return obj
+    },
+    set: (value: boolean) => {
+      typedDispatch('config/saveByPath', { path: `uiSettings.${parts.slice(1).join('.')}`, value, server: true })
+    },
+  })
 }
+
+const showClogDetection = makeSetting('uiSettings.mmu.showClogDetection')
+const showTtgMap = makeSetting('uiSettings.mmu.showTtgMap')
+const showDetails = makeSetting('uiSettings.mmu.showDetails')
+const largeFilamentStatus = makeSetting('uiSettings.mmu.largeFilamentStatus')
+const showUnavailableSpoolColor = makeSetting('uiSettings.mmu.showUnavailableSpoolColor')
+const showName = makeSetting('uiSettings.mmu.showName')
+const showLogos = makeSetting('uiSettings.mmu.showLogos')
+const showClimate = makeSetting('uiSettings.mmu.showClimate')
+
+const hasFilamentProportionalSensor = computed(() => 'filament_proportional' in sensors.value)
+const hasFilamentCompressionSensor = computed(() => 'filament_compression' in sensors.value)
+const hasFilamentTensionSensor = computed(() => 'filament_tension' in sensors.value)
+
+const hasSyncFeedback = computed(() =>
+  hasFilamentCompressionSensor.value || hasFilamentTensionSensor.value || hasFilamentProportionalSensor.value
+)
 </script>

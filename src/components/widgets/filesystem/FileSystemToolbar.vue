@@ -140,93 +140,76 @@
     >
       <v-tabs show-arrows>
         <v-tab
-          v-for="(root, index) in roots"
+          v-for="(rootItem, index) in roots"
           :key="index"
-          @change="$emit('root-change', root)"
+          @change="$emit('root-change', rootItem)"
         >
-          {{ root }}
+          {{ rootItem }}
         </v-tab>
       </v-tabs>
     </template>
   </v-toolbar>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, PropSync } from 'vue-property-decorator'
-import StatesMixin from '@/mixins/state'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useStore } from '@/composables/useStore'
 import FileSystemAddMenu from './FileSystemAddMenu.vue'
 import FileSystemFilterMenu from './FileSystemFilterMenu.vue'
 import type { AppDataTableHeader } from '@/types'
 import type { RootProperties } from '@/store/files/types'
 
-@Component({
-  components: {
-    FileSystemAddMenu,
-    FileSystemFilterMenu
-  }
+const props = defineProps<{
+  root: string
+  name: string
+  roots?: string[]
+  headers?: AppDataTableHeader[]
+  path: string
+  disabled?: boolean
+  loading?: boolean
+  search: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'root-change', root: string): void
+  (e: 'refresh'): void
+  (e: 'add-file'): void
+  (e: 'add-dir'): void
+  (e: 'upload', files: any[], print: boolean): void
+  (e: 'filter', filters: any[]): void
+  (e: 'go-to-file'): void
+  (e: 'update:search', value: string): void
+}>()
+
+const { klippyReady } = useStateMixin()
+const { typedState, typedGetters, typedDispatch } = useStore()
+
+const searchModel = computed({
+  get: () => props.search,
+  set: (value: string) => emit('update:search', value)
 })
-export default class FileSystemToolbar extends Mixins(StatesMixin) {
-  // The currently active root.
-  @Prop({ type: String, required: true })
-  readonly root!: string
 
-  @Prop({ type: String, required: true })
-  readonly name!: string
+const rootProperties = computed<RootProperties>(() =>
+  typedGetters['files/getRootProperties'](props.root)
+)
 
-  // Can be a list of roots, or a single root.
-  @Prop({ type: Array })
-  readonly roots?: string[]
+const readonly = computed(() => rootProperties.value.readonly)
 
-  // Currently defined list of headers.
-  @Prop({ type: Array })
-  readonly headers?: AppDataTableHeader[]
+const canConfigure = computed(() => rootProperties.value.canConfigure)
 
-  // The current path
-  @Prop({ type: String })
-  readonly path!: string
+const hasFilterTypes = computed(() => rootProperties.value.filterTypes.length > 0)
 
-  // If the controls are disabled or not.
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
+const lowOnSpace = computed(() =>
+  typedGetters['files/getDiskUsage'](props.root)?.lowOnSpace ?? false
+)
 
-  // If the fs is loading or not.
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
+const thumbnailSize = computed({
+  get: () => typedState.config.uiSettings.thumbnailSizes[props.root] ?? 32,
+  set: (value: number) => typedDispatch('config/updateThumbnailSizes', { name: props.root, size: value })
+})
 
-  @PropSync('search', { type: String, default: '' })
-  searchModel!: string
-
-  get readonly () {
-    return this.rootProperties.readonly
-  }
-
-  get canConfigure () {
-    return this.rootProperties.canConfigure
-  }
-
-  get hasFilterTypes () {
-    return this.rootProperties.filterTypes.length > 0
-  }
-
-  get lowOnSpace (): boolean {
-    return this.$typedGetters['files/getDiskUsage'](this.root)?.lowOnSpace ?? false
-  }
-
-  // Properties of the current root.
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.root)
-  }
-
-  get thumbnailSize (): number {
-    return this.$typedState.config.uiSettings.thumbnailSizes[this.root] ?? 32
-  }
-
-  set thumbnailSize (value: number) {
-    this.$typedDispatch('config/updateThumbnailSizes', { name: this.root, size: value })
-  }
-
-  handleUpload (files: FileList | File[], print: boolean) {
-    this.$emit('upload', files, print)
-  }
+function handleUpload (files: FileList | File[], print: boolean) {
+  emit('upload', Array.from(files), print)
 }
 </script>

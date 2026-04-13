@@ -31,62 +31,58 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { Waits } from '@/globals'
 
 type Axis = 'X' | 'Y' | 'Z'
 
-@Component({})
-export default class ToolheadControlBarsAxis extends Mixins(StateMixin, ToolheadMixin) {
-  @Prop({ type: String })
-  readonly axis!: Axis
+const props = defineProps<{
+  axis: Axis
+}>()
 
-  get values (): number[] {
-    return this.axis === 'Z'
-      ? this.$typedState.config.uiSettings.general.toolheadZMoveDistances
-      : this.$typedState.config.uiSettings.general.toolheadXYMoveDistances
-  }
+const { typedState } = useStore()
+const { klippyReady, printerPrinting, hasWait, sendGcode, sendMoveGcode } = useStateMixin()
+const { xHomed, yHomed, zHomed } = useToolheadMixin()
 
-  get homed (): boolean {
-    switch (this.axis) {
-      case 'X':
-        return this.xHomed
-      case 'Y':
-        return this.yHomed
-      case 'Z':
-        return this.zHomed
-    }
-  }
+const values = computed(() =>
+  props.axis === 'Z'
+    ? typedState.config.uiSettings.general.toolheadZMoveDistances
+    : typedState.config.uiSettings.general.toolheadXYMoveDistances
+)
 
-  get wait (): string {
-    switch (this.axis) {
-      case 'X':
-        return this.$waits.onHomeX
-      case 'Y':
-        return this.$waits.onHomeY
-      case 'Z':
-        return this.$waits.onHomeZ
-    }
+const homed = computed(() => {
+  switch (props.axis) {
+    case 'X': return xHomed.value
+    case 'Y': return yHomed.value
+    case 'Z': return zHomed.value
+    default: return false
   }
+})
 
-  get rate (): number {
-    return this.axis === 'Z'
-      ? this.$typedState.config.uiSettings.general.defaultToolheadZSpeed
-      : this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
+const wait = computed(() => {
+  switch (props.axis) {
+    case 'X': return Waits.onHomeX
+    case 'Y': return Waits.onHomeY
+    case 'Z': return Waits.onHomeZ
+    default: return ''
   }
+})
 
-  moveBy (distance: number) {
-    this.sendMoveGcode(
-      {
-        [this.axis]: distance
-      },
-      this.rate)
-  }
+const rate = computed(() =>
+  props.axis === 'Z'
+    ? typedState.config.uiSettings.general.defaultToolheadZSpeed
+    : typedState.config.uiSettings.general.defaultToolheadXYSpeed
+)
 
-  home () {
-    this.sendGcode(`G28 ${this.axis}`, this.wait)
-  }
+function moveBy (distance: number) {
+  sendMoveGcode({ [props.axis]: distance }, rate.value)
+}
+
+function home () {
+  sendGcode(`G28 ${props.axis}`, wait.value)
 }
 </script>

@@ -87,42 +87,39 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import FilesMixin from '@/mixins/files'
-import StateMixin from '@/mixins/state'
-import getFilePaths from '@/util/get-file-paths'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import getFilePathsUtil from '@/util/get-file-paths'
 import JobHistoryItemStatus from '@/components/widgets/history/JobHistoryItemStatus.vue'
 import type { HistoryItem } from '@/store/history/types'
 
-@Component({
-  components: {
-    JobHistoryItemStatus
-  }
-})
-export default class ReprintTab extends Mixins(StateMixin, FilesMixin) {
-  get history (): HistoryItem[] {
-    return this.$typedGetters['history/getUniqueHistory'](3)
-  }
+defineEmits<{
+  (e: 'print', filename: string): void
+}>()
 
-  getFilePaths (filename: string) {
-    return getFilePaths(filename, 'gcodes')
-  }
+const { printerPrinting } = useStateMixin()
+const { getThumbUrl } = useFilesMixin()
+const { typedGetters, typedDispatch } = useStore()
+const { tc } = useI18n()
 
-  get headers () {
-    const headers = [
-      { text: '', value: 'data-table-icons', sortable: false, width: 24 },
-      { text: this.$tc('app.general.table.header.name'), value: 'filename', sortable: false },
-      { text: this.$tc('app.general.table.header.status'), value: 'status', sortable: false },
-      { text: this.$tc('app.general.table.header.print_duration'), value: 'print_duration', sortable: false }
-      // { text: this.$tc('app.general.table.header.total_duration'), value: 'total_duration', sortable: false },
-      // { text: this.$tc('app.general.table.header.start_time'), value: 'start_time', sortable: false }
-    ]
-    return headers
-  }
+const history = computed((): HistoryItem[] => typedGetters['history/getUniqueHistory'](3))
 
-  handleJobThumbnailError (job: HistoryItem) {
-    this.$typedDispatch('history/clearHistoryThumbnails', job.job_id)
-  }
+const headers = computed(() => [
+  { text: '', value: 'data-table-icons', sortable: false, width: 24 },
+  { text: tc('app.general.table.header.name'), value: 'filename', sortable: false },
+  { text: tc('app.general.table.header.status'), value: 'status', sortable: false },
+  { text: tc('app.general.table.header.print_duration'), value: 'print_duration', sortable: false }
+])
+
+function getFilePaths (filename: string) {
+  return getFilePathsUtil(filename, 'gcodes')
+}
+
+function handleJobThumbnailError (job: HistoryItem) {
+  typedDispatch('history/clearHistoryThumbnails', job.job_id)
 }
 </script>

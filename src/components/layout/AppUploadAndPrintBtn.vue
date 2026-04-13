@@ -8,7 +8,7 @@
           :disabled="disabled"
           v-bind="attrs"
           v-on="on"
-          @click="uploadFileInput.click()"
+          @click="uploadFileInput?.click()"
         >
           <v-icon>
             $progressUpload

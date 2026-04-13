@@ -106,7 +106,7 @@
 
     <app-drag-overlay
       v-model="dragState.overlay"
-      :message="$t('app.file_system.overlay.drag_files_folders_upload')"
+      :message="$t('app.file_system.overlay.drag_files_folders_upload').toString()"
       icon="$fileUpload"
       absolute
     />
@@ -135,13 +135,19 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, Watch } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router/composables'
 import { SocketActions } from '@/api/socketActions'
 import type { AppDirectory, AppFile, AppFileWithMeta, FileFilterType, FileBrowserEntry, RootProperties, MoonrakerPathContent } from '@/store/files/types'
-import StateMixin from '@/mixins/state'
-import FilesMixin from '@/mixins/files'
-import ServicesMixin from '@/mixins/services'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useServicesMixin } from '@/composables/useServicesMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
+import { Waits } from '@/globals'
+import { Filters } from '@/plugins/filters'
 import FileSystemToolbar from './FileSystemToolbar.vue'
 import FileSystemBulkActions from './FileSystemBulkActions.vue'
 import FileSystemBrowser from './FileSystemBrowser.vue'
@@ -163,1086 +169,1062 @@ import type { KlipperSaveAndRestartAction } from '@/store/config/types'
  *
  * NOTE: Generally, moonraker expects the paths to include the root.
  */
-@Component({
-  components: {
-    FileSystemToolbar,
-    FileSystemBulkActions,
-    FileSystemBrowser,
-    FileSystemContextMenu,
-    FileEditorDialog,
-    FileNameDialog,
-    FileSystemGoToFileDialog,
-    FilePreviewDialog
+
+const props = defineProps<{
+  // Can be a list of roots, or a single root.
+  roots: string | string[]
+  name: string
+  // If dense, hide the meta and reduce the overall size.
+  dense?: boolean
+  // Allow bulk-actions
+  bulkActions?: boolean
+}>()
+
+const route = useRoute()
+const router = useRouter()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
+const { typedState, typedGetters, typedDispatch, typedCommit } = useStore()
+const { klippyReady, printerPrinting, printerPaused, hasWaitsBy, sendGcode } = useStateMixin()
+const { getFile, getGcode, getThumb, createFileUrl, downloadFile, uploadFile, uploadFiles } = useFilesMixin()
+const {
+  serviceRestartMoonraker,
+  serviceRestartKlipper,
+  serviceRestartByName,
+  restartKlippy,
+  firmwareRestartKlippy,
+} = useServicesMixin()
+
+// Maintains the path and root.
+const currentRoot = ref('')
+
+// Maintains search state.
+const search = ref('')
+
+// Maintains filter state.
+const filters = computed({
+  get: (): FileFilterType[] => typedState.config.uiSettings.fileSystem.activeFilters[currentRoot.value] ?? [],
+  set: (value: FileFilterType[]) => typedDispatch('config/updateFileSystemActiveFilters', { root: currentRoot.value, value })
+})
+
+// Maintains content menu state.
+const contextMenuState = ref<any>({
+  open: false,
+  x: 0,
+  y: 0,
+  file: null
+})
+
+// Maintains drag overlay state.
+const dragState = ref({
+  browserState: false, // indicates if our browser is in a drag state.
+  overlay: false // toggles our overlay for file drops.
+})
+
+// Maintains any selected items and their state.
+const selected = ref<FileBrowserEntry[]>([])
+
+// Maintains the file editor dialog state.
+const fileEditorDialogState = ref<any>({
+  open: false,
+  contents: '',
+  filename: '',
+  loading: false,
+  readonly: false
+})
+
+// Maintains the name change dialog state.
+const fileNameDialogState = ref<any>({
+  open: false,
+  title: '',
+  value: '',
+  label: '',
+  isFile: false,
+  handler: ''
+})
+
+const filePreviewState = ref<any>({
+  open: false,
+  filename: '',
+  src: '',
+  type: ''
+})
+
+const goToFileDialogOpen = ref(false)
+
+watch(() => filePreviewState.value.open, (value: boolean) => {
+  if (!value && filePreviewState.value.src.startsWith('blob:')) {
+    URL.revokeObjectURL(filePreviewState.value.src)
   }
 })
-export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesMixin) {
-  // Can be a list of roots, or a single root.
-  @Prop({ type: [String, Array], required: true })
-  readonly roots!: string | string[]
 
-  @Prop({ type: String, required: true })
-  readonly name!: string
+// Gets available roots.
+const availableRoots = computed((): string[] =>
+  !Array.isArray(props.roots) ? [props.roots] : props.roots
+)
 
-  // If dense, hide the meta and reduce the overall size.
-  @Prop({ type: Boolean })
-  readonly dense?: boolean
-
-  // Allow bulk-actions
-  @Prop({ type: Boolean })
-  readonly bulkActions?: boolean
-
-  // Maintains the path and root.
-  currentRoot = ''
-
-  // Maintains search state.
-  search = ''
-
-  // Maintains filter state.
-  get filters (): FileFilterType[] {
-    return this.$typedState.config.uiSettings.fileSystem.activeFilters[this.currentRoot] ?? []
+// Keep currentRoot in sync with available roots.
+watch(availableRoots, (roots) => {
+  if (roots.length > 0 && !roots.includes(currentRoot.value)) {
+    currentRoot.value = roots[0]
   }
+}, { immediate: true })
 
-  set filters (value: FileFilterType[]) {
-    this.$typedDispatch('config/updateFileSystemActiveFilters', { root: this.currentRoot, value })
+// Properties of the current root.
+const rootProperties = computed((): RootProperties =>
+  typedGetters['files/getRootProperties'](currentRoot.value)
+)
+
+// If this root is available or not.
+const disabled = computed((): boolean =>
+  !typedGetters['files/isRootAvailable'](currentRoot.value)
+)
+
+watch(disabled, (val: boolean) => {
+  // We know this always fires on mount, so we rely on it for our initial
+  // load too.
+  if (!val) {
+    loadFiles(currentPath.value)
   }
+}, { immediate: true })
 
-  // Maintains content menu state.
-  contextMenuState: any = {
-    open: false,
-    x: 0,
-    y: 0,
-    file: null
-  }
+const configurableHeaders = computed((): AppDataTableHeader[] => {
+  const isNotDashboard = props.name !== 'dashboard'
 
-  // Maintains drag overlay state.
-  dragState = {
-    browserState: false, // indicates if our browser is in a drag state.
-    overlay: false // toggles our overlay for file drops.
-  }
+  const gcodeHeaders: AppDataTableHeader[] = currentRoot.value === 'gcodes'
+    ? [
+        {
+          text: tc('app.general.table.header.status'),
+          value: 'history.status',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.height'),
+          value: 'object_height',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.first_layer_height'),
+          value: 'first_layer_height',
+          visible: false,
+          cellClass: 'text-no-wrap',
+        },
+        {
+          text: tc('app.general.table.header.layer_height'),
+          value: 'layer_height',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_name'),
+          value: 'filament_name',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_colors'),
+          value: 'filament_colors',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.extruder_colors'),
+          value: 'extruder_colors',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_temps'),
+          value: 'filament_temps',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_type'),
+          value: 'filament_type',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament'),
+          value: 'filament_total',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_change_count'),
+          value: 'filament_change_count',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_weight_total'),
+          value: 'filament_weight_total',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_weights'),
+          value: 'filament_weights',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.mmu_print'),
+          value: 'mmu_print',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.referenced_tools'),
+          value: 'referenced_tools',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.filament_used'),
+          value: 'history.filament_used',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.nozzle_diameter'),
+          value: 'nozzle_diameter',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.slicer'),
+          value: 'slicer',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.slicer_version'),
+          value: 'slicer_version',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.printer_vendor'),
+          value: 'printer_vendor',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.printer_model'),
+          value: 'printer_model',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.printer_variant'),
+          value: 'printer_variant',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.profile_version'),
+          value: 'profile_version',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.estimated_time'),
+          value: 'estimated_time',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.print_duration'),
+          value: 'history.print_duration',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.total_duration'),
+          value: 'history.total_duration',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.first_layer_bed_temp'),
+          value: 'first_layer_bed_temp',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.first_layer_extr_temp'),
+          value: 'first_layer_extr_temp',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.chamber_temp'),
+          value: 'chamber_temp',
+          visible: false,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.file_processors'),
+          value: 'file_processors',
+          visible: isNotDashboard,
+          cellClass: 'text-no-wrap'
+        },
+        {
+          text: tc('app.general.table.header.last_printed'),
+          value: 'print_start_time',
+          cellClass: 'text-no-wrap'
+        }
+      ]
+    : []
 
-  // Maintains any selected items and their state.
-  selected: FileBrowserEntry[] = []
-
-  // Maintains the file editor dialog state.
-  fileEditorDialogState: any = {
-    open: false,
-    contents: '',
-    filename: '',
-    loading: false,
-    readonly: false
-  }
-
-  // Maintains the name change dialog state.
-  fileNameDialogState: any = {
-    open: false,
-    title: '',
-    value: '',
-    label: '',
-    isFile: false,
-    handler: ''
-  }
-
-  filePreviewState: any = {
-    open: false,
-    filename: '',
-    src: '',
-    type: ''
-  }
-
-  goToFileDialogOpen = false
-
-  @Watch('filePreviewState.open')
-  onFilePreviewStateChanged (value: boolean) {
-    if (!value && this.filePreviewState.src.startsWith('blob:')) {
-      URL.revokeObjectURL(this.filePreviewState.src)
+  const headers: AppDataTableHeader[] = [
+    ...gcodeHeaders,
+    {
+      text: tc('app.general.table.header.modified'),
+      value: 'modified',
+      cellClass: 'text-no-wrap',
+      width: '1%'
+    },
+    {
+      text: tc('app.general.table.header.size'),
+      value: 'size',
+      cellClass: 'text-no-wrap',
+      width: '1%'
     }
+  ]
+
+  const key = `${currentRoot.value}_${props.name}`
+  return typedGetters['config/getMergedTableHeaders'](headers, key)
+})
+
+// The available headers, based on the current root and system configuration.
+const headers = computed((): DataTableHeader[] => [
+  {
+    text: '',
+    value: 'data-table-icons',
+    sortable: false,
+    width: props.dense ? 28 : 56
+  },
+  {
+    text: tc('app.general.table.header.name'),
+    value: 'name'
+  },
+  ...configurableHeaders.value.filter(header => header.visible !== false)
+])
+
+// The current path for the given root.
+const currentPath = computed({
+  get: (): string => {
+    const pathWithRoot: string = typedGetters['files/getCurrentPathByRoot'](currentRoot.value)
+    return pathWithRoot || currentRoot.value
+  },
+  set: (path: string) => {
+    typedDispatch('files/updateCurrentPathByRoot', { root: currentRoot.value, path })
   }
+})
 
-  // Gets available roots.
-  get availableRoots (): string[] {
-    const roots = !Array.isArray(this.roots)
-      ? [this.roots]
-      : this.roots
+// Returns the current path with no root.
+const visiblePath = computed((): string => {
+  if (currentPath.value && currentPath.value.startsWith(currentRoot.value)) {
+    const dirs = currentPath.value.split('/')
+    dirs.shift()
+    return dirs ? dirs.join('/') : ''
+  }
+  return currentPath.value
+})
 
-    if (
-      roots.length > 0 &&
-      !roots.includes(this.currentRoot)
-    ) {
-      this.currentRoot = roots[0]
+function getAllFiles (): FileBrowserEntry[] {
+  const items: FileBrowserEntry[] | undefined = typedGetters['files/getDirectory'](currentPath.value)
+  return items ?? []
+}
+
+// Get the available files given the current root and path.
+const files = computed((): FileBrowserEntry[] => {
+  const allFiles = getAllFiles()
+
+  return allFiles.filter(file => {
+    if (currentRoot.value === 'timelapse' && file.type === 'file' && file.extension === '.jpg') {
+      return false
     }
 
-    return roots
-  }
-
-  // Properties of the current root.
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.currentRoot)
-  }
-
-  // If this root is available or not.
-  get disabled (): boolean {
-    return !this.$typedGetters['files/isRootAvailable'](this.currentRoot)
-  }
-
-  @Watch('disabled')
-  onDisabledChange (val: boolean) {
-    // We know this always fires on mount, so we rely on it for our initial
-    // load too.
-    if (!val) {
-      this.loadFiles(this.currentPath)
-    }
-  }
-
-  get configurableHeaders (): AppDataTableHeader[] {
-    const isNotDashboard = this.name !== 'dashboard'
-
-    const gcodeHeaders: AppDataTableHeader[] = this.currentRoot === 'gcodes'
-      ? [
-          {
-            text: this.$tc('app.general.table.header.status'),
-            value: 'history.status',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.height'),
-            value: 'object_height',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.first_layer_height'),
-            value: 'first_layer_height',
-            visible: false,
-            cellClass: 'text-no-wrap',
-          },
-          {
-            text: this.$tc('app.general.table.header.layer_height'),
-            value: 'layer_height',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_name'),
-            value: 'filament_name',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_colors'),
-            value: 'filament_colors',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.extruder_colors'),
-            value: 'extruder_colors',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_temps'),
-            value: 'filament_temps',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_type'),
-            value: 'filament_type',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament'),
-            value: 'filament_total',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_change_count'),
-            value: 'filament_change_count',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_weight_total'),
-            value: 'filament_weight_total',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_weights'),
-            value: 'filament_weights',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.mmu_print'),
-            value: 'mmu_print',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.referenced_tools'),
-            value: 'referenced_tools',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.filament_used'),
-            value: 'history.filament_used',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.nozzle_diameter'),
-            value: 'nozzle_diameter',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.slicer'),
-            value: 'slicer',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.slicer_version'),
-            value: 'slicer_version',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.printer_vendor'),
-            value: 'printer_vendor',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.printer_model'),
-            value: 'printer_model',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.printer_variant'),
-            value: 'printer_variant',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.profile_version'),
-            value: 'profile_version',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.estimated_time'),
-            value: 'estimated_time',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.print_duration'),
-            value: 'history.print_duration',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.total_duration'),
-            value: 'history.total_duration',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.first_layer_bed_temp'),
-            value: 'first_layer_bed_temp',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.first_layer_extr_temp'),
-            value: 'first_layer_extr_temp',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.chamber_temp'),
-            value: 'chamber_temp',
-            visible: false,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.file_processors'),
-            value: 'file_processors',
-            visible: isNotDashboard,
-            cellClass: 'text-no-wrap'
-          },
-          {
-            text: this.$tc('app.general.table.header.last_printed'),
-            value: 'print_start_time',
-            cellClass: 'text-no-wrap'
-          }
-        ]
-      : []
-
-    const headers: AppDataTableHeader[] = [
-      ...gcodeHeaders,
-      {
-        text: this.$tc('app.general.table.header.modified'),
-        value: 'modified',
-        cellClass: 'text-no-wrap',
-        width: '1%'
-      },
-      {
-        text: this.$tc('app.general.table.header.size'),
-        value: 'size',
-        cellClass: 'text-no-wrap',
-        width: '1%'
+    return !filters.value.some(filter => {
+      if (filter === 'hidden_files') {
+        return /^\.(?!\.$)/.test(file.name)
       }
-    ]
 
-    const key = `${this.currentRoot}_${this.name}`
-    const mergedTableHeaders: AppDataTableHeader[] = this.$typedGetters['config/getMergedTableHeaders'](headers, key)
-
-    return mergedTableHeaders
-  }
-
-  // The available headers, based on the current root and system configuration.
-  get headers (): DataTableHeader[] {
-    return [
-      {
-        text: '',
-        value: 'data-table-icons',
-        sortable: false,
-        width: this.dense ? 28 : 56
-      },
-      {
-        text: this.$tc('app.general.table.header.name'),
-        value: 'name'
-      },
-      ...this.configurableHeaders
-        .filter(header => header.visible !== false)
-    ]
-  }
-
-  // The current path for the given root.
-  get currentPath () {
-    const pathWithRoot: string = this.$typedGetters['files/getCurrentPathByRoot'](this.currentRoot)
-
-    return pathWithRoot || this.currentRoot
-  }
-
-  set currentPath (path: string) {
-    this.$typedDispatch('files/updateCurrentPathByRoot', { root: this.currentRoot, path })
-  }
-
-  // Returns the current path with no root.
-  get visiblePath (): string {
-    if (
-      this.currentPath &&
-      this.currentPath.startsWith(this.currentRoot)
-    ) {
-      const dirs = this.currentPath.split('/')
-      dirs.shift()
-      return (dirs)
-        ? dirs.join('/')
-        : ''
-    }
-    return this.currentPath
-  }
-
-  // Get the available files given the current root and path.
-  get files (): FileBrowserEntry[] {
-    const files = this.getAllFiles()
-
-    const filteredFiles = files.filter(file => {
-      if (this.currentRoot === 'timelapse' && file.type === 'file' && file.extension === '.jpg') {
+      if (file.type !== 'file') {
         return false
       }
 
-      return !this.filters
-        .some(filter => {
-          if (filter === 'hidden_files') {
-            return /^\.(?!\.$)/.test(file.name)
-          }
+      switch (filter) {
+        case 'moonraker_backup_files':
+          return file.filename === '.moonraker.conf.bkp'
 
-          if (file.type !== 'file') {
-            return false
-          }
+        case 'moonraker_temporary_upload_files':
+          return file.extension === '.mru'
 
-          switch (filter) {
-            case 'moonraker_backup_files':
-              return file.filename === '.moonraker.conf.bkp'
+        case 'klipper_backup_files':
+          return /^printer-\d{8}_\d{6}\.cfg$/.test(file.filename)
 
-            case 'moonraker_temporary_upload_files':
-              return file.extension === '.mru'
+        case 'print_start_time':
+          return 'print_start_time' in file && file.print_start_time !== null
 
-            case 'klipper_backup_files':
-              return /^printer-\d{8}_\d{6}\.cfg$/.test(file.filename)
+        case 'rolled_log_files':
+          return (
+            /\.\d{4}-\d{2}-\d{2}(?:_\d{2}-\d{2}-\d{2})?$/.test(file.filename) ||
+            /\.log\.\d+$/.test(file.filename)
+          )
 
-            case 'print_start_time':
-              return 'print_start_time' in file && file.print_start_time !== null
-
-            case 'rolled_log_files':
-              return (
-                /\.\d{4}-\d{2}-\d{2}(?:_\d{2}-\d{2}-\d{2})?$/.test(file.filename) ||
-                /\.log\.\d+$/.test(file.filename)
-              )
-
-            case 'crowsnest_backup_files':
-              return /^crowsnest\.conf\.\d{4}-\d{2}-\d{2}-\d{4}$/.test(file.filename)
-          }
-
-          return false
-        })
-    })
-
-    return filteredFiles
-  }
-
-  getAllFiles () {
-    const items: FileBrowserEntry[] | undefined = this.$typedGetters['files/getDirectory'](this.currentPath)
-
-    return items ?? []
-  }
-
-  @Watch('files')
-  onFilesChange () {
-    // If our file list changes, reset selected files.
-    this.selected = []
-  }
-
-  // Determine if we're waiting for a directory load on our current path.
-  get filesLoading () {
-    return this.hasWaitsBy(`${this.$waits.onFileSystem}/${this.currentRoot}/`)
-  }
-
-  get fileDropRoot () {
-    return this.$route.meta?.fileDropRoot
-  }
-
-  includeTimelapseThumbnailFiles (items: FileBrowserEntry[]) {
-    const thumbnailFilenames = new Set(items
-      .filter((item): item is AppFileWithMeta => item.type === 'file' && item.extension !== '.jpg' && 'thumbnails' in item)
-      .flatMap(item => item.thumbnails
-        ? item.thumbnails.map(thumbnail => thumbnail.relative_path)
-        : []
-      ))
-
-    const thumbnails = this.getAllFiles()
-      .filter(file => file.type === 'file' && thumbnailFilenames.has(file.filename))
-
-    items.push(...thumbnails)
-  }
-
-  // If the root changes, reset the path and load the root path files.
-  handleRootChange (root: string) {
-    if (root.length) {
-      this.currentRoot = root
-      this.loadFiles(root)
-    }
-  }
-
-  // Sets a new path and loads the files if necessary.
-  loadFiles (path: string) {
-    if (!this.disabled) {
-      this.currentPath = path
-
-      const pathContent: MoonrakerPathContent | undefined = this.$typedState.files.pathContent[path]
-
-      if (pathContent == null || pathContent.partial === true) {
-        this.handleRefresh()
+        case 'crowsnest_backup_files':
+          return /^crowsnest\.conf\.\d{4}-\d{2}-\d{2}-\d{4}$/.test(file.filename)
       }
+
+      return false
+    })
+  })
+})
+
+watch(files, () => {
+  // If our file list changes, reset selected files.
+  selected.value = []
+})
+
+// Determine if we're waiting for a directory load on our current path.
+const filesLoading = computed(() => hasWaitsBy(`${Waits.onFileSystem}/${currentRoot.value}/`))
+
+const fileDropRoot = computed(() => route.meta?.fileDropRoot)
+
+function includeTimelapseThumbnailFiles (items: FileBrowserEntry[]) {
+  const thumbnailFilenames = new Set(items
+    .filter((item): item is AppFileWithMeta => item.type === 'file' && item.extension !== '.jpg' && 'thumbnails' in item)
+    .flatMap(item => item.thumbnails
+      ? item.thumbnails.map(thumbnail => thumbnail.relative_path)
+      : []
+    ))
+
+  const thumbnails = getAllFiles()
+    .filter(file => file.type === 'file' && thumbnailFilenames.has(file.filename))
+
+  items.push(...thumbnails)
+}
+
+// If the root changes, reset the path and load the root path files.
+function handleRootChange (root: string) {
+  if (root.length) {
+    currentRoot.value = root
+    loadFiles(root)
+  }
+}
+
+// Sets a new path and loads the files if necessary.
+function loadFiles (path: string) {
+  if (!disabled.value) {
+    currentPath.value = path
+
+    const pathContent: MoonrakerPathContent | undefined = typedState.files.pathContent[path]
+
+    if (pathContent == null || pathContent.partial === true) {
+      handleRefresh()
     }
   }
+}
 
-  // Refreshes a path by loading the directory.
-  handleRefresh () {
-    if (!this.disabled) {
-      SocketActions.serverFilesGetDirectory(this.currentPath)
-    }
+// Refreshes a path by loading the directory.
+function handleRefresh () {
+  if (!disabled.value) {
+    SocketActions.serverFilesGetDirectory(currentPath.value)
+  }
+}
+
+// Handles a user filtering the data.
+function handleFilter (newFilters: FileFilterType[]) {
+  filters.value = newFilters
+}
+
+// Handles a user clicking a file row.
+function handleRowClick (item: FileBrowserEntry, event: MouseEvent) {
+  if (disabled.value) {
+    return
   }
 
-  // Handles a user filtering the data.
-  handleFilter (filters: FileFilterType[]) {
-    this.filters = filters
-  }
+  if (contextMenuState.value.open) {
+    contextMenuState.value.open = false
 
-  // Handles a user clicking a file row.
-  handleRowClick (item: FileBrowserEntry, event: MouseEvent) {
-    if (this.disabled) {
+    if (event.type !== 'contextmenu') {
       return
     }
-
-    if (this.contextMenuState.open) {
-      this.contextMenuState.open = false
-
-      if (event.type !== 'contextmenu') {
-        return
-      }
-    }
-
-    if (item.type === 'directory') {
-      if (event.type === 'click') {
-        if (item.dirname === '..') {
-          const dirs = this.currentPath.split('/')
-          const newpath = dirs.slice(0, -1).join('/')
-
-          this.loadFiles(newpath)
-        } else {
-          this.loadFiles(`${this.currentPath}/${item.dirname}`)
-        }
-
-        // Clear selected bulk items if we're navigating folders.
-        this.selected = []
-
-        return
-      } else if (item.dirname === '..' || item.permissions === 'r' || this.rootProperties.readonly) {
-        return
-      }
-    }
-
-    if (
-      this.selected.length !== 0 &&
-      !this.selected.some(x => x.name === item.name)
-    ) {
-      return
-    }
-
-    if (
-      item.type === 'file' &&
-      event.type === 'click'
-    ) {
-      if (this.$typedState.config.uiSettings.editor.autoEditExtensions.includes(item.extension)) {
-        this.handleFileOpenDialog(item, 'edit')
-
-        return
-      } else if (this.rootProperties.canView.includes(item.extension)) {
-        this.handleFileOpenDialog(item, 'view')
-
-        return
-      }
-    }
-
-    // Open the context menu
-    this.contextMenuState.x = event.clientX
-    this.contextMenuState.y = event.clientY
-    this.contextMenuState.file = this.selected.length > 1
-      ? this.selected
-      : item
-    this.$nextTick(() => {
-      this.contextMenuState.open = true
-    })
   }
 
-  /**
-   * ===========================================================================
-   * Dialog handling.
-   * ===========================================================================
-  */
-  handleRenameDialog (item: FileBrowserEntry) {
-    if (this.disabled) return
+  if (item.type === 'directory') {
+    if (event.type === 'click') {
+      if (item.dirname === '..') {
+        const dirs = currentPath.value.split('/')
+        const newpath = dirs.slice(0, -1).join('/')
 
-    const [title, label, isFile] = item.type === 'file'
-      ? [this.$t('app.file_system.title.rename_file'), this.$t('app.file_system.label.file_name'), true]
-      : [this.$t('app.file_system.title.rename_dir'), this.$t('app.file_system.label.dir_name'), false]
-
-    this.fileNameDialogState = {
-      open: true,
-      title,
-      label,
-      isFile,
-      value: item.name,
-      handler: this.handleRename
-    }
-  }
-
-  handleDuplicateDialog (item: FileBrowserEntry) {
-    if (this.disabled) return
-
-    const [title, label, isFile] = item.type === 'file'
-      ? [this.$t('app.file_system.title.duplicate_file'), this.$t('app.file_system.label.file_name'), true]
-      : [this.$t('app.file_system.title.duplicate_dir'), this.$t('app.file_system.label.dir_name'), false]
-
-    this.fileNameDialogState = {
-      open: true,
-      title,
-      label,
-      isFile,
-      value: item.name,
-      handler: this.handleDuplicate
-    }
-  }
-
-  handleAddFileDialog () {
-    if (this.disabled) return
-    this.fileNameDialogState = {
-      open: true,
-      title: this.$t('app.file_system.title.add_file'),
-      label: this.$t('app.file_system.label.file_name'),
-      isFile: true,
-      value: '',
-      handler: this.handleAddFile
-    }
-  }
-
-  handleAddDirDialog () {
-    if (this.disabled) return
-    this.fileNameDialogState = {
-      open: true,
-      title: this.$t('app.file_system.title.add_dir'),
-      label: this.$t('app.file_system.label.dir_name'),
-      isFile: false,
-      value: '',
-      handler: this.handleAddDir
-    }
-  }
-
-  handleGoToFileDialog () {
-    if (this.disabled) return
-    this.goToFileDialogOpen = true
-  }
-
-  async handleFileOpenDialog (file: AppFile, mode: 'edit' | 'view' | undefined = undefined) {
-    try {
-      const viewOnly = mode
-        ? mode === 'view'
-        : this.rootProperties.canView.includes(file.extension)
-
-      if (viewOnly) {
-        const response = await this.getFile<Blob>(
-          file.filename,
-          this.currentPath,
-          file.size,
-          {
-            responseType: 'blob'
-          }
-        )
-
-        this.filePreviewState = {
-          open: true,
-          file,
-          filename: file.filename,
-          extension: file.extension,
-          src: URL.createObjectURL(response.data),
-          type: response.data.type,
-          readonly: file.permissions === 'r' || this.rootProperties.readonly
-        }
+        loadFiles(newpath)
       } else {
-        const response = await this.getFile<string>(
-          file.filename,
-          this.currentPath,
-          file.size,
-          {
-            responseType: 'text'
-          }
-        )
-
-        this.fileEditorDialogState = {
-          open: true,
-          contents: response.data,
-          filename: file.filename,
-          loading: false,
-          readonly: file.permissions === 'r' || this.rootProperties.readonly
-        }
-      }
-    } catch (error: unknown) {
-      consola.error('[FileSystem] open file', error)
-    }
-  }
-
-  async handlePreviewGcode (file: AppFile | AppFileWithMeta) {
-    try {
-      const response = await this.getGcode(file)
-
-      const gcode = response?.data
-
-      if (!gcode) return
-
-      if (
-        this.$route.name !== 'home' ||
-        !this.$typedGetters['layout/isEnabledInCurrentLayout']('gcode-preview-card')
-      ) {
-        this.$router.push({ name: 'gcode_preview' })
+        loadFiles(`${currentPath.value}/${item.dirname}`)
       }
 
-      this.$typedDispatch('gcodePreview/loadGcode', {
-        file,
-        gcode
-      })
-    } catch (error: unknown) {
-      consola.error('[FileSystem] preview gcode', error)
-    }
-  }
-
-  handleRefreshMetadata (file: FileBrowserEntry | FileBrowserEntry[]) {
-    if (this.disabled) return
-
-    const files = Array.isArray(file)
-      ? file
-      : [file]
-    const filenames = files
-      .filter((item): item is AppFileWithMeta => item.type === 'file' && this.rootProperties.accepts.includes(item.extension))
-      .map(file => file.path ? `${file.path}/${file.filename}` : file.filename)
-
-    for (const filename of filenames) {
-      SocketActions.serverFilesMetascan(filename)
-    }
-  }
-
-  handlePerformTimeAnalysis (file: FileBrowserEntry | FileBrowserEntry[]) {
-    const items = Array.isArray(file)
-      ? file
-      : [file]
-    const filenames = items
-      .filter((item): item is AppFileWithMeta => item.type === 'file' && this.rootProperties.accepts.includes(item.extension))
-      .map(file => file.path ? `${file.path}/${file.filename}` : file.filename)
-
-    for (const filename of filenames) {
-      SocketActions.serverAnalysisProcess(filename, undefined, true)
-    }
-  }
-
-  async handleViewThumbnail (file: AppFile) {
-    const thumb = this.getThumb(file, this.currentRoot, file.path, true)
-
-    if (thumb) {
-      this.filePreviewState = {
-        open: true,
-        filename: file.filename,
-        src: thumb.url,
-        type: 'image/any',
-        width: thumb.width
-      }
-    }
-  }
-
-  /**
-   * ===========================================================================
-   * Core file handling.
-   * ===========================================================================
-  */
-  handlePrint (file: AppFile | AppFileWithMeta) {
-    if (this.disabled) return
-
-    const filename = file.path ? `${file.path}/${file.filename}` : file.filename
-
-    if (this.$typedState.printer.printer.mmu?.enabled === true) {
-      if ('referenced_tools' in file) {
-        const mmuPrint = (file.referenced_tools?.length ?? 1) > 1 || this.$typedState.printer.printer.mmu?.gate !== -2
-        if (mmuPrint) {
-          this.$typedCommit('mmu/setDialogState', {
-            show: true,
-            filename
-          })
-
-          return
-        }
-      }
-    }
-
-    const spoolmanSupported: boolean = this.$typedGetters['spoolman/getAvailable']
-    const autoSpoolSelectionDialog: boolean = this.$typedState.config.uiSettings.spoolman.autoSpoolSelectionDialog
-    if (spoolmanSupported && autoSpoolSelectionDialog) {
-      this.$typedCommit('spoolman/setDialogState', {
-        show: true,
-        filename
-      })
+      // Clear selected bulk items if we're navigating folders.
+      selected.value = []
 
       return
-    }
-
-    SocketActions.printerPrintStart(filename)
-
-    // If we aren't on the dashboard, push the user back there.
-    if (this.$route.name !== 'home') {
-      this.$router.push({ name: 'home' })
+    } else if (item.dirname === '..' || item.permissions === 'r' || rootProperties.value.readonly) {
+      return
     }
   }
 
-  async handleSaveAsFileChanges (contents: string, serviceToRestart?: string) {
-    this.fileNameDialogState = {
+  if (
+    selected.value.length !== 0 &&
+    !selected.value.some(x => x.name === item.name)
+  ) {
+    return
+  }
+
+  if (item.type === 'file' && event.type === 'click') {
+    if (typedState.config.uiSettings.editor.autoEditExtensions.includes(item.extension)) {
+      handleFileOpenDialog(item, 'edit')
+      return
+    } else if (rootProperties.value.canView.includes(item.extension)) {
+      handleFileOpenDialog(item, 'view')
+      return
+    }
+  }
+
+  // Open the context menu
+  contextMenuState.value.x = event.clientX
+  contextMenuState.value.y = event.clientY
+  contextMenuState.value.file = selected.value.length > 1
+    ? selected.value
+    : item
+  nextTick(() => {
+    contextMenuState.value.open = true
+  })
+}
+
+/**
+ * ===========================================================================
+ * Dialog handling.
+ * ===========================================================================
+*/
+function handleRenameDialog (item: FileBrowserEntry | FileBrowserEntry[]) {
+  if (Array.isArray(item)) return
+  return _handleRenameDialog(item)
+}
+
+function _handleRenameDialog (item: FileBrowserEntry) {
+  if (disabled.value) return
+
+  const [title, label, isFile] = item.type === 'file'
+    ? [t('app.file_system.title.rename_file'), t('app.file_system.label.file_name'), true]
+    : [t('app.file_system.title.rename_dir'), t('app.file_system.label.dir_name'), false]
+
+  fileNameDialogState.value = {
+    open: true,
+    title,
+    label,
+    isFile,
+    value: item.name,
+    handler: handleRename
+  }
+}
+
+function handleDuplicateDialog (item: FileBrowserEntry | FileBrowserEntry[]) {
+  if (Array.isArray(item)) return
+  if (disabled.value) return
+
+  const [title, label, isFile] = item.type === 'file'
+    ? [t('app.file_system.title.duplicate_file'), t('app.file_system.label.file_name'), true]
+    : [t('app.file_system.title.duplicate_dir'), t('app.file_system.label.dir_name'), false]
+
+  fileNameDialogState.value = {
+    open: true,
+    title,
+    label,
+    isFile,
+    value: item.name,
+    handler: handleDuplicate
+  }
+}
+
+function handleAddFileDialog () {
+  if (disabled.value) return
+  fileNameDialogState.value = {
+    open: true,
+    title: t('app.file_system.title.add_file'),
+    label: t('app.file_system.label.file_name'),
+    isFile: true,
+    value: '',
+    handler: handleAddFile
+  }
+}
+
+function handleAddDirDialog () {
+  if (disabled.value) return
+  fileNameDialogState.value = {
+    open: true,
+    title: t('app.file_system.title.add_dir'),
+    label: t('app.file_system.label.dir_name'),
+    isFile: false,
+    value: '',
+    handler: handleAddDir
+  }
+}
+
+function handleGoToFileDialog () {
+  if (disabled.value) return
+  goToFileDialogOpen.value = true
+}
+
+async function handleFileOpenDialog (file: FileBrowserEntry | FileBrowserEntry[], mode: 'edit' | 'view' | undefined = undefined) {
+  if (Array.isArray(file) || file.type !== 'file') return
+  try {
+    const viewOnly = mode
+      ? mode === 'view'
+      : rootProperties.value.canView.includes(file.extension)
+
+    if (viewOnly) {
+      const response = await getFile<Blob>(
+        file.filename,
+        currentPath.value,
+        file.size,
+        { responseType: 'blob' }
+      )
+
+      filePreviewState.value = {
+        open: true,
+        file,
+        filename: file.filename,
+        extension: file.extension,
+        src: URL.createObjectURL(response.data),
+        type: response.data.type,
+        readonly: file.permissions === 'r' || rootProperties.value.readonly
+      }
+    } else {
+      const response = await getFile<string>(
+        file.filename,
+        currentPath.value,
+        file.size,
+        { responseType: 'text' }
+      )
+
+      fileEditorDialogState.value = {
+        open: true,
+        contents: response.data,
+        filename: file.filename,
+        loading: false,
+        readonly: file.permissions === 'r' || rootProperties.value.readonly
+      }
+    }
+  } catch (error: unknown) {
+    consola.error('[FileSystem] open file', error)
+  }
+}
+
+async function handlePreviewGcode (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (Array.isArray(file) || file.type !== 'file') return
+  try {
+    const response = await getGcode(file)
+
+    const gcode = response?.data
+
+    if (!gcode) return
+
+    if (
+      route.name !== 'home' ||
+      !typedGetters['layout/isEnabledInCurrentLayout']('gcode-preview-card')
+    ) {
+      router.push({ name: 'gcode_preview' })
+    }
+
+    typedDispatch('gcodePreview/loadGcode', {
+      file,
+      gcode
+    })
+  } catch (error: unknown) {
+    consola.error('[FileSystem] preview gcode', error)
+  }
+}
+
+function handleRefreshMetadata (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (disabled.value) return
+
+  const fileList = Array.isArray(file) ? file : [file]
+  const filenames = fileList
+    .filter((item): item is AppFileWithMeta => item.type === 'file' && rootProperties.value.accepts.includes(item.extension))
+    .map(f => f.path ? `${f.path}/${f.filename}` : f.filename)
+
+  for (const filename of filenames) {
+    SocketActions.serverFilesMetascan(filename)
+  }
+}
+
+function handlePerformTimeAnalysis (file: FileBrowserEntry | FileBrowserEntry[]) {
+  const items = Array.isArray(file) ? file : [file]
+  const filenames = items
+    .filter((item): item is AppFileWithMeta => item.type === 'file' && rootProperties.value.accepts.includes(item.extension))
+    .map(f => f.path ? `${f.path}/${f.filename}` : f.filename)
+
+  for (const filename of filenames) {
+    SocketActions.serverAnalysisProcess(filename, undefined, true)
+  }
+}
+
+async function handleViewThumbnail (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (Array.isArray(file) || file.type !== 'file') return
+  const thumb = getThumb(file, currentRoot.value, file.path, true)
+
+  if (thumb) {
+    filePreviewState.value = {
       open: true,
-      title: this.$t('app.file_system.title.save_as'),
-      label: this.$t('app.file_system.label.file_name'),
-      isFile: true,
-      value: this.fileEditorDialogState.filename,
-      handler: (name: string) => {
-        if (name != null) {
-          this.fileEditorDialogState.filename = name
-        }
+      filename: file.filename,
+      src: thumb.url,
+      type: 'image/any',
+      width: thumb.width
+    }
+  }
+}
 
-        this.handleSaveFileChanges(contents, serviceToRestart)
+/**
+ * ===========================================================================
+ * Core file handling.
+ * ===========================================================================
+*/
+function handlePrint (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (disabled.value) return
+  if (Array.isArray(file) || file.type !== 'file') return
+
+  const filename = file.path ? `${file.path}/${file.filename}` : file.filename
+
+  if (typedState.printer.printer.mmu?.enabled === true) {
+    if ('referenced_tools' in file) {
+      const mmuPrint = (file.referenced_tools?.length ?? 1) > 1 || typedState.printer.printer.mmu?.gate !== -2
+      if (mmuPrint) {
+        typedCommit('mmu/setDialogState', {
+          show: true,
+          filename
+        })
+
+        return
       }
     }
   }
 
-  async handleSaveFileChanges (contents: string, serviceToRestart?: string) {
-    const file = new File([contents], this.fileEditorDialogState.filename)
+  const spoolmanSupported: boolean = typedGetters['spoolman/getAvailable']
+  const autoSpoolSelectionDialog: boolean = typedState.config.uiSettings.spoolman.autoSpoolSelectionDialog
+  if (spoolmanSupported && autoSpoolSelectionDialog) {
+    typedCommit('spoolman/setDialogState', {
+      show: true,
+      filename
+    })
 
-    if (this.fileEditorDialogState.open) {
-      this.fileEditorDialogState.loading = true
+    return
+  }
+
+  SocketActions.printerPrintStart(filename)
+
+  // If we aren't on the dashboard, push the user back there.
+  if (route.name !== 'home') {
+    router.push({ name: 'home' })
+  }
+}
+
+async function handleSaveAsFileChanges (contents: string | null) {
+  if (contents === null) return
+  return _handleSaveAsFileChanges(contents)
+}
+
+async function _handleSaveAsFileChanges (contents: string, serviceToRestart?: string) {
+  fileNameDialogState.value = {
+    open: true,
+    title: t('app.file_system.title.save_as'),
+    label: t('app.file_system.label.file_name'),
+    isFile: true,
+    value: fileEditorDialogState.value.filename,
+    handler: (name: string) => {
+      if (name != null) {
+        fileEditorDialogState.value.filename = name
+      }
+
+      handleSaveFileChanges(contents, serviceToRestart)
     }
+  }
+}
 
-    await this.uploadFile(file, this.visiblePath, this.currentRoot, false)
+async function handleSaveFileChanges (contents: string | null, serviceToRestart?: string) {
+  if (contents === null) return
+  const file = new File([contents], fileEditorDialogState.value.filename)
 
-    this.fileEditorDialogState.loading = false
+  if (fileEditorDialogState.value.open) {
+    fileEditorDialogState.value.loading = true
+  }
 
-    switch (serviceToRestart) {
-      case 'moonraker':
-        this.serviceRestartMoonraker()
-        break
+  await uploadFile(file, visiblePath.value, currentRoot.value, false)
 
-      case 'klipper': {
-        const klipperSaveAndRestartAction: KlipperSaveAndRestartAction = this.$typedState.config.uiSettings.editor.klipperSaveAndRestartAction
+  fileEditorDialogState.value.loading = false
 
-        switch (klipperSaveAndRestartAction) {
-          case 'auto': {
-            const isSimulavrMcu: boolean = this.$typedGetters['printer/getIsSimulavrMcu']
+  switch (serviceToRestart) {
+    case 'moonraker':
+      serviceRestartMoonraker()
+      break
 
-            if (isSimulavrMcu) {
-              this.serviceRestartKlipper()
-            } else {
-              this.firmwareRestartKlippy()
-            }
-            break
+    case 'klipper': {
+      const klipperSaveAndRestartAction: KlipperSaveAndRestartAction = typedState.config.uiSettings.editor.klipperSaveAndRestartAction
+
+      switch (klipperSaveAndRestartAction) {
+        case 'auto': {
+          const isSimulavrMcu: boolean = typedGetters['printer/getIsSimulavrMcu']
+
+          if (isSimulavrMcu) {
+            serviceRestartKlipper()
+          } else {
+            firmwareRestartKlippy()
           }
-
-          case 'host-restart':
-            this.restartKlippy()
-            break
-
-          case 'service-restart':
-            this.serviceRestartKlipper()
-            break
-
-          default:
-            this.firmwareRestartKlippy()
+          break
         }
-        break
+
+        case 'host-restart':
+          restartKlippy()
+          break
+
+        case 'service-restart':
+          serviceRestartKlipper()
+          break
+
+        default:
+          firmwareRestartKlippy()
       }
-
-      default:
-        if (serviceToRestart) {
-          this.serviceRestartByName(serviceToRestart)
-        }
+      break
     }
+
+    default:
+      if (serviceToRestart) {
+        serviceRestartByName(serviceToRestart)
+      }
+  }
+}
+
+function handleMove (source: FileBrowserEntry | FileBrowserEntry[], destination: FileBrowserEntry) {
+  const dir = destination as AppDirectory
+  let destinationPath = `${currentPath.value}/${dir.dirname}`
+  if (dir.dirname === '..') {
+    const arr = currentPath.value.split('/')
+    arr.pop()
+    destinationPath = arr.join('/')
   }
 
-  handleMove (source: FileBrowserEntry | FileBrowserEntry[], destination: AppDirectory) {
-    let destinationPath = `${this.currentPath}/${destination.dirname}`
-    if (destination.dirname === '..') {
-      const arr = this.currentPath.split('/')
-      arr.pop()
-      destinationPath = arr.join('/')
+  const items = Array.isArray(source)
+    ? source.filter(item => item.name !== '..')
+    : [source]
+
+  if (currentRoot.value === 'timelapse') {
+    includeTimelapseThumbnailFiles(items)
+  }
+
+  for (const item of items) {
+    const src = `${currentPath.value}/${item.name}`
+    const dest = destinationPath
+      ? `${destinationPath}/${item.name}`
+      : `${item.name}`
+    SocketActions.serverFilesMove(src, dest)
+  }
+}
+
+function handleDragStart (item: FileBrowserEntry, items: FileBrowserEntry[], dataTransfer: DataTransfer) {
+  if (item.type === 'file') {
+    const url = createFileUrl(item.name, currentPath.value)
+
+    dataTransfer.setData('text/html', `<A HREF="${url}">${item.filename}</A>`)
+    dataTransfer.setData('text/plain', url)
+    dataTransfer.setData('text/uri-list', url)
+  }
+
+  setFileDataTransferDataInDataTransfer(dataTransfer, 'files', {
+    path: currentPath.value,
+    items: items.map(file => file.name)
+  })
+
+  if (currentRoot.value === 'gcodes') {
+    const gfiles = items
+      .filter((i): i is AppFile => i.type === 'file' && rootProperties.value.accepts.includes(i.extension))
+
+    if (gfiles.length > 0) {
+      setFileDataTransferDataInDataTransfer(dataTransfer, 'jobs', {
+        path: gfiles[0].path,
+        items: gfiles.map(file => file.name)
+      })
     }
+  }
+}
 
-    const items = Array.isArray(source)
-      ? source.filter(item => item.name !== '..')
-      : [source]
+function handleRename (name: string) {
+  const src = `${currentPath.value}/${fileNameDialogState.value.value}`
+  const dest = `${currentPath.value}/${name}`
+  SocketActions.serverFilesMove(src, dest)
+}
 
-    if (this.currentRoot === 'timelapse') {
-      this.includeTimelapseThumbnailFiles(items)
+function handleDuplicate (name: string) {
+  const src = `${currentPath.value}/${fileNameDialogState.value.value}`
+  const dest = `${currentPath.value}/${name}`
+  SocketActions.serverFilesCopy(src, dest)
+}
+
+async function handleRemove (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (disabled.value) return
+
+  const items = Array.isArray(file)
+    ? file.filter(item => item.name !== '..')
+    : [file]
+
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_delete', items.length),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    filePreviewState.value.open = false
+
+    if (currentRoot.value === 'timelapse') {
+      includeTimelapseThumbnailFiles(items)
     }
 
     for (const item of items) {
-      const src = `${this.currentPath}/${item.name}`
-      const dest = destinationPath
-        ? `${destinationPath}/${item.name}`
-        : `${item.name}`
-      SocketActions.serverFilesMove(src, dest)
-    }
-  }
-
-  handleDragStart (item: FileBrowserEntry, items: FileBrowserEntry[], dataTransfer: DataTransfer) {
-    if (item.type === 'file') {
-      const url = this.createFileUrl(item.name, this.currentPath)
-
-      dataTransfer.setData('text/html', `<A HREF="${url}">${item.filename}</A>`)
-      dataTransfer.setData('text/plain', url)
-      dataTransfer.setData('text/uri-list', url)
-    }
-
-    setFileDataTransferDataInDataTransfer(dataTransfer, 'files', {
-      path: this.currentPath,
-      items: items.map(file => file.name)
-    })
-
-    if (this.currentRoot === 'gcodes') {
-      const files = items
-        .filter((item): item is AppFile => item.type === 'file' && this.rootProperties.accepts.includes(item.extension))
-
-      if (files.length > 0) {
-        setFileDataTransferDataInDataTransfer(dataTransfer, 'jobs', {
-          path: files[0].path,
-          items: files.map(file => file.name)
-        })
+      if (item.type === 'file') {
+        SocketActions.serverFilesDeleteFile(`${currentPath.value}/${item.filename}`)
+      } else {
+        SocketActions.serverFilesDeleteDirectory(`${currentPath.value}/${item.dirname}`, true)
       }
     }
   }
+}
 
-  handleRename (name: string) {
-    const src = `${this.currentPath}/${this.fileNameDialogState.value}`
-    const dest = `${this.currentPath}/${name}`
-    SocketActions.serverFilesMove(src, dest)
+async function handleUpload (fileList: FileList | File[] | FileWithPath[], print: boolean) {
+  const wait = `${Waits.onFileSystem}/${currentPath.value}/`
+
+  typedDispatch('wait/addWait', wait)
+
+  await uploadFiles(fileList, visiblePath.value, currentRoot.value, print)
+
+  typedDispatch('wait/removeWait', wait)
+}
+
+function handleAddDir (name: string) {
+  SocketActions.serverFilesPostDirectory(`${currentPath.value}/${name}`)
+}
+
+function handleAddFile (name: string) {
+  const file = new File([], name)
+  uploadFile(file, visiblePath.value, currentRoot.value, false)
+}
+
+function handleDownload (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (Array.isArray(file) || file.type !== 'file') return
+  downloadFile(file.filename, currentPath.value)
+}
+
+function handlePreheat (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (disabled.value) return
+  if (Array.isArray(file) || file.type !== 'file') return
+  const meta = file as AppFileWithMeta
+  if (
+    meta.first_layer_extr_temp &&
+    meta.first_layer_bed_temp &&
+    !printerPrinting.value &&
+    !printerPaused.value &&
+    klippyReady.value
+  ) {
+    if (meta.first_layer_extr_temp > 0) {
+      sendGcode(`M104 S${meta.first_layer_extr_temp}`)
+    }
+    if (meta.first_layer_bed_temp > 0) {
+      sendGcode(`M140 S${meta.first_layer_bed_temp}`)
+    }
+    if (meta.chamber_temp && meta.chamber_temp > 0) {
+      sendGcode(`M141 S${meta.chamber_temp}`)
+    }
   }
+}
 
-  handleDuplicate (name: string) {
-    const src = `${this.currentPath}/${this.fileNameDialogState.value}`
-    const dest = `${this.currentPath}/${name}`
-    SocketActions.serverFilesCopy(src, dest)
+function handleEnqueue (file: FileBrowserEntry | FileBrowserEntry[]) {
+  if (disabled.value) return
+
+  const items = Array.isArray(file) ? file : [file]
+  const filenames = items
+    .filter((item): item is AppFile => item.type === 'file' && rootProperties.value.accepts.includes(item.extension))
+    .map(f => f.path ? `${f.path}/${f.filename}` : f.filename)
+
+  if (filenames.length > 0) {
+    SocketActions.serverJobQueuePostJob(filenames)
   }
+}
 
-  async handleRemove (file: FileBrowserEntry | FileBrowserEntry[]) {
-    if (this.disabled) return
+function handleCreateZip (file: FileBrowserEntry | FileBrowserEntry[]) {
+  const timestamp = Filters.formatTimestamp(Date.now())
 
-    const items = Array.isArray(file)
-      ? file.filter(item => item.name !== '..')
-      : [file]
+  const dest = Array.isArray(file)
+    ? `${currentPath.value}/${timestamp}.zip`
+    : `${currentPath.value}/${file.name}-${timestamp}.zip`
 
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_delete', items.length),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  const items = (Array.isArray(file) ? file : [file])
+    .map(item => `${currentPath.value}/${item.name}`)
+
+  SocketActions.serverFilesZip(dest, items)
+}
+
+/**
+ * ===========================================================================
+ * Drag handling.
+ * ===========================================================================
+*/
+function handleDragOver (event: DragEvent) {
+  if (
+    !fileDropRoot.value &&
+    !rootProperties.value.readonly &&
+    !dragState.value.browserState &&
+    event.dataTransfer &&
+    (
+      hasFilesInDataTransfer(event.dataTransfer) ||
+      hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')
     )
+  ) {
+    event.preventDefault()
 
-    if (result) {
-      this.filePreviewState.open = false
+    dragState.value.overlay = true
 
-      if (this.currentRoot === 'timelapse') {
-        this.includeTimelapseThumbnailFiles(items)
+    event.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+function handleDragLeave () {
+  dragState.value.overlay = false
+}
+
+async function handleDrop (event: DragEvent) {
+  dragState.value.overlay = false
+
+  if (
+    !fileDropRoot.value &&
+    !rootProperties.value.readonly &&
+    event.dataTransfer
+  ) {
+    if (hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')) {
+      const fileTransferData = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'files')
+
+      for (const file of fileTransferData.items) {
+        const src = `${fileTransferData.path}/${file}`
+        const dest = `${currentPath.value}/${file}`
+        SocketActions.serverFilesCopy(src, dest)
       }
+    } else if (hasFilesInDataTransfer(event.dataTransfer)) {
+      const droppedFiles = await getFilesFromDataTransfer(event.dataTransfer)
 
-      for (const item of items) {
-        if (item.type === 'file') {
-          SocketActions.serverFilesDeleteFile(`${this.currentPath}/${item.filename}`)
-        } else {
-          SocketActions.serverFilesDeleteDirectory(`${this.currentPath}/${item.dirname}`, true)
-        }
-      }
-    }
-  }
-
-  async handleUpload (files: FileList | File[] | FileWithPath[], print: boolean) {
-    const wait = `${this.$waits.onFileSystem}/${this.currentPath}/`
-
-    this.$typedDispatch('wait/addWait', wait)
-
-    await this.uploadFiles(files, this.visiblePath, this.currentRoot, print)
-
-    this.$typedDispatch('wait/removeWait', wait)
-  }
-
-  handleAddDir (name: string) {
-    SocketActions.serverFilesPostDirectory(`${this.currentPath}/${name}`)
-  }
-
-  handleAddFile (name: string) {
-    const file = new File([], name)
-    this.uploadFile(file, this.visiblePath, this.currentRoot, false)
-  }
-
-  handleDownload (file: AppFile) {
-    this.downloadFile(file.filename, this.currentPath)
-  }
-
-  handlePreheat (file: AppFileWithMeta) {
-    if (this.disabled) return
-    if (
-      file.first_layer_extr_temp &&
-      file.first_layer_bed_temp &&
-      !this.printerPrinting &&
-      !this.printerPaused &&
-      this.klippyReady
-    ) {
-      if (file.first_layer_extr_temp > 0) {
-        this.sendGcode(`M104 S${file.first_layer_extr_temp}`)
-      }
-      if (file.first_layer_bed_temp > 0) {
-        this.sendGcode(`M140 S${file.first_layer_bed_temp}`)
-      }
-      if (file.chamber_temp && file.chamber_temp > 0) {
-        this.sendGcode(`M141 S${file.chamber_temp}`)
-      }
-    }
-  }
-
-  handleEnqueue (file: FileBrowserEntry | FileBrowserEntry[]) {
-    if (this.disabled) return
-
-    const items = Array.isArray(file) ? file : [file]
-    const filenames = items
-      .filter((item): item is AppFile => item.type === 'file' && this.rootProperties.accepts.includes(item.extension))
-      .map(file => file.path ? `${file.path}/${file.filename}` : file.filename)
-
-    if (filenames.length > 0) {
-      SocketActions.serverJobQueuePostJob(filenames)
-    }
-  }
-
-  handleCreateZip (file: FileBrowserEntry | FileBrowserEntry[]) {
-    const timestamp = this.$filters.formatTimestamp(Date.now())
-
-    const dest = Array.isArray(file)
-      ? `${this.currentPath}/${timestamp}.zip`
-      : `${this.currentPath}/${file.name}-${timestamp}.zip`
-
-    const items = (Array.isArray(file) ? file : [file])
-      .map(item => `${this.currentPath}/${item.name}`)
-
-    SocketActions.serverFilesZip(dest, items)
-  }
-
-  /**
-   * ===========================================================================
-   * Drag handling.
-   * ===========================================================================
-  */
-  handleDragOver (event: DragEvent) {
-    if (
-      !this.fileDropRoot &&
-      !this.rootProperties.readonly &&
-      !this.dragState.browserState &&
-      event.dataTransfer &&
-      (
-        hasFilesInDataTransfer(event.dataTransfer) ||
-        hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')
-      )
-    ) {
-      event.preventDefault()
-
-      this.dragState.overlay = true
-
-      event.dataTransfer.dropEffect = 'copy'
-    }
-  }
-
-  handleDragLeave () {
-    this.dragState.overlay = false
-  }
-
-  async handleDrop (event: DragEvent) {
-    this.dragState.overlay = false
-
-    if (
-      !this.fileDropRoot &&
-      !this.rootProperties.readonly &&
-      event.dataTransfer
-    ) {
-      if (hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')) {
-        const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'files')
-
-        for (const file of files.items) {
-          const src = `${files.path}/${file}`
-          const dest = `${this.currentPath}/${file}`
-          SocketActions.serverFilesCopy(src, dest)
-        }
-      } else if (hasFilesInDataTransfer(event.dataTransfer)) {
-        const files = await getFilesFromDataTransfer(event.dataTransfer)
-
-        if (files) {
-          this.handleUpload(files, false)
-        }
+      if (droppedFiles) {
+        handleUpload(droppedFiles, false)
       }
     }
   }

@@ -101,17 +101,19 @@
       <v-divider />
 
       <thermal-chart
-        ref="thermalchart"
+        ref="thermalChartElement"
         :narrow="narrow"
       />
     </template>
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, Ref } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 
 import ThermalChart from '@/components/widgets/thermals/ThermalChart.vue'
 import TemperatureTargets from '@/components/widgets/thermals/TemperatureTargets.vue'
@@ -120,127 +122,106 @@ import type { TemperaturePreset } from '@/store/config/types'
 import type { ChartSelectedLegends } from '@/store/charts/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({
-  components: {
-    ThermalChart,
-    TemperatureTargets,
-    TemperaturePresetsMenu
+defineProps<{
+  narrow?: boolean
+}>()
+
+const { typedState, typedDispatch } = useStore()
+const { klippyReady, printerState, sendGcode } = useStateMixin()
+const confirm = useConfirm()
+const { tc } = useI18n()
+
+const thermalChartElement = ref<InstanceType<typeof ThermalChart>>()
+
+const chartReady = computed(() =>
+  typedState.socket.acceptingNotifications &&
+  typedState.socket.ready &&
+  typedState.charts.ready &&
+  klippyReady.value
+)
+
+function updateChartSelectedLegends (chartSelectedLegends: ChartSelectedLegends) {
+  if (chartVisible.value) {
+    thermalChartElement.value?.updateChartSelectedLegends(chartSelectedLegends)
   }
+}
+
+const chartVisible = computed({
+  get: () => typedState.config.uiSettings.general.chartVisible,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.chartVisible',
+    value,
+    server: true
+  })
 })
-export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
-  @Prop({ type: Boolean })
-  readonly narrow?: boolean
 
-  @Ref('thermalchart')
-  readonly thermalChartElement!: ThermalChart
+const showRateOfChange = computed({
+  get: () => typedState.config.uiSettings.general.showRateOfChange,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showRateOfChange',
+    value,
+    server: true
+  })
+})
 
-  get chartReady (): boolean {
-    return (
-      this.$typedState.socket.acceptingNotifications &&
-      this.$typedState.socket.ready &&
-      this.$typedState.charts.ready &&
-      this.klippyReady
-    )
-  }
+const showRelativeHumidity = computed({
+  get: () => typedState.config.uiSettings.general.showRelativeHumidity,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showRelativeHumidity',
+    value,
+    server: true
+  })
+})
 
-  updateChartSelectedLegends (chartSelectedLegends: ChartSelectedLegends) {
-    if (this.chartVisible) {
-      this.thermalChartElement.updateChartSelectedLegends(chartSelectedLegends)
-    }
-  }
+const showBarometricPressure = computed({
+  get: () => typedState.config.uiSettings.general.showBarometricPressure,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showBarometricPressure',
+    value,
+    server: true
+  })
+})
 
-  get chartVisible (): boolean {
-    return this.$typedState.config.uiSettings.general.chartVisible
-  }
+const showGasResistance = computed({
+  get: () => typedState.config.uiSettings.general.showGasResistance,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.general.showGasResistance',
+    value,
+    server: true
+  })
+})
 
-  set chartVisible (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.chartVisible',
-      value,
-      server: true
-    })
-  }
-
-  get showRateOfChange (): boolean {
-    return this.$typedState.config.uiSettings.general.showRateOfChange
-  }
-
-  set showRateOfChange (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showRateOfChange',
-      value,
-      server: true
-    })
-  }
-
-  get showRelativeHumidity (): boolean {
-    return this.$typedState.config.uiSettings.general.showRelativeHumidity
-  }
-
-  set showRelativeHumidity (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showRelativeHumidity',
-      value,
-      server: true
-    })
-  }
-
-  get showBarometricPressure (): boolean {
-    return this.$typedState.config.uiSettings.general.showBarometricPressure
-  }
-
-  set showBarometricPressure (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showBarometricPressure',
-      value,
-      server: true
-    })
-  }
-
-  get showGasResistance (): boolean {
-    return this.$typedState.config.uiSettings.general.showGasResistance
-  }
-
-  set showGasResistance (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.general.showGasResistance',
-      value,
-      server: true
-    })
-  }
-
-  handleApplyPreset (preset: TemperaturePreset) {
-    if (preset) {
-      if (preset.values) {
-        for (const key in preset.values) {
-          const item = preset.values[key]
-          if (item.type === 'heater' && item.active && item.value > -1) {
-            this.sendGcode(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(key)} TARGET=${item.value}`)
-          }
-          if (item.type === 'fan' && item.active && item.value > -1) {
-            this.sendGcode(`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(key)} TARGET=${item.value}`)
-          }
+function handleApplyPreset (preset: TemperaturePreset) {
+  if (preset) {
+    if (preset.values) {
+      for (const key in preset.values) {
+        const item = preset.values[key]
+        if (item.type === 'heater' && item.active && item.value > -1) {
+          sendGcode(`SET_HEATER_TEMPERATURE HEATER=${encodeGcodeParamValue(key)} TARGET=${item.value}`)
+        }
+        if (item.type === 'fan' && item.active && item.value > -1) {
+          sendGcode(`SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=${encodeGcodeParamValue(key)} TARGET=${item.value}`)
         }
       }
+    }
 
-      if (preset.gcode) {
-        this.sendGcode(preset.gcode)
-      }
+    if (preset.gcode) {
+      sendGcode(preset.gcode)
     }
   }
+}
 
-  async handleApplyOff () {
-    const result = (
-      !['printing', 'busy', 'paused'].includes(this.printerState) ||
-      await this.$confirm(
-        this.$tc('app.general.label.heaters_busy'),
-        { title: this.$tc('app.general.simple_form.msg.confirm'), color: 'card-heading', icon: '$error' }
-      )
+async function handleApplyOff () {
+  const result = (
+    !['printing', 'busy', 'paused'].includes(printerState.value) ||
+    await confirm(
+      tc('app.general.label.heaters_busy'),
+      { title: tc('app.general.simple_form.msg.confirm'), color: 'card-heading', icon: '$error' }
     )
+  )
 
-    if (result) {
-      this.sendGcode('TURN_OFF_HEATERS')
-    }
+  if (result) {
+    sendGcode('TURN_OFF_HEATERS')
   }
 }
 </script>

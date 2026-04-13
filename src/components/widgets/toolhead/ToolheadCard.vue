@@ -155,317 +155,268 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import Toolhead from './Toolhead.vue'
 import type { Macro } from '@/store/macros/types'
 import type { KlippyApp } from '@/store/printer/types'
 
 type Tool = {
-  name: string,
-  label?: string,
-  disabled?: boolean,
-  wait?: string,
-  icon?: string,
+  name: string
+  label?: string
+  disabled?: boolean
+  wait?: string
+  icon?: string
 }
 
-@Component({
-  components: {
-    Toolhead
-  }
-})
-export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
-  @Prop({ type: Boolean })
-  readonly narrow?: boolean
+defineProps<{
+  narrow?: boolean
+}>()
 
-  get klippyApp (): KlippyApp {
-    return this.$typedGetters['printer/getKlippyApp']
-  }
+const { typedState, typedGetters, typedDispatch } = useStore()
+const {
+  klippyReady, printerPrinting, hasWait, sendGcode
+} = useStateMixin()
+const {
+  hasExtruder, activeExtruder, extruderReady, extruderDisconnected,
+  allHomed,
+  isManualProbeActive, isBedScrewsAdjustActive,
+  manualProbeDialogOpen, bedScrewsAdjustDialogOpen,
+  forceMoveEnabled
+} = useToolheadMixin()
+const confirm = useConfirm()
+const { tc } = useI18n()
 
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
-  }
+const klippyApp = computed<KlippyApp>(() => typedGetters['printer/getKlippyApp'])
+const printerSettings = computed<Klipper.SettingsState>(() => typedGetters['printer/getPrinterSettings'])
 
-  get printerSupportsQuadGantryLevel (): boolean {
-    return this.printerSettings.quad_gantry_level != null
-  }
+const printerSupportsQuadGantryLevel = computed(() => printerSettings.value.quad_gantry_level != null)
 
-  get printerSupportsZTiltAdjust (): boolean {
-    return (
-      this.printerSettings.z_tilt != null ||
-      (
-        this.klippyApp.isKalico &&
-        this.printerSettings.z_tilt_ng != null
-      )
-    )
-  }
+const printerSupportsZTiltAdjust = computed(() =>
+  printerSettings.value.z_tilt != null ||
+  (klippyApp.value.isKalico && printerSettings.value.z_tilt_ng != null)
+)
 
-  get printerSupportsBedScrewsAdjust (): boolean {
-    return this.printerSettings.bed_screws != null
-  }
+const printerSupportsBedScrewsAdjust = computed(() => printerSettings.value.bed_screws != null)
 
-  get printerSupportsBedScrewsCalculate (): boolean {
-    return this.printerSettings.screws_tilt_adjust != null
-  }
+const printerSupportsBedScrewsCalculate = computed(() => printerSettings.value.screws_tilt_adjust != null)
 
-  get printerSupportsBedTiltCalibrate (): boolean {
-    return this.printerSettings.bed_tilt != null
-  }
+const printerSupportsBedTiltCalibrate = computed(() => printerSettings.value.bed_tilt != null)
 
-  get printerSupportsDeltaCalibrate (): boolean {
-    return this.printerSettings.delta_calibrate != null
-  }
+const printerSupportsDeltaCalibrate = computed(() => printerSettings.value.delta_calibrate != null)
 
-  get printerSupportsProbeCalibrate (): boolean {
-    return (
-      this.printerSettings.probe != null ||
-      this.printerSettings.bltouch != null ||
-      this.printerSettings.smart_effector != null ||
-      this.printerSettings.cartographer != null ||
-      (
-        this.printerSettings.scanner != null &&
-        'sensor' in this.printerSettings.scanner &&
-        this.printerSettings.scanner.sensor === 'cartographer'
-      ) ||
-      Object.keys(this.printerSettings)
-        .some(x => x.startsWith('probe_eddy_current '))
-    )
-  }
+const printerSupportsProbeCalibrate = computed(() =>
+  printerSettings.value.probe != null ||
+  printerSettings.value.bltouch != null ||
+  printerSettings.value.smart_effector != null ||
+  printerSettings.value.cartographer != null ||
+  (
+    printerSettings.value.scanner != null &&
+    'sensor' in printerSettings.value.scanner &&
+    printerSettings.value.scanner.sensor === 'cartographer'
+  ) ||
+  Object.keys(printerSettings.value)
+    .some(x => x.startsWith('probe_eddy_current '))
+)
 
-  get printerSupportsBeaconCalibrate (): boolean {
-    return this.printerSettings.beacon != null
-  }
+const printerSupportsBeaconCalibrate = computed(() => printerSettings.value.beacon != null)
 
-  get printerSupportsCartographerCalibrate (): boolean {
-    return this.printerSettings.cartographer != null
-  }
+const printerSupportsCartographerCalibrate = computed(() => printerSettings.value.cartographer != null)
 
-  get printerSupportsZEndstopCalibrate (): boolean {
-    return (
-      this.printerSettings.stepper_z?.position_endstop != null
-    )
-  }
+const printerSupportsZEndstopCalibrate = computed(() =>
+  printerSettings.value.stepper_z?.position_endstop != null
+)
 
-  get loadFilamentMacro (): Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName'](
-      'LOAD_FILAMENT',
-      'FILAMENT_LOAD',
-      'M701'
-    )
-  }
+const loadFilamentMacro = computed<Macro | undefined>(() =>
+  typedGetters['macros/getMacroByName']('LOAD_FILAMENT', 'FILAMENT_LOAD', 'M701')
+)
 
-  get unloadFilamentMacro (): Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName'](
-      'UNLOAD_FILAMENT',
-      'FILAMENT_UNLOAD',
-      'M702'
-    )
-  }
+const unloadFilamentMacro = computed<Macro | undefined>(() =>
+  typedGetters['macros/getMacroByName']('UNLOAD_FILAMENT', 'FILAMENT_UNLOAD', 'M702')
+)
 
-  get cleanNozzleMacro (): Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName'](
-      'CLEAN_NOZZLE',
-      'NOZZLE_CLEAN',
-      'WIPE_NOZZLE',
-      'NOZZLE_WIPE',
-      'G12'
-    )
-  }
+const cleanNozzleMacro = computed<Macro | undefined>(() =>
+  typedGetters['macros/getMacroByName']('CLEAN_NOZZLE', 'NOZZLE_CLEAN', 'WIPE_NOZZLE', 'NOZZLE_WIPE', 'G12')
+)
 
-  get parkToolheadMacro (): Macro | undefined {
-    return this.$typedGetters['macros/getMacroByName'](
-      'PARK_TOOLHEAD',
-      'TOOLHEAD_PARK',
-      'G27'
-    )
-  }
+const parkToolheadMacro = computed<Macro | undefined>(() =>
+  typedGetters['macros/getMacroByName']('PARK_TOOLHEAD', 'TOOLHEAD_PARK', 'G27')
+)
 
-  get availableTools () {
-    const tools: Tool[] = []
+const availableTools = computed(() => {
+  const tools: Tool[] = []
 
-    const loadFilamentMacro = this.loadFilamentMacro
-
-    if (loadFilamentMacro) {
-      const ignoreMinExtrudeTemp = loadFilamentMacro.variables?.ignore_min_extrude_temp ?? false
-
-      tools.push({
-        name: loadFilamentMacro.name.toUpperCase(),
-        label: loadFilamentMacro.name.toLowerCase() === 'm701' ? `M701 (${loadFilamentMacro.description || this.$t('app.general.label.load_filament')})` : undefined,
-        icon: '$loadFilament',
-        disabled: !(ignoreMinExtrudeTemp || this.extruderReady) || this.extruderDisconnected
-      })
-    }
-
-    const unloadFilamentMacro = this.unloadFilamentMacro
-
-    if (unloadFilamentMacro) {
-      const ignoreMinExtrudeTemp = unloadFilamentMacro.variables?.ignore_min_extrude_temp ?? false
-
-      tools.push({
-        name: unloadFilamentMacro.name.toUpperCase(),
-        label: unloadFilamentMacro.name.toLowerCase() === 'm702' ? `M702 (${unloadFilamentMacro.description || this.$t('app.general.label.unload_filament')})` : undefined,
-        icon: '$unloadFilament',
-        disabled: !(ignoreMinExtrudeTemp || this.extruderReady) || this.extruderDisconnected
-      })
-    }
-
-    const cleanNozzleMacro = this.cleanNozzleMacro
-
-    if (cleanNozzleMacro) {
-      tools.push({
-        name: cleanNozzleMacro.name.toUpperCase(),
-        label: cleanNozzleMacro.name.toLowerCase() === 'g12' ? `G12 (${cleanNozzleMacro.description || this.$t('app.general.label.clean_nozzle')})` : undefined,
-        icon: '$cleanNozzle'
-      })
-    }
-
-    const parkToolheadMacro = this.parkToolheadMacro
-
-    if (parkToolheadMacro) {
-      tools.push({
-        name: parkToolheadMacro.name.toUpperCase(),
-        label: parkToolheadMacro.name.toLowerCase() === 'g27' ? `G27 (${parkToolheadMacro.description || this.$t('app.general.label.park_toolhead')})` : undefined,
-        icon: '$parkToolhead',
-        disabled: !this.allHomed
-      })
-    }
-
-    if (tools.length > 0) {
-      tools.push({
-        name: '-'
-      })
-    }
-
-    if (this.printerSupportsBeaconCalibrate) {
-      tools.push({
-        name: 'BEACON_AUTO_CALIBRATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onBeaconCalibrate
-      })
-    }
-
-    if (this.printerSupportsBedScrewsAdjust) {
-      tools.push({
-        name: 'BED_SCREWS_ADJUST',
-        disabled: !this.allHomed || this.isBedScrewsAdjustActive,
-        wait: this.$waits.onBedScrewsAdjust
-      })
-    }
-
-    if (this.printerSupportsBedTiltCalibrate) {
-      tools.push({
-        name: 'BED_TILT_CALIBRATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onBedTiltCalibrate
-      })
-    }
-
-    if (this.printerSupportsCartographerCalibrate) {
-      tools.push({
-        name: 'CARTOGRAPHER_SCAN_CALIBRATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onCartographerScanCalibrate
-      })
-
-      tools.push({
-        name: 'CARTOGRAPHER_TOUCH_CALIBRATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onCartographerTouchCalibrate
-      })
-    }
-
-    if (this.printerSupportsDeltaCalibrate) {
-      tools.push({
-        name: 'DELTA_CALIBRATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onDeltaCalibrate
-      })
-    }
-
+  const loadMacro = loadFilamentMacro.value
+  if (loadMacro) {
+    const ignoreMinExtrudeTemp = loadMacro.variables?.ignore_min_extrude_temp ?? false
     tools.push({
-      name: 'MANUAL_PROBE',
-      disabled: !this.allHomed || this.isManualProbeActive,
-      wait: this.$waits.onManualProbe
+      name: loadMacro.name.toUpperCase(),
+      label: loadMacro.name.toLowerCase() === 'm701' ? `M701 (${loadMacro.description || tc('app.general.label.load_filament')})` : undefined,
+      icon: '$loadFilament',
+      disabled: !(ignoreMinExtrudeTemp || extruderReady.value) || extruderDisconnected.value
     })
-
-    if (this.printerSupportsProbeCalibrate) {
-      tools.push({
-        name: 'PROBE_ACCURACY',
-        disabled: !this.allHomed,
-        wait: this.$waits.onProbeAccuracy
-      })
-      tools.push({
-        name: 'PROBE_CALIBRATE',
-        disabled: !this.allHomed,
-        wait: this.$waits.onProbeCalibrate
-      })
-    }
-
-    if (this.printerSupportsQuadGantryLevel) {
-      tools.push({
-        name: 'QUAD_GANTRY_LEVEL',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onQGL
-      })
-    }
-
-    if (this.printerSupportsBedScrewsCalculate) {
-      tools.push({
-        name: 'SCREWS_TILT_CALCULATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onBedScrewsCalculate
-      })
-    }
-
-    if (this.printerSupportsZEndstopCalibrate) {
-      tools.push({
-        name: 'Z_ENDSTOP_CALIBRATE',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onZEndstopCalibrate
-      })
-    }
-
-    if (this.printerSupportsZTiltAdjust) {
-      tools.push({
-        name: 'Z_TILT_ADJUST',
-        disabled: !this.allHomed || this.isManualProbeActive,
-        wait: this.$waits.onZTilt
-      })
-    }
-
-    return tools
   }
 
-  get printerSupportsForceMove (): boolean {
-    return (
-      (this.printerSettings.force_move?.enable_force_move ?? false) &&
-      !this.hasRoundBed
+  const unloadMacro = unloadFilamentMacro.value
+  if (unloadMacro) {
+    const ignoreMinExtrudeTemp = unloadMacro.variables?.ignore_min_extrude_temp ?? false
+    tools.push({
+      name: unloadMacro.name.toUpperCase(),
+      label: unloadMacro.name.toLowerCase() === 'm702' ? `M702 (${unloadMacro.description || tc('app.general.label.unload_filament')})` : undefined,
+      icon: '$unloadFilament',
+      disabled: !(ignoreMinExtrudeTemp || extruderReady.value) || extruderDisconnected.value
+    })
+  }
+
+  const cleanMacro = cleanNozzleMacro.value
+  if (cleanMacro) {
+    tools.push({
+      name: cleanMacro.name.toUpperCase(),
+      label: cleanMacro.name.toLowerCase() === 'g12' ? `G12 (${cleanMacro.description || tc('app.general.label.clean_nozzle')})` : undefined,
+      icon: '$cleanNozzle'
+    })
+  }
+
+  const parkMacro = parkToolheadMacro.value
+  if (parkMacro) {
+    tools.push({
+      name: parkMacro.name.toUpperCase(),
+      label: parkMacro.name.toLowerCase() === 'g27' ? `G27 (${parkMacro.description || tc('app.general.label.park_toolhead')})` : undefined,
+      icon: '$parkToolhead',
+      disabled: !allHomed.value
+    })
+  }
+
+  if (tools.length > 0) {
+    tools.push({ name: '-' })
+  }
+
+  if (printerSupportsBeaconCalibrate.value) {
+    tools.push({
+      name: 'BEACON_AUTO_CALIBRATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onBeaconCalibrate
+    })
+  }
+
+  if (printerSupportsBedScrewsAdjust.value) {
+    tools.push({
+      name: 'BED_SCREWS_ADJUST',
+      disabled: !allHomed.value || isBedScrewsAdjustActive.value,
+      wait: Waits.onBedScrewsAdjust
+    })
+  }
+
+  if (printerSupportsBedTiltCalibrate.value) {
+    tools.push({
+      name: 'BED_TILT_CALIBRATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onBedTiltCalibrate
+    })
+  }
+
+  if (printerSupportsCartographerCalibrate.value) {
+    tools.push({
+      name: 'CARTOGRAPHER_SCAN_CALIBRATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onCartographerScanCalibrate
+    })
+    tools.push({
+      name: 'CARTOGRAPHER_TOUCH_CALIBRATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onCartographerTouchCalibrate
+    })
+  }
+
+  if (printerSupportsDeltaCalibrate.value) {
+    tools.push({
+      name: 'DELTA_CALIBRATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onDeltaCalibrate
+    })
+  }
+
+  tools.push({
+    name: 'MANUAL_PROBE',
+    disabled: !allHomed.value || isManualProbeActive.value,
+    wait: Waits.onManualProbe
+  })
+
+  if (printerSupportsProbeCalibrate.value) {
+    tools.push({
+      name: 'PROBE_ACCURACY',
+      disabled: !allHomed.value,
+      wait: Waits.onProbeAccuracy
+    })
+    tools.push({
+      name: 'PROBE_CALIBRATE',
+      disabled: !allHomed.value,
+      wait: Waits.onProbeCalibrate
+    })
+  }
+
+  if (printerSupportsQuadGantryLevel.value) {
+    tools.push({
+      name: 'QUAD_GANTRY_LEVEL',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onQGL
+    })
+  }
+
+  if (printerSupportsBedScrewsCalculate.value) {
+    tools.push({
+      name: 'SCREWS_TILT_CALCULATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onBedScrewsCalculate
+    })
+  }
+
+  if (printerSupportsZEndstopCalibrate.value) {
+    tools.push({
+      name: 'Z_ENDSTOP_CALIBRATE',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onZEndstopCalibrate
+    })
+  }
+
+  if (printerSupportsZTiltAdjust.value) {
+    tools.push({
+      name: 'Z_TILT_ADJUST',
+      disabled: !allHomed.value || isManualProbeActive.value,
+      wait: Waits.onZTilt
+    })
+  }
+
+  return tools
+})
+
+const printerSupportsForceMove = computed(() =>
+  (printerSettings.value.force_move?.enable_force_move ?? false) &&
+  !hasRoundBed.value
+)
+
+const hasSteppersEnabled = computed<boolean>(() => typedGetters['printer/getHasSteppersEnabled'])
+
+const hasRoundBed = computed<boolean>(() => typedGetters['printer/getHasRoundBed'])
+
+async function toggleForceMove () {
+  const result = (
+    forceMoveEnabled.value ||
+    !typedState.config.uiSettings.general.forceMoveToggleWarning ||
+    await confirm(
+      tc('app.general.simple_form.msg.confirm_forcemove_toggle'),
+      { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
     )
-  }
+  )
 
-  get hasSteppersEnabled (): boolean {
-    return this.$typedGetters['printer/getHasSteppersEnabled']
-  }
-
-  get hasRoundBed (): boolean {
-    return this.$typedGetters['printer/getHasRoundBed']
-  }
-
-  async toggleForceMove () {
-    const result = (
-      this.forceMoveEnabled ||
-      !this.$typedState.config.uiSettings.general.forceMoveToggleWarning ||
-      await this.$confirm(
-        this.$tc('app.general.simple_form.msg.confirm_forcemove_toggle'),
-        { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$warning' }
-      )
-    )
-
-    if (result) {
-      this.$typedDispatch('printer/forceMoveEnabled', !this.forceMoveEnabled)
-    }
+  if (result) {
+    typedDispatch('printer/forceMoveEnabled', !forceMoveEnabled.value)
   }
 }
 </script>

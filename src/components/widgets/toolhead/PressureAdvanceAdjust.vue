@@ -12,7 +12,7 @@
         :reset-value="selectedExtruderStepper?.config?.pressure_advance || 0"
         :disabled="!klippyReady"
         :locked="isMobileUserAgent"
-        :loading="hasWait(`${$waits.onSetPressureAdvance}${extruderStepper?.name ?? ''}`)"
+        :loading="hasWait(`${Waits.onSetPressureAdvance}${extruderStepper?.name ?? ''}`)"
         :min="0"
         :max="2"
         :step="0.0001"
@@ -30,7 +30,7 @@
         :reset-value="selectedExtruderStepper?.config?.pressure_advance_smooth_time || 0"
         :disabled="!klippyReady"
         :locked="isMobileUserAgent"
-        :loading="hasWait(`${$waits.onSetPressureAdvance}${extruderStepper?.name ?? ''}`)"
+        :loading="hasWait(`${Waits.onSetPressureAdvance}${extruderStepper?.name ?? ''}`)"
         :min="0"
         :max="0.2"
         :step="0.001"
@@ -40,38 +40,39 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { Waits } from '@/globals'
 import type { ExtruderStepper } from '@/store/printer/types'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class PressureAdvanceAdjust extends Mixins(StateMixin, ToolheadMixin, BrowserMixin) {
-  @Prop({ type: Object })
-  readonly extruderStepper?: ExtruderStepper
+const props = defineProps<{
+  extruderStepper?: ExtruderStepper
+}>()
 
-  get selectedExtruderStepper () {
-    return this.extruderStepper ?? this.activeExtruder
-  }
+const { klippyReady, hasWait, sendGcode } = useStateMixin()
+const { activeExtruder } = useToolheadMixin()
+const { isMobileUserAgent } = useBrowserMixin()
 
-  handleSetPressureAdvance (val: number) {
-    this.sendSetPressureAdvance('ADVANCE', val)
-  }
+const selectedExtruderStepper = computed(() => props.extruderStepper ?? activeExtruder.value)
 
-  handleSetSmoothTime (val: number) {
-    this.sendSetPressureAdvance('SMOOTH_TIME', val)
-  }
+function handleSetPressureAdvance (val: number) {
+  sendSetPressureAdvance('ADVANCE', val)
+}
 
-  sendSetPressureAdvance (arg: string, val: number) {
-    if (this.extruderStepper) {
-      const { name } = this.extruderStepper
-      this.sendGcode(`SET_PRESSURE_ADVANCE ${arg}=${val} EXTRUDER=${encodeGcodeParamValue(name)}`, `${this.$waits.onSetPressureAdvance}${name}`)
-    } else {
-      this.sendGcode(`SET_PRESSURE_ADVANCE ${arg}=${val}`, this.$waits.onSetPressureAdvance)
-    }
+function handleSetSmoothTime (val: number) {
+  sendSetPressureAdvance('SMOOTH_TIME', val)
+}
+
+function sendSetPressureAdvance (arg: string, val: number) {
+  if (props.extruderStepper) {
+    const { name } = props.extruderStepper
+    sendGcode(`SET_PRESSURE_ADVANCE ${arg}=${val} EXTRUDER=${encodeGcodeParamValue(name)}`, `${Waits.onSetPressureAdvance}${name}`)
+  } else {
+    sendGcode(`SET_PRESSURE_ADVANCE ${arg}=${val}`, Waits.onSetPressureAdvance)
   }
 }
 </script>

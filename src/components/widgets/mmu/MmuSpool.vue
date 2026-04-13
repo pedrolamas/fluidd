@@ -128,103 +128,78 @@
   </svg>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, Prop, Ref } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useMmuMixin, TOOL_GATE_BYPASS, FILAMENT_POS_LOADED, GATE_AVAILABLE, GATE_EMPTY, NO_FILAMENT_COLOR, ESPOOLER_REWIND, ESPOOLER_ASSIST } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
 import type { MmuGateDetails } from '@/types'
 import { TinyColor } from '@ctrl/tinycolor'
 
-@Component({})
-export default class MmuSpool extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ required: true, default: -1 })
-  readonly gateIndex!: number
+const props = withDefaults(defineProps<{
+  gateIndex: number
+  spoolWheelColor?: string
+  editGateMap?: MmuGateDetails[] | null
+  editGateSelected?: number
+  showPercent?: boolean
+}>(), {
+  gateIndex: -1,
+  spoolWheelColor: '#AD8762',
+  editGateMap: null,
+  editGateSelected: -1,
+  showPercent: true,
+})
 
-  @Prop({ required: false, default: '#AD8762' })
-  readonly spoolWheelColor!: string
+const { gateDetails, mmuState, filamentPos, spoolmanSpool, spoolmanSupport } = useMmuMixin()
+const { typedState } = useStore()
 
-  @Prop({ required: false, default: null })
-  readonly editGateMap!: MmuGateDetails[] | null
+const details = computed<MmuGateDetails>(() => {
+  if (props.editGateMap) return props.editGateMap[props.gateIndex]
+  return gateDetails(props.gateIndex)
+})
 
-  @Prop({ required: false, default: -1 })
-  readonly editGateSelected!: number
+const showUnavailableSpoolColor = computed(() =>
+  typedState.config.uiSettings.mmu.showUnavailableSpoolColor
+)
 
-  @Ref('filament')
-  readonly filamentRef!: Element
-
-  get details (): MmuGateDetails {
-    if (this.editGateMap) return this.editGateMap[this.gateIndex]
-    return this.gateDetails(this.gateIndex)
+const spoolStatus = computed(() => {
+  if (props.gateIndex === TOOL_GATE_BYPASS) {
+    return filamentPos.value === FILAMENT_POS_LOADED ? GATE_AVAILABLE : GATE_EMPTY
   }
+  return details.value.status
+})
 
-  get showUnavailableSpoolColor (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showUnavailableSpoolColor
-  }
+const filamentAmount = computed(() => {
+  if (props.editGateMap) return 100
+  if (spoolStatus.value === GATE_EMPTY && !(showUnavailableSpoolColor.value && details.value.color !== NO_FILAMENT_COLOR)) return 0
 
-  get spoolStatus (): number {
-    if (this.gateIndex === this.TOOL_GATE_BYPASS) {
-      if (this.filamentPos === this.FILAMENT_POS_LOADED) return this.GATE_AVAILABLE
-      return this.GATE_EMPTY
-    }
-    return this.details.status
-  }
+  const spool = spoolmanSpool(details.value.spoolId)
+  if (!spool) return -1
+  if (!details.value.spoolId || details.value.spoolId <= 0 || spoolmanSupport.value === 'off') return -1
 
-  get filamentAmount (): number {
-    if (this.editGateMap) return 100
-    if (this.spoolStatus === this.GATE_EMPTY && !(this.showUnavailableSpoolColor && this.details.color !== this.NO_FILAMENT_COLOR)) return 0
+  const remaining = spool.remaining_weight ?? null
+  const total = spool.filament?.weight ?? null
+  if (remaining === null || total === null) return -1
+  return Math.ceil(Math.max(0, Math.min(100, (remaining / total) * 100)))
+})
 
-    const spoolmanSpool = this.spoolmanSpool(this.details.spoolId)
-    if (!spoolmanSpool) return -1
+const filamentColor = computed(() => details.value.color)
 
-    if (!this.details.spoolId || this.details.spoolId <= 0 || this.spoolmanSupport === 'off') return -1
-
-    // Pull live from spoolman and calculate percentage
-    const remaining = spoolmanSpool?.remaining_weight ?? null
-    // Technically this is what spoolman implements but not available in Fluidd:
-    //   const total = spoolmanSpool?.initial_weight ?? spoolmanSpool?.filament?.weight ?? null
-    const total = spoolmanSpool?.filament?.weight ?? null
-    if (remaining === null || total === null) return -1
-    return Math.ceil(Math.max(0, Math.min(100, (remaining / total) * 100)))
-  }
-
-  get filamentColor (): string {
-    return this.details.color
-  }
-
-  computedScale (start: number, end: number) {
-    if (this.editGateMap || this.filamentAmount < 0) return end
-    return start + (end - start) * (this.filamentAmount / 100)
-  }
-
-  get contrastColor (): string {
-    return new TinyColor(this.filamentColor).getLuminance() > 0.5 ? 'black' : 'white'
-  }
-
-  get isEspoolerRewind (): boolean {
-    const espooler = this.getEspoolerForGate(this.gateIndex)
-
-    return espooler === this.ESPOOLER_REWIND
-  }
-
-  get isEspoolerAssist (): boolean {
-    const espooler = this.getEspoolerForGate(this.gateIndex)
-
-    return espooler === this.ESPOOLER_ASSIST
-  }
-
-  getEspoolerForGate (gateIndex: number): string | undefined {
-    const espoolers = this.mmuState?.espooler
-
-    if (espoolers) {
-      return espoolers[gateIndex]
-    }
-    // Legacy Happy Hare (selected gate only)
-    if (gateIndex === this.mmuState?.gate) {
-      return this.mmuState?.espooler_active
-    }
-
-    return undefined
-  }
+function computedScale (start: number, end: number) {
+  if (props.editGateMap || filamentAmount.value < 0) return end
+  return start + (end - start) * (filamentAmount.value / 100)
 }
+
+const contrastColor = computed(() =>
+  new TinyColor(filamentColor.value).getLuminance() > 0.5 ? 'black' : 'white'
+)
+
+function getEspoolerForGate (gateIndex: number): string | undefined {
+  const espoolers = mmuState.value?.espooler
+  if (espoolers) return espoolers[gateIndex]
+  if (gateIndex === mmuState.value?.gate) return mmuState.value?.espooler_active
+  return undefined
+}
+
+const isEspoolerRewind = computed(() => getEspoolerForGate(props.gateIndex) === ESPOOLER_REWIND)
+const isEspoolerAssist = computed(() => getEspoolerForGate(props.gateIndex) === ESPOOLER_ASSIST)
 </script>

@@ -459,86 +459,84 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, VModel, Watch } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useMmuMixin, LED_OPTIONS, LED_STATUS_OPTIONS, T_MACRO_COLOR_OPTIONS } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import isKeyOf from '@/util/is-key-of'
 
-@Component({})
-export default class MmuMaintainanceStateDialog extends Mixins(BrowserMixin, StateMixin, MmuMixin) {
-  @VModel({ required: true })
-  open!: boolean
+const props = defineProps<{
+  value?: boolean
+}>()
 
-  private localLedEnable: boolean = true
-  private localLedAnimation: boolean = true
-  private localEntryEffect: string = 'off'
-  private localExitEffect: string = 'off'
-  private localStatusEffect: string = 'off'
-  private localTMacroColor: string = 'slicer'
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  @Watch('open')
-  onOpenChanged (newValue: boolean): void {
-    if (newValue) {
-      this.localLedEnable = this.macroVarsLedEnable
-      this.localLedAnimation = this.macroVarsLedAnimation
-      this.localEntryEffect = this.macroVarsDefaultEntryEffect
-      this.localExitEffect = this.macroVarsDefaultExitEffect
-      this.localStatusEffect = this.macroVarsDefaultStatusEffect
-      this.localTMacroColor = this.configTMacroColor
-    }
+const open = computed({
+  get: () => props.value ?? false,
+  set: (v) => emit('input', v),
+})
+
+const { isMobileViewport } = useBrowserMixin()
+const { sendGcode, hasWait } = useStateMixin()
+const {
+  numUnits, unitDetails, macroVarsLedEnable, macroVarsLedAnimation,
+  macroVarsDefaultEntryEffect, macroVarsDefaultExitEffect, macroVarsDefaultStatusEffect,
+  configTMacroColor, syncDrive, servo, grip, canSend,
+} = useMmuMixin()
+const { typedState } = useStore()
+
+const localLedEnable = ref(true)
+const localLedAnimation = ref(true)
+const localEntryEffect = ref('off')
+const localExitEffect = ref('off')
+const localStatusEffect = ref('off')
+const localTMacroColor = ref('slicer')
+
+watch(open, (newValue) => {
+  if (newValue) {
+    localLedEnable.value = macroVarsLedEnable.value
+    localLedAnimation.value = macroVarsLedAnimation.value
+    localEntryEffect.value = macroVarsDefaultEntryEffect.value
+    localExitEffect.value = macroVarsDefaultExitEffect.value
+    localStatusEffect.value = macroVarsDefaultStatusEffect.value
+    localTMacroColor.value = configTMacroColor.value
   }
+})
 
-  get unitArray (): number[] {
-    return Array.from({ length: this.numUnits }, (_, k) => k)
-  }
+const unitArray = computed(() => Array.from({ length: numUnits.value }, (_, k) => k))
 
-  get mmuLeds (): boolean {
-    return this.$typedState.printer.printer.mmu_leds != null
-  }
+const mmuLeds = computed(() => typedState.printer.printer.mmu_leds != null)
 
-  private hasLedsOfType (type: string): boolean {
-    const mmuLeds = this.$typedState.printer.printer.mmu_leds
+function hasLedsOfType (type: string): boolean {
+  const mmuLeds = typedState.printer.printer.mmu_leds
+  return (
+    mmuLeds != null &&
+    isKeyOf(type, mmuLeds) &&
+    typeof mmuLeds[type] === 'number' &&
+    mmuLeds[type] > 0
+  )
+}
 
-    return (
-      mmuLeds != null &&
-      isKeyOf(type, mmuLeds) &&
-      typeof mmuLeds[type] === 'number' &&
-      mmuLeds[type] > 0
-    )
-  }
+const ledEffectModule = computed(() => typedState.printer.printer.mmu_leds?.led_effect_module ?? false)
 
-  get ledEffectModule (): boolean {
-    return this.$typedState.printer.printer.mmu_leds?.led_effect_module ?? false
-  }
+function unitDisplayName (unitIndex: number): string {
+  const name = unitDetails(unitIndex).name
+  return `MMU #${unitIndex + 1} - ${name}`
+}
 
-  private unitDisplayName (unitIndex: number): string {
-    const name = this.unitDetails(unitIndex).name
-    return `MMU #${unitIndex + 1} - ${name}`
-  }
+function updateLeds () {
+  const command = `MMU_LED QUIET=1 ENABLE=${localLedEnable.value ? 1 : 0} ANIMATION=${localLedAnimation.value ? 1 : 0} ENTRY_EFFECT=${localEntryEffect.value} EXIT_EFFECT=${localExitEffect.value} STATUS_EFFECT=${localStatusEffect.value}`
+  sendGcode(command, Waits.onMmuLed)
+  updateTMacroColor()
+}
 
-  private updateLeds () {
-    const command: string = `
-            MMU_LED QUIET=1
-            ENABLE=${this.localLedEnable ? 1 : 0}
-            ANIMATION=${this.localLedAnimation ? 1 : 0}
-            ENTRY_EFFECT=${this.localEntryEffect}
-            EXIT_EFFECT=${this.localExitEffect}
-            STATUS_EFFECT=${this.localStatusEffect}
-        `
-      .replace(/\s+/g, ' ')
-      .trim()
-    this.sendGcode(command, this.$waits.onMmuLed)
-
-    this.updateTMacroColor()
-  }
-
-  private updateTMacroColor () {
-    const command: string = `MMU_TEST_CONFIG QUIET=1 t_macro_color=${this.localTMacroColor}`
-    this.sendGcode(command, this.$waits.onMmuTestConfig)
-  }
+function updateTMacroColor () {
+  sendGcode(`MMU_TEST_CONFIG QUIET=1 t_macro_color=${localTMacroColor.value}`, Waits.onMmuTestConfig)
 }
 </script>
 

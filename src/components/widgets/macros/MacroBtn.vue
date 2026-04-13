@@ -114,7 +114,7 @@ const paramNameForRawGcodeCommand = computed(() => getParamNameForRawGcodeComman
 
 const filteredListeners = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { click, ...rest } = listeners.value
+  const { click, ...rest } = listeners
 
   return rest
 })

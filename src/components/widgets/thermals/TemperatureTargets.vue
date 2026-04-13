@@ -98,7 +98,7 @@
               hide-details="auto"
               suffix="°C"
               x-small
-              @submit="setHeaterTargetTemp(item.name, +$event)"
+              @submit="setHeaterTargetTemp(item.name, Number($event))"
             />
           </td>
         </tr>
@@ -182,7 +182,7 @@
               hide-details="auto"
               suffix="°C"
               x-small
-              @submit="setFanTargetTemp(item.name, +$event)"
+              @submit="setFanTargetTemp(item.name, Number($event))"
             />
           </td>
         </tr>

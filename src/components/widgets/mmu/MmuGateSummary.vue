@@ -23,127 +23,92 @@
   </v-list-item>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
-import type { MmuGateDetails } from '@/types'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useMmuMixin } from '@/composables/useMmuMixin'
 
-@Component({})
-export default class MmuGateSummary extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ required: true, default: -1 })
-  readonly gateIndex!: number
+const props = withDefaults(defineProps<{
+  gateIndex: number
+  compact?: boolean
+  showDetails?: boolean
+  showGate?: boolean
+}>(), {
+  gateIndex: -1,
+  compact: false,
+  showDetails: true,
+  showGate: true,
+})
 
-  @Prop({ required: false, default: false })
-  readonly compact!: boolean
+const { gate, gateDetails, gateText, spoolmanSpool } = useMmuMixin()
 
-  @Prop({ required: false, default: true })
-  readonly showDetails!: boolean
+const details = computed(() => gateDetails(props.gateIndex))
 
-  @Prop({ required: false, default: true })
-  readonly showGate!: boolean
+const lines = computed(() => props.showDetails ? 'three' : 'two')
 
-  get details (): MmuGateDetails {
-    return this.gateDetails(this.gateIndex)
+const vendorText = computed(() => {
+  const spool = spoolmanSpool(details.value.spoolId)
+  return spool?.filament?.vendor?.name ?? 'Unknown'
+})
+
+const title = computed(() =>
+  [props.showGate ? gateText(gate.value) : null, vendorText.value].filter((v) => v !== null).join(' | ')
+)
+
+const name = computed(() => details.value.filamentName)
+
+const speedOverrideText = computed(() =>
+  details.value.speedOverride === 100 ? null : 'Speed: ' + details.value.speedOverride + '%'
+)
+
+const temperatureText = computed(() =>
+  details.value.temperature <= 0 ? null : details.value.temperature + '\u00B0' + 'C'
+)
+
+const spoolIdText = computed(() =>
+  !details.value.spoolId || details.value.spoolId <= 0 ? null : 'Spool ID: #' + details.value.spoolId
+)
+
+const subtitle = computed(() =>
+  [details.value.material, temperatureText.value, speedOverrideText.value].filter((v) => v !== null).join(' | ')
+)
+
+const weightText = computed(() => {
+  const spool = spoolmanSpool(details.value.spoolId)
+  const remaining = spool?.remaining_weight ?? null
+  const total = spool?.filament?.weight ?? null
+  if (remaining === null || total === null) return null
+  if (total >= 1000) {
+    let totalRound = Math.floor(total / 1000)
+    if (totalRound !== total / 1000) totalRound = Math.round(total / 100) / 10
+    return `${Math.round(remaining)}g / ${totalRound}kg`
   }
+  return `${Math.round(remaining)} / ${Math.round(total)}g`
+})
 
-  get lines (): string {
-    if (this.showDetails) return 'three'
-    return 'two'
-  }
+const lengthText = computed(() => {
+  const spool = spoolmanSpool(details.value.spoolId)
+  const remaining = spool?.remaining_length ?? null
+  return remaining !== null ? `${Math.round(remaining / 1000)}m` : null
+})
 
-  get title (): string {
-    return [this.showGate ? this.gateText(this.gate) : null, this.vendorText].filter((v) => v !== null).join(' | ')
-  }
+const extra = computed(() => {
+  const text = [spoolIdText.value, weightText.value, lengthText.value].filter((v) => v !== null).join(' | ')
+  return text || 'No spool ID'
+})
 
-  get name (): string {
-    return this.details.filamentName
-  }
-
-  get subtitle (): string {
-    return [this.details.material, this.temperatureText, this.speedOverrideText]
-      .filter((v) => v !== null)
-      .join(' | ')
-  }
-
-  get extra (): string {
-    const text = [this.spoolIdText, this.weightText, this.lengthText].filter((v) => v !== null).join(' | ')
-    if (!text) return 'No spool ID'
-    return text
-  }
-
-  get speedOverrideText (): string | null {
-    if (this.details.speedOverride === 100) return null
-    return 'Speed: ' + this.details.speedOverride + '%'
-  }
-
-  get temperatureText (): string | null {
-    if (this.details.temperature <= 0) return null
-    return this.details.temperature + '\u00B0' + 'C'
-  }
-
-  get spoolIdText (): string | null {
-    if (!this.details.spoolId || this.details.spoolId <= 0) return null
-    return 'Spool ID: #' + this.details.spoolId
-  }
-
-  // Only available with Spoolman...
-
-  get vendorText () {
-    const spoolmanSpool = this.spoolmanSpool(this.details.spoolId)
-    return spoolmanSpool?.filament?.vendor?.name ?? 'Unknown'
-  }
-
-  get weightText () {
-    const spoolmanSpool = this.spoolmanSpool(this.details.spoolId)
-    const remaining = spoolmanSpool?.remaining_weight ?? null
-    // Technically this is what spoolman implements but not available in Fluidd:
-    //   const total = spoolmanSpool?.initial_weight ?? spoolmanSpool?.filament?.weight ?? null
-    const total = spoolmanSpool?.filament?.weight ?? null
-    if (remaining === null || total === null) return null
-
-    if (total >= 1000) {
-      let totalRound = Math.floor(total / 1000)
-      if (totalRound !== total / 1000) {
-        totalRound = Math.round(total / 100) / 10
-      }
-      return `${Math.round(remaining)}g / ${totalRound}kg`
-    }
-    return `${Math.round(remaining)} / ${Math.round(total)}g`
-  }
-
-  get lengthText () {
-    const spoolmanSpool = this.spoolmanSpool(this.details.spoolId)
-    const remaining = spoolmanSpool?.remaining_length ?? null
-    if (remaining === null) return null
-    return `${Math.round(remaining / 1000)}m`
-  }
-
-  get contentClass () {
-    if (this.compact) return ['my-0', 'smaller-font']
-    return 'my-0'
-  }
-
-  get toplineClass () {
-    if (this.compact) return ['text-overline', 'mb-1', 'reduced-line-height', 'small-overline-font']
-    return ['text-overline', 'reduced-line-height', 'mb-2']
-  }
-
-  get titleClass () {
-    if (this.compact) return ['text-h7', 'mb-1']
-    return ['text-h6', 'mb-1']
-  }
-
-  get subtitleClass () {
-    if (this.compact) return ['subtitle-container', ' smaller-font']
-    return ['subtitle-container']
-  }
-
-  get detailsClass () {
-    if (this.compact) return ['subtitle-container', ' smaller-font']
-    return ['subtitle-container', 'smaller-font']
-  }
-}
+const contentClass = computed(() => props.compact ? ['my-0', 'smaller-font'] : 'my-0')
+const toplineClass = computed(() =>
+  props.compact
+    ? ['text-overline', 'mb-1', 'reduced-line-height', 'small-overline-font']
+    : ['text-overline', 'reduced-line-height', 'mb-2']
+)
+const titleClass = computed(() => props.compact ? ['text-h7', 'mb-1'] : ['text-h6', 'mb-1'])
+const subtitleClass = computed(() =>
+  props.compact ? ['subtitle-container', ' smaller-font'] : ['subtitle-container']
+)
+const detailsClass = computed(() =>
+  props.compact ? ['subtitle-container', ' smaller-font'] : ['subtitle-container', 'smaller-font']
+)
 </script>
 
 <style scoped>

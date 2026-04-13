@@ -258,8 +258,8 @@
       @mousedown.stop=""
       @mouseup="keepFocus"
       @dblclick.stop=""
-      @touchstart="panzoom?.pause()"
-      @touchend="panzoom?.resume()"
+      @touchstart="panzoomInstance?.pause()"
+      @touchend="panzoomInstance?.resume()"
     >
       <div>
         <gcode-preview-button
@@ -340,10 +340,11 @@
   </app-focusable-container>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, Ref, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
 import panzoom, { type PanZoom } from 'panzoom'
 import type { BBox, Layer, LayerPaths, Tool } from '@/store/gcodePreview/types'
 import AppFocusableContainerVue from '@/components/ui/AppFocusableContainer.vue'
@@ -354,402 +355,310 @@ import GcodePreviewTool from './GcodePreviewTool.vue'
 import type { AppFile, AppFileWithMeta } from '@/store/files/types'
 import type { BedSize } from '@/store/printer/types'
 
-@Component({
-  components: {
-    ExcludeObjects,
-    GcodePreviewButton,
-    GcodePreviewTool
-  }
+const props = withDefaults(defineProps<{
+  disabled?: boolean
+  progress?: number
+  layer?: number
+}>(), {
+  progress: Number.POSITIVE_INFINITY,
+  layer: 0
 })
-export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
 
-  @Prop({ type: Number, default: Number.POSITIVE_INFINITY })
-  readonly progress!: number
+defineEmits<{
+  (e: 'cancelObject', id: string): void
+}>()
 
-  @Prop({ type: Number, default: 0 })
-  readonly layer!: number
+const { klippyReady } = useStateMixin()
+const { isMobileViewport } = useBrowserMixin()
+const { typedState, typedGetters, typedDispatch } = useStore()
 
-  @Ref('container')
-  readonly container!: AppFocusableContainer
+const container = ref<AppFocusableContainer>()
+const svg = ref<SVGElement>()
+const focused = ref(false)
+const panzoomInstance = ref<PanZoom>()
+const panning = ref(false)
 
-  @Ref('svg')
-  readonly svg!: SVGElement
+const themeIsDark = computed(() => typedState.config.uiSettings.theme.isDark)
+const filePosition = computed(() => typedState.printer.printer.virtual_sdcard?.file_position ?? 0)
+const extrusionLineWidth = computed(() => typedState.config.uiSettings.gcodePreview.extrusionLineWidth)
+const moveLineWidth = computed(() => typedState.config.uiSettings.gcodePreview.moveLineWidth)
+const retractionIconSize = computed(() => typedState.config.uiSettings.gcodePreview.retractionIconSize)
+const drawBackground = computed(() => typedState.config.uiSettings.gcodePreview.drawBackground)
+const drawOrigin = computed(() => typedState.config.uiSettings.gcodePreview.drawOrigin)
+const showAnimations = computed(() => typedState.config.uiSettings.gcodePreview.showAnimations)
 
-  focused = false
-
-  panzoom?: PanZoom
-
-  panning = false
-
-  get themeIsDark (): boolean {
-    return this.$typedState.config.uiSettings.theme.isDark
-  }
-
-  get filePosition (): number {
-    return this.$typedState.printer.printer.virtual_sdcard?.file_position ?? 0
-  }
-
-  get extrusionLineWidth (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.extrusionLineWidth
-  }
-
-  get moveLineWidth (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.moveLineWidth
-  }
-
-  get retractionIconSize (): number {
-    return this.$typedState.config.uiSettings.gcodePreview.retractionIconSize
-  }
-
-  get drawBackground (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.drawBackground
-  }
-
-  get drawOrigin (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.drawOrigin
-  }
-
-  get showAnimations (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showAnimations
-  }
-
-  get autoZoom (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.autoZoom
-  }
-
-  set autoZoom (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const autoZoom = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.autoZoom,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.gcodePreview.autoZoom',
       value,
       server: true
     })
-
-    this.reset()
+    reset()
   }
+})
 
-  get followProgress (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.followProgress
-  }
-
-  set followProgress (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const followProgress = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.followProgress,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.gcodePreview.followProgress',
       value,
       server: true
     })
   }
+})
 
-  get showPreviousLayer (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showPreviousLayer
+const showPreviousLayer = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showPreviousLayer,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showPreviousLayer', value, server: true })
+  }
+})
+
+const showCurrentLayer = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showCurrentLayer,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showCurrentLayer', value, server: true })
+  }
+})
+
+const showNextLayer = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showNextLayer,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showNextLayer', value, server: true })
+  }
+})
+
+const showMoves = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showMoves,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showMoves', value, server: true })
+  }
+})
+
+const showExtrusions = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showExtrusions,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showExtrusions', value, server: true })
+  }
+})
+
+const showRetractions = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showRetractions,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showRetractions', value, server: true })
+  }
+})
+
+const showParts = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.showParts,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.showParts', value, server: true })
+  }
+})
+
+const shapeRendering = computed(() => panning.value ? 'optimizeSpeed' : 'geometricPrecision')
+
+const hasExcludeObjectParts = computed(() => typedGetters['printer/getHasExcludeObjectParts'])
+const printerFile = computed(() => typedGetters['printer/getPrinterFile'])
+
+const showExcludeObjects = computed(() => {
+  if (!klippyReady.value || !hasExcludeObjectParts.value) {
+    return false
   }
 
-  set showPreviousLayer (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showPreviousLayer',
-      value,
-      server: true
-    })
+  const f = file.value
+
+  if (!f) {
+    return true
   }
 
-  get showCurrentLayer (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showCurrentLayer
-  }
+  const pf = printerFile.value
 
-  set showCurrentLayer (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showCurrentLayer',
-      value,
-      server: true
-    })
-  }
+  return (
+    pf != null &&
+    f.path === pf.path &&
+    f.filename === pf.filename
+  )
+})
 
-  get showNextLayer (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showNextLayer
-  }
+const flipX = computed(() => typedState.config.uiSettings.gcodePreview.flip.horizontal)
+const flipY = computed(() => typedState.config.uiSettings.gcodePreview.flip.vertical)
 
-  set showNextLayer (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showNextLayer',
-      value,
-      server: true
-    })
-  }
+const flipTransform = computed(() => {
+  const { x, y } = viewBox.value
 
-  get showMoves (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showMoves
-  }
+  const scale = [
+    flipX.value ? -1 : 1,
+    flipY.value ? -1 : 1
+  ]
 
-  set showMoves (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showMoves',
-      value,
-      server: true
-    })
-  }
+  const transform = [
+    flipX.value ? -(x.max + x.min) : 0,
+    flipY.value ? -(y.max + y.min) : 0
+  ]
 
-  get showExtrusions (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showExtrusions
-  }
+  return `scale(${scale.join()}) translate(${transform.join()})`
+})
 
-  set showExtrusions (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showExtrusions',
-      value,
-      server: true
-    })
-  }
+const hasRoundBed = computed(() => typedGetters['printer/getHasRoundBed'])
+const bedSize = computed((): BedSize => typedGetters['printer/getBedSize'])
 
-  get showRetractions (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showRetractions
-  }
+const viewBox = computed((): BBox => {
+  const b = bounds.value
 
-  set showRetractions (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showRetractions',
-      value,
-      server: true
-    })
-  }
-
-  get showParts (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.showParts
-  }
-
-  set showParts (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.showParts',
-      value,
-      server: true
-    })
-  }
-
-  get shapeRendering () {
-    return this.panning ? 'optimizeSpeed' : 'geometricPrecision'
-  }
-
-  get hasExcludeObjectParts (): boolean {
-    return this.$typedGetters['printer/getHasExcludeObjectParts']
-  }
-
-  get printerFile (): AppFileWithMeta | undefined {
-    return this.$typedGetters['printer/getPrinterFile']
-  }
-
-  get showExcludeObjects (): boolean {
-    if (!this.klippyReady || !this.hasExcludeObjectParts) {
-      return false
-    }
-
-    const file = this.file
-
-    if (!file) {
-      return true
-    }
-
-    const printerFile = this.printerFile
-
-    return (
-      printerFile != null &&
-      file.path === printerFile.path &&
-      file.filename === printerFile.filename
-    )
-  }
-
-  get flipX (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.flip.horizontal
-  }
-
-  get flipY (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.flip.vertical
-  }
-
-  get flipTransform () {
-    const { x, y } = this.viewBox
-
-    const scale = [
-      this.flipX ? -1 : 1,
-      this.flipY ? -1 : 1
-    ]
-
-    const transform = [
-      this.flipX ? -(x.max + x.min) : 0,
-      this.flipY ? -(y.max + y.min) : 0
-    ]
-
-    return `scale(${scale.join()}) translate(${transform.join()})`
-  }
-
-  get hasRoundBed (): boolean {
-    return this.$typedGetters['printer/getHasRoundBed']
-  }
-
-  get bedSize (): BedSize {
-    return this.$typedGetters['printer/getBedSize']
-  }
-
-  get viewBox (): BBox {
-    const bounds = this.bounds
-
-    if (this.autoZoom) {
-      const padding = Math.min(bounds.x.max - bounds.x.min, bounds.y.max - bounds.y.min) * 0.05
-
-      return {
-        x: {
-          min: bounds.x.min - padding,
-          max: bounds.x.max + padding
-        },
-        y: {
-          min: bounds.y.min - padding,
-          max: bounds.y.max + padding
-        }
-      }
-    }
-
-    const bedSize = this.bedSize
+  if (autoZoom.value) {
+    const padding = Math.min(b.x.max - b.x.min, b.y.max - b.y.min) * 0.05
 
     return {
       x: {
-        min: Math.min(bedSize.minX, bounds.x.min) - 2,
-        max: Math.max(bedSize.maxX, bounds.x.max) + 2
+        min: b.x.min - padding,
+        max: b.x.max + padding
       },
       y: {
-        min: Math.min(bedSize.minY, bounds.y.min) - 2,
-        max: Math.max(bedSize.maxY, bounds.y.max) + 2
+        min: b.y.min - padding,
+        max: b.y.max + padding
       }
     }
   }
 
-  get svgViewBox () {
-    const { x, y } = this.viewBox
+  const bs = bedSize.value
 
-    return `${x.min} ${y.min} ${x.max - x.min} ${y.max - y.min}`
-  }
-
-  get defaultLayerPaths (): Readonly<LayerPaths> {
-    return Object.freeze({
-      extrusions: {},
-      moves: '',
-      retractions: [],
-      unretractions: [],
-      toolhead: {
-        x: 0,
-        y: 0
-      },
-      tool: 'T0'
-    })
-  }
-
-  get svgPathCurrent (): Readonly<LayerPaths> {
-    if (this.disabled) {
-      return this.defaultLayerPaths
-    }
-
-    const layer: Layer | undefined = this.$typedGetters['gcodePreview/getLayers'][this.layer]
-
-    if (this.followProgress) {
-      const end: number = this.$typedGetters['gcodePreview/getMoveIndexByFilePosition'](this.filePosition)
-
-      return this.$typedGetters['gcodePreview/getPaths'](layer?.move ?? 0, end)
-    }
-
-    return this.$typedGetters['gcodePreview/getPaths'](layer?.move ?? 0, this.progress)
-  }
-
-  get svgPathActive (): Readonly<LayerPaths> {
-    if (this.disabled) {
-      return this.defaultLayerPaths
-    }
-
-    return this.$typedGetters['gcodePreview/getLayerPaths'](this.layer)
-  }
-
-  get svgPathPrevious (): Readonly<LayerPaths> {
-    if (this.disabled || this.layer <= 0) {
-      return this.defaultLayerPaths
-    }
-
-    return this.$typedGetters['gcodePreview/getLayerPaths'](this.layer - 1)
-  }
-
-  get svgPathNext (): Readonly<LayerPaths> {
-    const layers: readonly Layer[] = this.$typedGetters['gcodePreview/getLayers']
-
-    if (this.disabled || this.layer >= layers.length) {
-      return this.defaultLayerPaths
-    }
-
-    return this.$typedGetters['gcodePreview/getLayerPaths'](this.layer + 1)
-  }
-
-  get svgPathParts (): readonly string[] {
-    return this.$typedGetters['gcodePreview/getPartPaths']
-  }
-
-  get file (): AppFile | AppFileWithMeta | null {
-    return this.$typedState.gcodePreview.file
-  }
-
-  get tools (): readonly number[] {
-    return this.$typedState.gcodePreview.tools
-  }
-
-  get toolColors (): Record<Tool, string> {
-    return this.$typedGetters['gcodePreview/getToolColors']
-  }
-
-  get bounds (): BBox {
-    return this.$typedGetters['gcodePreview/getBounds']
-  }
-
-  @Watch('focused')
-  onFocusedChanged (value: boolean) {
-    if (this.panzoom && !this.isMobileViewport) {
-      if (value) {
-        this.panzoom.resume()
-      } else {
-        this.panzoom.pause()
-      }
+  return {
+    x: {
+      min: Math.min(bs.minX, b.x.min) - 2,
+      max: Math.max(bs.maxX, b.x.max) + 2
+    },
+    y: {
+      min: Math.min(bs.minY, b.y.min) - 2,
+      max: Math.max(bs.maxY, b.y.max) + 2
     }
   }
+})
 
-  mounted () {
-    this.panzoom = panzoom(this.svg, {
-      maxZoom: 20,
-      minZoom: 0.95,
-      smoothScroll: this.showAnimations,
+const svgViewBox = computed(() => {
+  const { x, y } = viewBox.value
 
-      beforeMouseDown: () => this.disabled,
-      beforeWheel: () => !this.focused || this.disabled,
-      onClick: () => this.disabled,
-      onDoubleClick: () => this.disabled
-    })
+  return `${x.min} ${y.min} ${x.max - x.min} ${y.max - y.min}`
+})
 
-    this.panzoom.on('panstart', () => {
-      this.panning = true
-    })
+const defaultLayerPaths = computed((): Readonly<LayerPaths> => Object.freeze({
+  extrusions: {},
+  moves: '',
+  retractions: [],
+  unretractions: [],
+  toolhead: {
+    x: 0,
+    y: 0
+  },
+  tool: 'T0'
+}))
 
-    this.panzoom.on('panend', () => {
-      this.panning = false
-    })
+const svgPathCurrent = computed((): Readonly<LayerPaths> => {
+  if (props.disabled) {
+    return defaultLayerPaths.value
   }
 
-  beforeDestroy () {
-    this.panzoom?.dispose()
+  const layer: Layer | undefined = typedGetters['gcodePreview/getLayers'][props.layer ?? 0]
+
+  if (followProgress.value) {
+    const end: number = typedGetters['gcodePreview/getMoveIndexByFilePosition'](filePosition.value)
+
+    return typedGetters['gcodePreview/getPaths'](layer?.move ?? 0, end)
   }
 
-  reset () {
-    this.panzoom?.moveTo(0, 0)
-    this.panzoom?.zoomAbs(0, 0, 1)
+  return typedGetters['gcodePreview/getPaths'](layer?.move ?? 0, props.progress ?? Number.POSITIVE_INFINITY)
+})
+
+const svgPathActive = computed((): Readonly<LayerPaths> => {
+  if (props.disabled) {
+    return defaultLayerPaths.value
   }
 
-  keepFocus () {
-    if (!this.isMobileViewport) {
-      this.container.focus()
+  return typedGetters['gcodePreview/getLayerPaths'](props.layer ?? 0)
+})
+
+const svgPathPrevious = computed((): Readonly<LayerPaths> => {
+  if (props.disabled || (props.layer ?? 0) <= 0) {
+    return defaultLayerPaths.value
+  }
+
+  return typedGetters['gcodePreview/getLayerPaths']((props.layer ?? 0) - 1)
+})
+
+const svgPathNext = computed((): Readonly<LayerPaths> => {
+  const layers: readonly Layer[] = typedGetters['gcodePreview/getLayers']
+
+  if (props.disabled || (props.layer ?? 0) >= layers.length) {
+    return defaultLayerPaths.value
+  }
+
+  return typedGetters['gcodePreview/getLayerPaths']((props.layer ?? 0) + 1)
+})
+
+const svgPathParts = computed((): readonly string[] => typedGetters['gcodePreview/getPartPaths'])
+const file = computed((): AppFile | AppFileWithMeta | null => typedState.gcodePreview.file)
+const tools = computed((): readonly number[] => typedState.gcodePreview.tools)
+const toolColors = computed((): Record<Tool, string> => typedGetters['gcodePreview/getToolColors'])
+const bounds = computed((): BBox => typedGetters['gcodePreview/getBounds'])
+
+watch(focused, (value) => {
+  if (panzoomInstance.value && !isMobileViewport.value) {
+    if (value) {
+      panzoomInstance.value.resume()
+    } else {
+      panzoomInstance.value.pause()
     }
+  }
+})
+
+onMounted(() => {
+  panzoomInstance.value = panzoom(svg.value!, {
+    maxZoom: 20,
+    minZoom: 0.95,
+    smoothScroll: showAnimations.value,
+
+    beforeMouseDown: () => props.disabled ?? false,
+    beforeWheel: () => !focused.value || (props.disabled ?? false),
+    onClick: () => props.disabled ?? false,
+    onDoubleClick: () => props.disabled ?? false
+  })
+
+  panzoomInstance.value.on('panstart', () => {
+    panning.value = true
+  })
+
+  panzoomInstance.value.on('panend', () => {
+    panning.value = false
+  })
+})
+
+onBeforeUnmount(() => {
+  panzoomInstance.value?.dispose()
+})
+
+function reset () {
+  panzoomInstance.value?.moveTo(0, 0)
+  panzoomInstance.value?.zoomAbs(0, 0, 1)
+}
+
+function keepFocus () {
+  if (!isMobileViewport.value) {
+    container.value?.focus()
   }
 }
+
+function focus () {
+  container.value?.focus()
+}
+
+function showCommandPalette () {
+  // no-op placeholder for interface compatibility
+}
+
+defineExpose({ focus, showCommandPalette })
 </script>
 
 <style lang="scss" scoped>

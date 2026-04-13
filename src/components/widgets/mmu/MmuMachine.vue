@@ -27,7 +27,7 @@
         <div :class="unitClasses(-1)">
           <mmu-unit
             :unit-index="-1"
-            :edit-gate-map="false"
+            :edit-gate-map="null"
             :show-context-menu="showContextMenu"
             :show-details="false"
             :show-footer="false"
@@ -39,61 +39,61 @@
   </v-container>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useMmuMixin } from '@/composables/useMmuMixin'
+import { useVuetify } from '@/composables/useVuetify'
 import type { MmuGateDetails } from '@/types'
 import MmuUnit from '@/components/widgets/mmu/MmuUnit.vue'
 
-@Component({
-  components: {
-    MmuUnit
-  }
+withDefaults(defineProps<{
+  editGateMap?: MmuGateDetails[] | null
+  editGateSelected?: number
+  showContextMenu?: boolean
+  showDetails?: boolean
+  hideBypass?: boolean
+}>(), {
+  editGateMap: null,
+  editGateSelected: -1,
+  showContextMenu: true,
+  showDetails: true,
+  hideBypass: false,
 })
-export default class MmuMachine extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ required: false, default: null })
-  readonly editGateMap!: MmuGateDetails[] | null
 
-  @Prop({ required: false, default: -1 })
-  readonly editGateSelected!: number
+const emit = defineEmits<{
+  (e: 'select-gate', gate: number): void
+  (e: 'edit-filament', gate: number): void
+}>()
 
-  @Prop({ required: false, default: true })
-  readonly showContextMenu!: boolean
+const { numUnits, unitDetails } = useMmuMixin()
+const vuetify = useVuetify()
 
-  @Prop({ required: false, default: true })
-  readonly showDetails!: boolean
+const unitArray = computed(() =>
+  Array.from({ length: numUnits.value }, (_, k) => k)
+)
 
-  @Prop({ required: false, default: false })
-  readonly hideBypass!: boolean
-
-  get unitArray (): number[] {
-    return Array.from({ length: this.numUnits }, (_, k) => k)
+function unitClasses (index: number) {
+  return {
+    'mmu-unit': true,
+    'mmu-unit-dark-theme': vuetify.theme.dark,
+    'mmu-unit-light-theme': !vuetify.theme.dark,
+    'mmu-unit-clear': index < 0,
   }
+}
 
-  unitClasses (index: number) {
-    return {
-      'mmu-unit': true,
-      'mmu-unit-dark-theme': this.$vuetify.theme.dark,
-      'mmu-unit-light-theme': !this.$vuetify.theme.dark,
-      'mmu-unit-clear': index < 0
-    }
+const showStandaloneBypass = computed(() => {
+  for (let i = 0; i < numUnits.value; i++) {
+    if (unitDetails(i).hasBypass) return false
   }
+  return true
+})
 
-  get showStandaloneBypass () {
-    for (let i = 0; i < this.numUnits; i++) {
-      if (this.unitDetails(i).hasBypass) return false
-    }
-    return true
-  }
+function selectGate (gate: number) {
+  emit('select-gate', gate)
+}
 
-  private selectGate (gate: number) {
-    this.$emit('select-gate', gate)
-  }
-
-  private editFilament (gate: number) {
-    this.$emit('edit-filament', gate)
-  }
+function editFilament (gate: number) {
+  emit('edit-filament', gate)
 }
 </script>
 

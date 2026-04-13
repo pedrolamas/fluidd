@@ -132,8 +132,7 @@ export default {
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import MacroSettingsDialog from './MacroSettingsDialog.vue'
-import type { Macro, MacroCategory } from '@/store/macros/types'
-import type { Route } from 'vue-router'
+import type { Macro } from '@/store/macros/types'
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router/composables'
 import { useStore } from '@/composables/useStore'
 import { useI18n } from '@/composables/useI18n'

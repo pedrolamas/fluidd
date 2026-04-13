@@ -261,10 +261,13 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useMmuMixin, TOOL_GATE_BYPASS } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import MmuMachine from '@/components/widgets/mmu/MmuMachine.vue'
 import MmuFilamentStatus from '@/components/widgets/mmu/MmuFilamentStatus.vue'
 import MmuTtgMap from '@/components/widgets/mmu/MmuTtgMap.vue'
@@ -277,99 +280,69 @@ import MmuRecoverStateDialog from '@/components/widgets/mmu/MmuRecoverStateDialo
 import MmuEditGateMapDialog from '@/components/widgets/mmu/MmuEditGateMapDialog.vue'
 import MmuMaintenanceDialog from '@/components/widgets/mmu/MmuMaintenanceDialog.vue'
 
-@Component({
-  components: {
-    MmuMachine,
-    MmuFilamentStatus,
-    MmuTtgMap,
-    MmuControls,
-    MmuGateSummary,
-    MmuClogMeter,
-    MmuFlowguardMeter,
-    MmuSettings,
-    MmuRecoverStateDialog,
-    MmuEditGateMapDialog,
-    MmuMaintenanceDialog,
-  },
+const { klippyReady, sendGcode, hasWait } = useStateMixin()
+const {
+  hasMmu, enabled, sensors, hasEncoder,
+  ttgMap, endlessSpoolGroups, tool, gate,
+  reasonForPause, toolchangeText, canSend,
+  spoolmanSupport,
+} = useMmuMixin()
+const { typedState, typedCommit } = useStore()
+const { tc } = useI18n()
+
+const showRecoverStateDialog = ref(false)
+const showEditGateMapDialog = ref(false)
+const showMaintenanceDialog = ref(false)
+const initialEditGate = ref<number | null>(null)
+
+const col1Size = computed(() =>
+  typedState.config.uiSettings.mmu.largeFilamentStatus ? 6 : 5
+)
+
+const title = computed(() => {
+  const headline = tc('app.mmu.title.headline')
+  if (hasMmu.value && !enabled.value) return `${headline} (disabled)`
+  return headline
 })
-export default class MmuCard extends Mixins(StateMixin, MmuMixin) {
-  showRecoverStateDialog = false
-  showEditGateMapDialog = false
-  showMaintenanceDialog = false
-  initialEditGate: number | null = null
 
-  get col1Size (): number {
-    if (this.$typedState.config.uiSettings.mmu.largeFilamentStatus) return 6
-    return 5
+const hasFilamentProportionalSensor = computed(() => 'filament_proportional' in sensors.value)
+const hasFilamentCompressionSensor = computed(() => 'filament_compression' in sensors.value)
+const hasFilamentTensionSensor = computed(() => 'filament_tension' in sensors.value)
+
+const hasSyncFeedback = computed(() =>
+  hasFilamentCompressionSensor.value || hasFilamentTensionSensor.value || hasFilamentProportionalSensor.value
+)
+
+const showClogDetection = computed(() =>
+  (hasEncoder.value || hasSyncFeedback.value) && typedState.config.uiSettings.mmu.showClogDetection
+)
+
+const showTtgMap = computed(() => typedState.config.uiSettings.mmu.showTtgMap)
+const showDetails = computed(() => typedState.config.uiSettings.mmu.showDetails)
+
+function handleSyncSpoolman () {
+  sendGcode('MMU_SPOOLMAN REFRESH=1 QUIET=1', Waits.onMmuSpoolman)
+}
+
+function handleOpenEditTtgMapDialog () {
+  typedCommit('mmu/setDialogState', { show: true })
+}
+
+function openEditGateMapDialog (g?: number | null) {
+  initialEditGate.value = typeof g === 'number' ? g : null
+  showEditGateMapDialog.value = true
+}
+
+function selectGate (g: number) {
+  if (g === TOOL_GATE_BYPASS) {
+    sendGcode('MMU_SELECT BYPASS=1', Waits.onMmuSelect)
+    return
   }
+  sendGcode(`MMU_SELECT GATE=${g}`, Waits.onMmuSelect)
+}
 
-  get title (): string {
-    const headline = this.$tc('app.mmu.title.headline')
-    if (this.hasMmu && !this.enabled) {
-      return `${headline} (disabled)`
-    }
-    return headline
-  }
-
-  get showClogDetection (): boolean {
-    return (this.hasEncoder || this.hasSyncFeedback) && this.$typedState.config.uiSettings.mmu.showClogDetection
-  }
-
-  get showTtgMap (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showTtgMap
-  }
-
-  get showDetails (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showDetails
-  }
-
-  handleSyncSpoolman () {
-    this.sendGcode('MMU_SPOOLMAN REFRESH=1 QUIET=1', this.$waits.onMmuSpoolman)
-  }
-
-  handleOpenEditTtgMapDialog () {
-    this.$typedCommit('mmu/setDialogState', {
-      show: true,
-    })
-  }
-
-  get hasSyncFeedback (): boolean {
-    return this.hasFilamentCompressionSensor || this.hasFilamentTensionSensor || this.hasFilamentProportionalSensor
-  }
-
-  get hasFilamentProportionalSensor (): boolean {
-    return this.hasSensor('filament_proportional')
-  }
-
-  get hasFilamentCompressionSensor (): boolean {
-    return this.hasSensor('filament_compression')
-  }
-
-  get hasFilamentTensionSensor (): boolean {
-    return this.hasSensor('filament_tension')
-  }
-
-  private hasSensor (sensorName: string): boolean {
-    return sensorName in this.sensors
-  }
-
-  openEditGateMapDialog (gate?: number | null) {
-    this.initialEditGate = typeof gate === 'number' ? gate : null
-    this.showEditGateMapDialog = true
-  }
-
-  private selectGate (gate: number) {
-    if (gate === this.TOOL_GATE_BYPASS) {
-      this.sendGcode('MMU_SELECT BYPASS=1', this.$waits.onMmuSelect)
-      return
-    }
-
-    this.sendGcode(`MMU_SELECT GATE=${gate}`, this.$waits.onMmuSelect)
-  }
-
-  private editFilament (gate: number) {
-    this.openEditGateMapDialog(gate)
-  }
+function editFilament (g: number) {
+  openEditGateMapDialog(g)
 }
 </script>
 

@@ -24,10 +24,10 @@
         disable-sort
         fixed-header
       >
-        <template #item="{ headers, item, isSelected, select }">
+        <template #item="{ headers: rowHeaders, item, isSelected, select }">
           <app-data-table-row
             :key="item.key"
-            :headers="headers"
+            :headers="rowHeaders"
             :item="item"
             :is-selected="isSelected"
             :class="{
@@ -130,14 +130,15 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, VModel } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { QueuedJobWithAppFile } from '@/store/jobQueue/types'
 import { SocketActions } from '@/api/socketActions'
-import StateMixin from '@/mixins/state'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useStore } from '@/composables/useStore'
 import type { DataTableHeader } from 'vuetify'
-import FilesMixin from '@/mixins/files'
-import getFilePaths from '@/util/get-file-paths'
+import getFilePathsUtil from '@/util/get-file-paths'
 import type { TimeEstimates } from '@/store/printer/types'
 
 type JobTotals = {
@@ -151,88 +152,91 @@ type QueueJobWithKey = QueuedJobWithAppFile & {
   key: string
 }
 
-@Component({})
-export default class JobQueueBrowser extends Mixins(StateMixin, FilesMixin) {
-  @VModel({ type: Array, default: () => [] })
-  selected!: QueuedJobWithAppFile[]
+const props = defineProps<{
+  modelValue?: QueuedJobWithAppFile[]
+  jobs: QueuedJobWithAppFile[]
+  dense?: boolean
+  bulkActions?: boolean
+  headers: DataTableHeader[]
+}>()
 
-  @Prop({ type: Array, required: true })
-  readonly jobs!: QueuedJobWithAppFile[]
+const emit = defineEmits<{
+  (e: 'input', value: QueuedJobWithAppFile[]): void
+  (e: 'row-click', item: QueuedJobWithAppFile, event: MouseEvent): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly dense?: boolean
+const { printerPrinting, printerPaused, hasWait } = useStateMixin()
+const { getThumbUrl } = useFilesMixin()
+const { typedState, typedGetters } = useStore()
 
-  @Prop({ type: Boolean })
-  readonly bulkActions?: boolean
+const selected = computed({
+  get: () => props.modelValue ?? [],
+  set: (v) => emit('input', v)
+})
 
-  @Prop({ type: Array, required: true })
-  readonly headers!: DataTableHeader[]
-
-  get jobsWithKey (): QueueJobWithKey[] {
+const jobsWithKey = computed({
+  get: (): QueueJobWithKey[] => {
     const refresh = Date.now()
 
-    return this.jobs
+    return props.jobs
       .map(job => ({
         ...job,
         key: `${job.job_id}-${refresh}`
       }))
-  }
-
-  set jobsWithKey (value: QueueJobWithKey[]) {
+  },
+  set: (value: QueueJobWithKey[]) => {
     const filenames = value
       .map(job => job.filename)
 
-    if (this.$typedGetters['server/getIsMinApiVersion']('1.1.0')) {
+    if (typedGetters['server/getIsMinApiVersion']('1.1.0')) {
       SocketActions.serverJobQueuePostJob(filenames, true)
     } else {
       SocketActions.serverJobQueueDeleteJobs(['all'])
       SocketActions.serverJobQueuePostJob(filenames)
     }
   }
+})
 
-  get jobTotals (): JobTotals {
-    return this.jobs.reduce<JobTotals>((totals, job) => {
-      if (job.file) {
-        if ('filament_total' in job.file) {
-          totals.filamentLength += job.file.filament_total ?? 0
-        }
-
-        if ('filament_weight_total' in job.file) {
-          totals.filamentWeight += job.file.filament_weight_total ?? 0
-        }
-
-        if ('estimated_time' in job.file) {
-          totals.time += job.file.estimated_time ?? 0
-        }
-      } else {
-        totals.withoutFile++
+const jobTotals = computed((): JobTotals => {
+  return props.jobs.reduce<JobTotals>((totals, job) => {
+    if (job.file) {
+      if ('filament_total' in job.file) {
+        totals.filamentLength += job.file.filament_total ?? 0
       }
 
-      return totals
-    }, { filamentLength: 0, filamentWeight: 0, time: 0, withoutFile: 0 })
-  }
+      if ('filament_weight_total' in job.file) {
+        totals.filamentWeight += job.file.filament_weight_total ?? 0
+      }
 
-  get thumbnailSize () {
-    const thumbnailSize: number = this.$typedState.config.uiSettings.thumbnailSizes.jobQueue ?? 32
+      if ('estimated_time' in job.file) {
+        totals.time += job.file.estimated_time ?? 0
+      }
+    } else {
+      totals.withoutFile++
+    }
 
-    return this.dense ? thumbnailSize / 2 : thumbnailSize
-  }
+    return totals
+  }, { filamentLength: 0, filamentWeight: 0, time: 0, withoutFile: 0 })
+})
 
-  get estimates (): TimeEstimates {
-    return this.$typedGetters['printer/getTimeEstimates']
-  }
+const thumbnailSize = computed(() => {
+  const size: number = typedState.config.uiSettings.thumbnailSizes.jobQueue ?? 32
 
-  get eta () {
-    const base = this.printerPrinting || this.printerPaused
-      ? this.estimates.eta
-      : Date.now()
+  return props.dense ? size / 2 : size
+})
 
-    return base + this.jobTotals.time * 1000
-  }
+const estimates = computed((): TimeEstimates => typedGetters['printer/getTimeEstimates'])
 
-  getFilePaths (filename: string) {
-    return getFilePaths(filename, 'gcodes')
-  }
+const eta = computed(() => {
+  const base = printerPrinting.value || printerPaused.value
+    ? estimates.value.eta
+    : Date.now()
+
+  return base + jobTotals.value.time * 1000
+})
+
+function getFilePaths (filename: string) {
+  return getFilePathsUtil(filename, 'gcodes')
 }
 </script>
 

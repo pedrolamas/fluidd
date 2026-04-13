@@ -13,9 +13,9 @@
           v-model.number="extrudeLength"
           :disabled="!klippyReady || !activeExtruder"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(0.1),
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(0.1),
             maxExtrudeLengthRule
           ]"
           type="number"
@@ -51,9 +51,9 @@
           v-model.number="extrudeSpeed"
           :disabled="!klippyReady || !activeExtruder"
           :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(0.1),
+            Rules.required,
+            Rules.numberValid,
+            Rules.numberGreaterThanOrEqual(0.1),
             maxExtrudeSpeedRule
           ]"
           type="number"
@@ -80,78 +80,77 @@
   </v-form>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { Rules } from '@/plugins/filters'
+import { Waits } from '@/globals'
 import type { VForm } from 'vuetify/lib'
 
-@Component({})
-export default class ExtruderMoves extends Mixins(StateMixin, ToolheadMixin) {
-  @Ref('form')
-  readonly form!: VForm
+const { typedState, typedDispatch } = useStore()
+const { klippyReady, sendExtrudeGcode } = useStateMixin()
+const { activeExtruder, extruderReady, extruderDisconnected, maxExtrudeLength, maxExtrudeSpeed } = useToolheadMixin()
 
-  valid = true
+const form = ref<VForm>()
+const valid = ref(true)
 
-  get extrudeSpeed () {
-    const extrudeSpeed: number = this.$typedState.config.uiSettings.toolhead.extrudeSpeed
+const extrudeSpeed = computed({
+  get: () => {
+    const value: number = typedState.config.uiSettings.toolhead.extrudeSpeed
 
-    return extrudeSpeed === -1
-      ? this.$typedState.config.uiSettings.general.defaultExtrudeSpeed
-      : extrudeSpeed
-  }
+    return value === -1
+      ? typedState.config.uiSettings.general.defaultExtrudeSpeed
+      : value
+  },
+  set: (value: number) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.toolhead.extrudeSpeed',
+    value,
+    server: false
+  })
+})
 
-  set extrudeSpeed (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.toolhead.extrudeSpeed',
-      value,
-      server: false
-    })
-  }
+const extrudeLength = computed({
+  get: () => {
+    const value: number = typedState.config.uiSettings.toolhead.extrudeLength
 
-  get extrudeLength () {
-    const extrudeLength: number = this.$typedState.config.uiSettings.toolhead.extrudeLength
+    return value === -1
+      ? typedState.config.uiSettings.general.defaultExtrudeLength
+      : value
+  },
+  set: (value: number) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.toolhead.extrudeLength',
+    value,
+    server: false
+  })
+})
 
-    return extrudeLength === -1
-      ? this.$typedState.config.uiSettings.general.defaultExtrudeLength
-      : extrudeLength
-  }
+watch(activeExtruder, () => {
+  form.value?.validate()
+})
 
-  set extrudeLength (value: number) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.toolhead.extrudeLength',
-      value,
-      server: false
-    })
-  }
+function maxExtrudeLengthRule (value: number) {
+  return Rules.numberLessThanOrEqual(maxExtrudeLength.value)(value)
+}
 
-  @Watch('activeExtruder')
-  activeExtruderChanged () {
-    this.form.validate()
-  }
+function maxExtrudeSpeedRule (value: number) {
+  return Rules.numberLessThanOrEqual(maxExtrudeSpeed.value)(value)
+}
 
-  maxExtrudeLengthRule (value: number) {
-    return this.$rules.numberLessThanOrEqual(this.maxExtrudeLength)(value)
-  }
-
-  maxExtrudeSpeedRule (value: number) {
-    return this.$rules.numberLessThanOrEqual(this.maxExtrudeSpeed)(value)
-  }
-
-  retract () {
-    if (this.valid) {
-      this.sendExtrudeGcode(-this.extrudeLength, this.extrudeSpeed, this.$waits.onExtrude)
-    }
-  }
-
-  extrude () {
-    if (this.valid) {
-      this.sendExtrudeGcode(this.extrudeLength, this.extrudeSpeed, this.$waits.onExtrude)
-    }
-  }
-
-  mounted () {
-    this.form.validate()
+function retract () {
+  if (valid.value) {
+    sendExtrudeGcode(-extrudeLength.value, extrudeSpeed.value, Waits.onExtrude)
   }
 }
+
+function extrude () {
+  if (valid.value) {
+    sendExtrudeGcode(extrudeLength.value, extrudeSpeed.value, Waits.onExtrude)
+  }
+}
+
+onMounted(() => {
+  form.value?.validate()
+})
 </script>

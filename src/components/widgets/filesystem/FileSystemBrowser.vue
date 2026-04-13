@@ -28,10 +28,10 @@
       fixed-header
       @input="handleSelected"
     >
-      <template #item="{ headers, item, isSelected, select }">
+      <template #item="{ headers: slotHeaders, item, isSelected, select }">
         <app-data-table-row
           :key="item.name"
-          :headers="headers"
+          :headers="slotHeaders"
           :item="item"
           :is-selected="isSelected && item.name !== '..'"
           :draggable="isItemDraggable(item)"
@@ -84,28 +84,28 @@
             <job-history-item-status :job="item.history" />
           </template>
 
-          <template #[`item-value.filament_colors`]="{ value }">
-            <app-data-table-cell-colors :colors="value" />
+          <template #[`item-value.filament_colors`]="{ value: cellValue }">
+            <app-data-table-cell-colors :colors="cellValue" />
           </template>
 
-          <template #[`item-value.extruder_colors`]="{ value }">
-            <app-data-table-cell-colors :colors="value" />
+          <template #[`item-value.extruder_colors`]="{ value: cellValue }">
+            <app-data-table-cell-colors :colors="cellValue" />
           </template>
 
-          <template #[`item-value.filament_temps`]="{ value }">
-            <app-data-table-cell-temps :temps="value" />
+          <template #[`item-value.filament_temps`]="{ value: cellValue }">
+            <app-data-table-cell-temps :temps="cellValue" />
           </template>
 
-          <template #[`item-value.first_layer_bed_temp`]="{ value }">
-            {{ value }}<small>°C</small>
+          <template #[`item-value.first_layer_bed_temp`]="{ value: cellValue }">
+            {{ cellValue }}<small>°C</small>
           </template>
 
-          <template #[`item-value.first_layer_extr_temp`]="{ value }">
-            {{ value }}<small>°C</small>
+          <template #[`item-value.first_layer_extr_temp`]="{ value: cellValue }">
+            {{ cellValue }}<small>°C</small>
           </template>
 
-          <template #[`item-value.chamber_temp`]="{ value }">
-            {{ value }}<small>°C</small>
+          <template #[`item-value.chamber_temp`]="{ value: cellValue }">
+            {{ cellValue }}<small>°C</small>
           </template>
         </app-data-table-row>
       </template>
@@ -113,11 +113,12 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, VModel, PropSync } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useVuetify } from '@/composables/useVuetify'
 import type { FileBrowserEntry, RootProperties } from '@/store/files/types'
-import FilesMixin from '@/mixins/files'
-
 import JobHistoryItemStatus from '@/components/widgets/history/JobHistoryItemStatus.vue'
 import { SupportedImageFormats, SupportedMarkdownFormats, SupportedVideoFormats } from '@/globals'
 import type { TextSortOrder } from '@/store/config/types'
@@ -125,314 +126,269 @@ import type { DataTableHeader } from 'vuetify'
 import versionStringCompare from '@/util/version-string-compare'
 import { get } from 'lodash-es'
 import type { DefaultGetterFunction } from '@/components/ui/AppDataTableRow.vue'
+import { Filters } from '@/plugins/filters'
 
-@Component({
-  components: {
-    JobHistoryItemStatus
+const props = defineProps<{
+  value: FileBrowserEntry[]
+  root: string
+  files: FileBrowserEntry[]
+  dense?: boolean
+  loading?: boolean
+  headers: DataTableHeader[]
+  search?: string
+  dragState: boolean
+  bulkActions?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: FileBrowserEntry[]): void
+  (e: 'update:dragState', value: boolean): void
+  (e: 'row-click', item: FileBrowserEntry, event: MouseEvent): void
+  (e: 'move', items: FileBrowserEntry[], destination: FileBrowserEntry): void
+  (e: 'drag-start', item: FileBrowserEntry, items: FileBrowserEntry[], dataTransfer: DataTransfer): void
+}>()
+
+const selected = computed(() => props.value)
+
+const { typedState, typedGetters, typedDispatch } = useStore()
+const { getThumbUrl } = useFilesMixin()
+const vuetify = useVuetify()
+
+const dragItem = ref<FileBrowserEntry | null>(null)
+const ghost = ref<HTMLDivElement | undefined>(undefined)
+
+const rootProperties = computed<RootProperties>(() =>
+  typedGetters['files/getRootProperties'](props.root)
+)
+
+const readonly = computed(() => rootProperties.value.readonly)
+
+const thumbnailSize = computed(() => {
+  const size: number = typedState.config.uiSettings.thumbnailSizes[props.root] ?? 32
+  return props.dense ? size / 2 : size
+})
+
+const textSortOrder = computed<TextSortOrder>(() =>
+  typedState.config.uiSettings.general.textSortOrder
+)
+
+const filesAndFoldersDragAndDrop = computed(() =>
+  typedState.config.uiSettings.general.filesAndFoldersDragAndDrop
+)
+
+const draggedItems = computed(() => {
+  if (dragItem.value) {
+    const filteredSelectedItems = selected.value
+      .filter(item => item.name !== '..')
+
+    return filteredSelectedItems.length > 0
+      ? filteredSelectedItems
+      : [dragItem.value]
+  }
+
+  return []
+})
+
+const sortBy = computed({
+  get: () => {
+    const value: string | null = typedState.config.uiSettings.fileSystem.sortBy[props.root]
+    return value ?? 'modified'
+  },
+  set: (value: string | null | undefined) => {
+    typedDispatch('config/updateFileSystemSortBy', { root: props.root, value: value ?? null })
   }
 })
-export default class FileSystemBrowser extends Mixins(FilesMixin) {
-  @VModel({ type: Array, required: true })
-  selected!: FileBrowserEntry[]
 
-  @Prop({ type: String, required: true })
-  readonly root!: string
-
-  @Prop({ type: Array, required: true })
-  readonly files!: FileBrowserEntry[]
-
-  @Prop({ type: Boolean })
-  readonly dense?: boolean
-
-  @Prop({ type: Boolean })
-  readonly loading?: boolean
-
-  // Currently defined list of headers.
-  @Prop({ type: Array, required: true })
-  readonly headers!: DataTableHeader[]
-
-  @Prop({ type: String })
-  readonly search?: string
-
-  @PropSync('dragState', { type: Boolean, required: true })
-  dragStateModel!: boolean
-
-  @Prop({ type: Boolean })
-  readonly bulkActions?: boolean
-
-  dragItem: FileBrowserEntry | null = null
-  ghost?: HTMLDivElement = undefined
-
-  // Is the history component enabled
-  get showHistory (): boolean {
-    return (
-      this.$typedGetters['server/componentSupport']('history') &&
-      this.root === 'gcodes'
-    )
+const sortDesc = computed({
+  get: () => {
+    const value: boolean | null = typedState.config.uiSettings.fileSystem.sortDesc[props.root]
+    return value ?? true
+  },
+  set: (value: boolean | null | undefined) => {
+    typedDispatch('config/updateFileSystemSortDesc', { root: props.root, value: value ?? null })
   }
+})
 
-  get rootProperties (): RootProperties {
-    return this.$typedGetters['files/getRootProperties'](this.root)
-  }
+function customSort (items: FileBrowserEntry[], sortByArr: string[], sortDescArr: boolean[], locale: string) {
+  if (sortByArr === null || !sortByArr.length) return items
 
-  get readonly () {
-    return this.rootProperties.readonly
-  }
+  const stringCollator = new Intl.Collator(locale, {
+    sensitivity: 'accent',
+    usage: 'sort'
+  })
 
-  get thumbnailSize (): number {
-    const thumbnailSize: number = this.$typedState.config.uiSettings.thumbnailSizes[this.root] ?? 32
+  return items.sort((a, b) => {
+    if (a.type === 'directory' && (a.dirname === '..' || b.type !== 'directory')) return -1
+    if (b.type === 'directory' && (b.dirname === '..' || a.type !== 'directory')) return 1
 
-    return this.dense ? thumbnailSize / 2 : thumbnailSize
-  }
+    for (let i = 0; i < sortByArr.length; i++) {
+      const sortKey = sortByArr[i]
 
-  get textSortOrder (): TextSortOrder {
-    return this.$typedState.config.uiSettings.general.textSortOrder
-  }
+      const sortValues: unknown[] = [
+        get(a, sortKey),
+        get(b, sortKey)
+      ]
 
-  get filesAndFoldersDragAndDrop (): boolean {
-    return this.$typedState.config.uiSettings.general.filesAndFoldersDragAndDrop
-  }
+      if (sortValues[0] === sortValues[1]) {
+        continue
+      }
 
-  get draggedItems () {
-    if (this.dragItem) {
-      const filteredSelectedItems = this.selected
-        .filter(item => item.name !== '..')
+      if (sortDescArr[i]) {
+        sortValues.reverse()
+      }
 
-      const draggedItems = filteredSelectedItems.length > 0
-        ? filteredSelectedItems
-        : [this.dragItem]
+      if (
+        typeof sortValues[0] === 'number' &&
+        typeof sortValues[1] === 'number' &&
+        !Number.isNaN(sortValues[0]) &&
+        !Number.isNaN(sortValues[1])
+      ) {
+        return sortValues[0] - sortValues[1]
+      }
 
-      return draggedItems
+      const sortValuesAsString = sortValues
+        .map(s => s?.toString() ?? '')
+
+      if (textSortOrder.value === 'numeric-prefix') {
+        const [sortA, sortB] = sortValuesAsString
+          .map(s => s.match(/^\d+/))
+
+        if (sortA && sortB && sortA[0] !== sortB[0]) {
+          return +sortA[0] - +sortB[0]
+        }
+      } else if (textSortOrder.value === 'version') {
+        return versionStringCompare(sortValuesAsString[0], sortValuesAsString[1])
+      }
+
+      return stringCollator.compare(sortValuesAsString[0], sortValuesAsString[1])
     }
 
-    return []
-  }
+    return 0
+  })
+}
 
-  get sortBy (): string {
-    const sortBy: string | null = this.$typedState.config.uiSettings.fileSystem.sortBy[this.root]
+function handleSelected (sel: FileBrowserEntry[]) {
+  let newSel = sel
 
-    return sortBy ?? 'modified'
-  }
-
-  set sortBy (value: string | null | undefined) {
-    this.$typedDispatch('config/updateFileSystemSortBy', { root: this.root, value: value ?? null })
-  }
-
-  get sortDesc (): boolean {
-    const sortDesc: boolean | null = this.$typedState.config.uiSettings.fileSystem.sortDesc[this.root]
-
-    return sortDesc ?? true
-  }
-
-  set sortDesc (value: boolean | null | undefined) {
-    this.$typedDispatch('config/updateFileSystemSortDesc', { root: this.root, value: value ?? null })
-  }
-
-  customSort (items: FileBrowserEntry[], sortBy: string[], sortDesc: boolean[], locale: string) {
-    if (sortBy === null || !sortBy.length) return items
-
-    const stringCollator = new Intl.Collator(locale, {
-      sensitivity: 'accent',
-      usage: 'sort'
-    })
-
-    return items.sort((a, b) => {
-      if (a.type === 'directory' && (a.dirname === '..' || b.type !== 'directory')) return -1
-      if (b.type === 'directory' && (b.dirname === '..' || a.type !== 'directory')) return 1
-
-      for (let i = 0; i < sortBy.length; i++) {
-        const sortKey = sortBy[i]
-
-        const sortValues: unknown[] = [
-          get(a, sortKey),
-          get(b, sortKey)
-        ]
-
-        // If values are equal, continue
-        if (sortValues[0] === sortValues[1]) {
-          continue
-        }
-
-        // If sorting descending, reverse values
-        if (sortDesc[i]) {
-          sortValues.reverse()
-        }
-
-        // If values are of type number, compare as number
-        if (
-          typeof sortValues[0] === 'number' &&
-          typeof sortValues[1] === 'number' &&
-          !Number.isNaN(sortValues[0]) &&
-          !Number.isNaN(sortValues[1])
-        ) {
-          return sortValues[0] - sortValues[1]
-        }
-
-        const sortValuesAsString = sortValues
-          .map(s => s?.toString() ?? '')
-
-        if (this.textSortOrder === 'numeric-prefix') {
-          const [sortA, sortB] = sortValuesAsString
-            .map(s => s.match(/^\d+/))
-
-          // If are number prefixed, compare prefixes as number
-          if (sortA && sortB && sortA[0] !== sortB[0]) {
-            return +sortA[0] - +sortB[0]
-          }
-        } else if (this.textSortOrder === 'version') {
-          return versionStringCompare(sortValuesAsString[0], sortValuesAsString[1])
-        }
-
-        return stringCollator.compare(sortValuesAsString[0], sortValuesAsString[1])
-      }
-
-      return 0
-    })
-  }
-
-  handleSelected (selected: FileBrowserEntry[]) {
-    if (selected.length === 1) {
-      if (selected[0].name === '..') {
-        selected = []
-      } else {
-        selected = this.files
-          .filter(item => item.name === selected[0].name || item.name === '..')
-      }
-    }
-
-    this.$emit('input', selected)
-  }
-
-  getItemIcon (item: FileBrowserEntry) {
-    const readonly = !this.isItemWriteable(item)
-
-    if (item.type === 'file') {
-      if (item.extension === '.zip') {
-        return readonly ? '$fileZipLock' : '$fileZip'
-      } else if (
-        SupportedImageFormats.includes(item.extension) ||
-        SupportedVideoFormats.includes(item.extension)
-      ) {
-        return readonly ? '$fileImageLock' : '$fileImage'
-      } else if (
-        SupportedMarkdownFormats.includes(item.extension)
-      ) {
-        return readonly ? '$fileDocumentLock' : '$fileDocument'
-      } else {
-        return readonly ? '$fileLock' : '$file'
-      }
-    } else if (item.name === '..') {
-      return '$folderUp'
+  if (newSel.length === 1) {
+    if (newSel[0].name === '..') {
+      newSel = []
     } else {
-      return readonly ? '$folderLock' : '$folder'
+      newSel = props.files
+        .filter(item => item.name === newSel[0].name || item.name === '..')
     }
   }
 
-  // Determines if a row is currently in a draggable state or not.
-  isItemDraggable (item: FileBrowserEntry) {
-    return (
-      this.filesAndFoldersDragAndDrop &&
-      item.name !== '..' &&
-      this.files.length > 0 &&
-      (
-        this.selected.length === 0 ||
-        this.selected.includes(item)
-      )
-    )
-  }
+  emit('input', newSel)
+}
 
-  isItemWriteable (item: FileBrowserEntry) {
-    return (
-      !this.readonly &&
-      (
-        item.permissions === undefined ||
-        item.permissions.includes('w')
-      )
-    )
-  }
+function getItemIcon (item: FileBrowserEntry) {
+  const isReadonly = !isItemWriteable(item)
 
-  // Fake a drag image when the user drags a file or folder.
-  handleDragStart (item: FileBrowserEntry, event: DragEvent) {
-    if (this.dragStateModel !== true) {
-      this.dragItem = item
-      this.dragStateModel = true
-    }
-
-    if (event.dataTransfer) {
-      const draggedItems = this.draggedItems
-
-      this.ghost = document.createElement('div')
-      this.ghost.classList.add('bulk-drag')
-      this.ghost.classList.add((this.$vuetify.theme.dark) ? 'theme--dark' : 'theme--light')
-      this.ghost.innerHTML = draggedItems.length > 1
-        ? this.$tc('app.file_system.tooltip.items_count', draggedItems.length)
-        : item.name
-      document.body.appendChild(this.ghost)
-      event.dataTransfer.effectAllowed = 'all'
-      event.dataTransfer.setDragImage(this.ghost, 0, 0)
-
-      this.$emit('drag-start', item, draggedItems, event.dataTransfer)
-    }
-  }
-
-  // File was dropped on another table row.
-  handleDrop (item: FileBrowserEntry, event: DragEvent) {
-    this.handleDragLeave(event)
-
-    if (
-      item.type === 'directory' &&
-      this.isItemWriteable(item) &&
-      event.dataTransfer &&
-      this.dragItem &&
-      this.dragItem !== item
+  if (item.type === 'file') {
+    if (item.extension === '.zip') {
+      return isReadonly ? '$fileZipLock' : '$fileZip'
+    } else if (
+      SupportedImageFormats.includes(item.extension) ||
+      SupportedVideoFormats.includes(item.extension)
     ) {
-      const draggedItems = this.draggedItems
-
-      if (!draggedItems.includes(item)) {
-        this.$emit('move', draggedItems, item)
-      }
-    }
-  }
-
-  // Handles highlighting rows as drag over them
-  handleDragOver (item: FileBrowserEntry, event: DragEvent) {
-    if (
-      item.type === 'directory' &&
-      this.isItemWriteable(item) &&
-      event.dataTransfer &&
-      this.dragItem &&
-      this.dragItem !== item &&
-      !this.draggedItems.includes(item)
+      return isReadonly ? '$fileImageLock' : '$fileImage'
+    } else if (
+      SupportedMarkdownFormats.includes(item.extension)
     ) {
-      event.preventDefault()
-
-      event.dataTransfer.dropEffect = 'move'
-
-      if (event.target instanceof HTMLElement) {
-        let element: HTMLElement | null = event.target
-
-        while (element) {
-          if (element.tagName === 'TR') {
-            element.classList.add('active')
-
-            return
-          }
-
-          element = element.parentElement
-        }
-      }
+      return isReadonly ? '$fileDocumentLock' : '$fileDocument'
+    } else {
+      return isReadonly ? '$fileLock' : '$file'
     }
+  } else if (item.name === '..') {
+    return '$folderUp'
+  } else {
+    return isReadonly ? '$folderLock' : '$folder'
+  }
+}
+
+function isItemDraggable (item: FileBrowserEntry) {
+  return (
+    filesAndFoldersDragAndDrop.value &&
+    item.name !== '..' &&
+    props.files.length > 0 &&
+    (
+      selected.value.length === 0 ||
+      selected.value.includes(item)
+    )
+  )
+}
+
+function isItemWriteable (item: FileBrowserEntry) {
+  return (
+    !readonly.value &&
+    (
+      item.permissions === undefined ||
+      item.permissions.includes('w')
+    )
+  )
+}
+
+function handleDragStart (item: FileBrowserEntry, event: DragEvent) {
+  if (props.dragState !== true) {
+    dragItem.value = item
+    emit('update:dragState', true)
   }
 
-  // Handles un highlighting rows as we drag out of them.
-  handleDragLeave (event: DragEvent) {
+  if (event.dataTransfer) {
+    const items = draggedItems.value
+
+    ghost.value = document.createElement('div')
+    ghost.value.classList.add('bulk-drag')
+    ghost.value.classList.add((vuetify.theme.dark) ? 'theme--dark' : 'theme--light')
+    ghost.value.innerHTML = items.length > 1
+      ? `${items.length} items`
+      : item.name
+    document.body.appendChild(ghost.value)
+    event.dataTransfer.effectAllowed = 'all'
+    event.dataTransfer.setDragImage(ghost.value, 0, 0)
+
+    emit('drag-start', item, items, event.dataTransfer)
+  }
+}
+
+function handleDrop (item: FileBrowserEntry, event: DragEvent) {
+  handleDragLeave(event)
+
+  if (
+    item.type === 'directory' &&
+    isItemWriteable(item) &&
+    event.dataTransfer &&
+    dragItem.value &&
+    dragItem.value !== item
+  ) {
+    const items = draggedItems.value
+
+    if (!items.includes(item)) {
+      emit('move', items, item)
+    }
+  }
+}
+
+function handleDragOver (item: FileBrowserEntry, event: DragEvent) {
+  if (
+    item.type === 'directory' &&
+    isItemWriteable(item) &&
+    event.dataTransfer &&
+    dragItem.value &&
+    dragItem.value !== item &&
+    !draggedItems.value.includes(item)
+  ) {
+    event.preventDefault()
+
+    event.dataTransfer.dropEffect = 'move'
+
     if (event.target instanceof HTMLElement) {
       let element: HTMLElement | null = event.target
 
       while (element) {
         if (element.tagName === 'TR') {
-          element.classList.remove('active')
-
+          element.classList.add('active')
           return
         }
 
@@ -440,72 +396,86 @@ export default class FileSystemBrowser extends Mixins(FilesMixin) {
       }
     }
   }
+}
 
-  // Drag ended
-  handleDragEnd () {
-    const ghost = this.ghost
+function handleDragLeave (event: DragEvent) {
+  if (event.target instanceof HTMLElement) {
+    let element: HTMLElement | null = event.target
 
-    if (ghost) {
-      document.body.removeChild(ghost)
-      this.ghost = undefined
+    while (element) {
+      if (element.tagName === 'TR') {
+        element.classList.remove('active')
+        return
+      }
+
+      element = element.parentElement
     }
+  }
+}
 
-    this.dragItem = null
-    this.dragStateModel = false
+function handleDragEnd () {
+  const g = ghost.value
+
+  if (g) {
+    document.body.removeChild(g)
+    ghost.value = undefined
   }
 
-  getItemValue (item: FileBrowserEntry, header: DataTableHeader, defaultGetter: DefaultGetterFunction) {
-    const value = defaultGetter(item, header)
+  dragItem.value = null
+  emit('update:dragState', false)
+}
 
-    if (typeof value === 'number') {
-      switch (header.value) {
-        case 'object_height':
-        case 'filament_total':
-        case 'history.filament_used':
-          return this.$filters.getReadableLengthString(value)
+function getItemValue (item: FileBrowserEntry, header: DataTableHeader, defaultGetter: DefaultGetterFunction) {
+  const value = defaultGetter(item, header)
 
-        case 'first_layer_height':
-        case 'layer_height':
-        case 'nozzle_diameter':
-          return `${value} mm`
+  if (typeof value === 'number') {
+    switch (header.value) {
+      case 'object_height':
+      case 'filament_total':
+      case 'history.filament_used':
+        return Filters.getReadableLengthString(value)
 
-        case 'filament_weight_total':
-          return this.$filters.getReadableWeightString(value)
+      case 'first_layer_height':
+      case 'layer_height':
+      case 'nozzle_diameter':
+        return `${value} mm`
 
-        case 'estimated_time':
-        case 'history.print_duration':
-        case 'history.total_duration':
-          return this.$filters.formatCounterSeconds(value)
+      case 'filament_weight_total':
+        return Filters.getReadableWeightString(value)
 
-        case 'print_start_time':
-        case 'modified':
-          return this.$filters.formatDateTime(value * 1000)
+      case 'estimated_time':
+      case 'history.print_duration':
+      case 'history.total_duration':
+        return Filters.formatCounterSeconds(value)
 
-        case 'size':
-          return this.$filters.getReadableFileSizeString(value)
-      }
+      case 'print_start_time':
+      case 'modified':
+        return Filters.formatDateTime(value * 1000)
+
+      case 'size':
+        return Filters.getReadableFileSizeString(value)
     }
-
-    if (Array.isArray(value) && value.length > 0) {
-      switch (header.value) {
-        case 'filament_weights':
-          return value
-            .map(x => typeof x === 'number'
-              ? this.$filters.getReadableWeightString(x)
-              : x
-            )
-
-        case 'file_processors':
-          return value
-            .map(x => typeof x === 'string'
-              ? this.$filters.prettyCase(x)
-              : x
-            )
-      }
-    }
-
-    return value
   }
+
+  if (Array.isArray(value) && value.length > 0) {
+    switch (header.value) {
+      case 'filament_weights':
+        return value
+          .map(x => typeof x === 'number'
+            ? Filters.getReadableWeightString(x)
+            : x
+          )
+
+      case 'file_processors':
+        return value
+          .map(x => typeof x === 'string'
+            ? Filters.prettyCase(x)
+            : x
+          )
+    }
+  }
+
+  return value
 }
 </script>
 

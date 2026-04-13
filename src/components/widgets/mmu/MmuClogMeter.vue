@@ -116,71 +116,77 @@
   </svg>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, Ref, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useMmuMixin } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
 
-@Component({})
-export default class MmuClogMeter extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ default: 1 })
-  readonly rotationTime!: number
+withDefaults(defineProps<{
+  rotationTime?: number
+}>(), {
+  rotationTime: 1,
+})
 
-  @Ref('dialCircle')
-  readonly dialCircle!: SVGElement
+const {
+  encoderDesiredHeadroom,
+  encoderDetectionLength,
+  encoderDetectionMode,
+  encoderEnabled,
+  encoderFlowRate,
+} = useMmuMixin()
+const { typedState } = useStore()
 
-  private circumference: number = 2 * Math.PI * 50
-  private dialArc: number = this.circumference * (60 / 360)
-  private dashOffset: number = this.circumference
+const dialCircle = ref<SVGElement | null>(null)
 
-  private x1Start: number = 70 + 63 * Math.cos((120 * Math.PI) / 180)
-  private y1Start: number = 70 + 63 * Math.sin((120 * Math.PI) / 180)
-  private x1End: number = 70 + 63 * Math.cos((60 * Math.PI) / 180)
-  private y1End: number = 70 + 63 * Math.sin((60 * Math.PI) / 180)
+const circumference = 2 * Math.PI * 50
+const dialArc = circumference * (60 / 360)
+const dashOffset = ref(circumference)
 
-  x1MinHeadroom: number = 70 + 64 * Math.cos(((120 + 0) * Math.PI) / 180)
-  y1MinHeadroom: number = 70 + 64 * Math.sin(((120 + 0) * Math.PI) / 180)
-  headroomWarning: boolean = false
+const x1Start = 70 + 63 * Math.cos((120 * Math.PI) / 180)
+const y1Start = 70 + 63 * Math.sin((120 * Math.PI) / 180)
+const x1End = 70 + 63 * Math.cos((60 * Math.PI) / 180)
+const y1End = 70 + 63 * Math.sin((60 * Math.PI) / 180)
 
-  get headroomArc (): number {
-    return this.circumference * (1 - (this.encoderDesiredHeadroom / this.encoderDetectionLength) * (300 / 360))
-  }
+const x1MinHeadroom = ref(70 + 64 * Math.cos(((120 + 0) * Math.PI) / 180))
+const y1MinHeadroom = ref(70 + 64 * Math.sin(((120 + 0) * Math.PI) / 180))
+const headroomWarning = ref(false)
 
-  get headroomRotate (): number {
-    return 420 - (this.encoderDesiredHeadroom / this.encoderDetectionLength) * 300
-  }
+const headroomArc = computed(() =>
+  circumference * (1 - (encoderDesiredHeadroom.value / encoderDetectionLength.value) * (300 / 360))
+)
 
-  @Watch('$typedState.printer.printer.mmu.encoder.headroom')
-  onHeadroomChanged (newHeadroom: number): void {
-    const clogPercent =
-            (Math.min(Math.max(0, this.encoderDetectionLength - newHeadroom), this.encoderDetectionLength) /
-                this.encoderDetectionLength) *
-            100
-    const offset = ((100 - (clogPercent * 300) / 360) / 100) * this.circumference
-    this.animateMeter(offset)
-  }
+const headroomRotate = computed(() =>
+  420 - (encoderDesiredHeadroom.value / encoderDetectionLength.value) * 300
+)
 
-  @Watch('$typedState.printer.printer.mmu.encoder.min_headroom')
-  onMinHeadroomChanged (newMinHeadroom: number): void {
-    const clogPercent =
-            (Math.min(Math.max(0, this.encoderDetectionLength - newMinHeadroom), this.encoderDetectionLength) /
-                this.encoderDetectionLength) *
-            100
-    const angle = clogPercent * 3
-    this.x1MinHeadroom = 70 + 66 * Math.cos(((120 + angle) * Math.PI) / 180)
-    this.y1MinHeadroom = 70 + 66 * Math.sin(((120 + angle) * Math.PI) / 180)
-    this.headroomWarning = newMinHeadroom < this.encoderDesiredHeadroom
-  }
-
-  private animateMeter (newOffset: number) {
-    const currentOffset = parseFloat(getComputedStyle(this.dialCircle).strokeDashoffset) ?? this.circumference
-    const difference = Math.abs(currentOffset - newOffset)
-    const duration = (difference / this.circumference) * this.rotationTime
-    // const duration = this.rotationTime
-    this.dialCircle.style.transition = `stroke-dashoffset ${duration}s ease-out`
-    this.dashOffset = newOffset
-  }
+function animateMeter (newOffset: number, rotationTime: number) {
+  if (!dialCircle.value) return
+  const currentOffset = parseFloat(getComputedStyle(dialCircle.value).strokeDashoffset) ?? circumference
+  const difference = Math.abs(currentOffset - newOffset)
+  const duration = (difference / circumference) * rotationTime
+  dialCircle.value.style.transition = `stroke-dashoffset ${duration}s ease-out`
+  dashOffset.value = newOffset
 }
+
+watch(() => typedState.printer.printer.mmu?.encoder?.headroom, (newHeadroom) => {
+  if (newHeadroom == null) return
+  const clogPercent =
+    (Math.min(Math.max(0, encoderDetectionLength.value - newHeadroom), encoderDetectionLength.value) /
+      encoderDetectionLength.value) * 100
+  const offset = ((100 - (clogPercent * 300) / 360) / 100) * circumference
+  animateMeter(offset, 1)
+})
+
+watch(() => typedState.printer.printer.mmu?.encoder?.min_headroom, (newMinHeadroom) => {
+  if (newMinHeadroom == null) return
+  const clogPercent =
+    (Math.min(Math.max(0, encoderDetectionLength.value - newMinHeadroom), encoderDetectionLength.value) /
+      encoderDetectionLength.value) * 100
+  const angle = clogPercent * 3
+  x1MinHeadroom.value = 70 + 66 * Math.cos(((120 + angle) * Math.PI) / 180)
+  y1MinHeadroom.value = 70 + 66 * Math.sin(((120 + angle) * Math.PI) / 180)
+  headroomWarning.value = newMinHeadroom < encoderDesiredHeadroom.value
+})
 </script>
 
 <style scoped>

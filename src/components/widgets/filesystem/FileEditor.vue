@@ -1,6 +1,6 @@
 <template>
   <div
-    ref="monaco-editor"
+    ref="monacoEditor"
   >
     <div
       v-if="!editor"
@@ -15,218 +15,202 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Ref, Mixins, Watch } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useVuetify } from '@/composables/useVuetify'
 import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import md5 from 'md5'
 import type { RestoreViewState } from '@/store/config/types'
 import { consola } from 'consola'
+
 let monaco: typeof Monaco // dynamically imported
 
-@Component({})
-export default class FileEditor extends Mixins(BrowserMixin) {
-  @Prop({ type: String, required: true })
-  readonly value!: string
+const props = defineProps<{
+  value: string
+  filename: string
+  readonly?: boolean
+  canSaveAndRestart?: boolean
+  codeLens?: boolean
+  path: string
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly filename!: string
+const emit = defineEmits<{
+  (e: 'input', value: string | undefined): void
+  (e: 'save'): void
+  (e: 'save-as'): void
+  (e: 'save-and-restart'): void
+  (e: 'emergency-stop'): void
+  (e: 'ready'): void
+}>()
 
-  @Prop({ type: Boolean })
-  readonly readonly?: boolean
+const { isMobileViewport } = useBrowserMixin()
+const { typedState } = useStore()
+const { tc } = useI18n()
+const vuetify = useVuetify()
 
-  @Prop({ type: Boolean })
-  readonly canSaveAndRestart?: boolean
+const monacoEditor = ref<HTMLElement>()
+const editor = ref<Monaco.editor.IStandaloneCodeEditor | null>(null)
+const viewStateHash = ref<string | null>(null)
 
-  @Prop({ type: Boolean, default: true })
-  readonly codeLens?: boolean
+const pathFilename = computed(() =>
+  props.path ? `${props.path}/${props.filename}` : props.filename
+)
 
-  @Prop({ type: String, required: true })
-  readonly path!: string
+const apiFileUrl = computed(() =>
+  `${typedState.config.apiUrl}/server/files/${pathFilename.value}`
+)
 
-  @Ref('monaco-editor')
-  readonly monacoEditor!: HTMLElement
+const restoreViewState = computed<RestoreViewState>(() =>
+  typedState.config.uiSettings.editor.restoreViewState
+)
 
-  viewStateHash: string | null = null
+const restoreViewStateStorage = computed<Storage | undefined>(() => {
+  switch (restoreViewState.value) {
+    case 'local':
+      return localStorage
+    case 'session':
+      return sessionStorage
+    default:
+      return undefined
+  }
+})
 
-  // Our editor, once init'd.
-  editor: Monaco.editor.IStandaloneCodeEditor | null = null
+watch(() => props.filename, () => {
+  if (saveViewState()) {
+    viewStateHash.value = 'monaco.' + md5(apiFileUrl.value)
+  }
+})
 
-  @Watch('filename')
-  onFilenameChange () {
-    if (this.saveViewState()) {
-      this.viewStateHash = 'monaco.' + md5(this.apiFileUrl)
-    }
+async function initEditor () {
+  if (!monaco) {
+    const { default: promise } = await import('./setupMonaco')
+    monaco = await promise
   }
 
-  get pathFilename (): string {
-    return this.path ? `${this.path}/${this.filename}` : this.filename
+  if (vuetify.theme.dark) {
+    monaco.editor.setTheme('dark-converted')
+  } else {
+    monaco.editor.setTheme('light-converted')
   }
 
-  get apiFileUrl (): string {
-    return `${this.$typedState.config.apiUrl}/server/files/${this.pathFilename}`
-  }
+  editor.value = monaco.editor.create(monacoEditor.value!, {
+    contextmenu: true,
+    readOnly: props.readonly,
+    codeLens: props.codeLens,
+    automaticLayout: true,
+    fontSize: 16,
+    scrollbar: {
+      useShadows: false
+    },
+    minimap: {
+      enabled: (!isMobileViewport.value)
+    },
+    rulers: (isMobileViewport.value) ? [80, 120] : []
+  })
 
-  get restoreViewState (): RestoreViewState {
-    return this.$typedState.config.uiSettings.editor.restoreViewState
-  }
-
-  get restoreViewStateStorage (): Storage | undefined {
-    switch (this.restoreViewState) {
-      case 'local':
-        return localStorage
-
-      case 'session':
-        return sessionStorage
-    }
-  }
-
-  async mounted () {
-    // Init the editor.
-    await this.initEditor()
-  }
-
-  async initEditor () {
-    if (!monaco) {
-      const { default: promise } = await import('./setupMonaco')
-      monaco = await promise
-    }
-
-    // Set the correct theme.
-    if (this.$vuetify.theme.dark) {
-      monaco.editor.setTheme('dark-converted')
-    } else {
-      monaco.editor.setTheme('light-converted')
-    }
-
-    // Create an editor instance.
-    this.editor = monaco.editor.create(this.monacoEditor, {
-      contextmenu: true,
-      readOnly: this.readonly,
-      codeLens: this.codeLens,
-      automaticLayout: true,
-      fontSize: 16,
-      scrollbar: {
-        useShadows: false
-      },
-      minimap: {
-        enabled: (!this.isMobileViewport)
-      },
-      rulers: (this.isMobileViewport) ? [80, 120] : []
+  if (!props.readonly) {
+    editor.value.addAction({
+      id: 'action-save-file',
+      label: tc('app.general.btn.save'),
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => { emit('save') }
     })
 
-    if (!this.readonly) {
-      this.editor.addAction({
-        id: 'action-save-file',
-        label: this.$tc('app.general.btn.save'),
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
-        run: () => {
-          this.$emit('save')
-        }
-      })
-
-      this.editor.addAction({
-        id: 'action-save-file-as',
-        label: this.$tc('app.general.btn.save_as'),
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS],
-        run: () => {
-          this.$emit('save-as')
-        }
-      })
-    }
-
-    if (this.canSaveAndRestart) {
-      this.editor.addAction({
-        id: 'action-save-file-restart',
-        label: this.$tc('app.general.btn.save_restart'),
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyS],
-        run: () => {
-          this.$emit('save-and-restart')
-        }
-      })
-    }
-
-    this.editor.addAction({
-      id: 'action-emergency-stop',
-      label: this.$tc('app.general.tooltip.estop'),
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
-      run: () => {
-        this.$emit('emergency-stop')
-      }
-    })
-
-    // Define the model. The filename will map to the supported languages.
-    const model = monaco.editor.createModel(
-      this.value,
-      undefined,
-      monaco.Uri.file(this.pathFilename)
-    )
-    this.editor.setModel(model)
-
-    const restoreViewStateStorage = this.restoreViewStateStorage
-
-    if (restoreViewStateStorage) {
-      this.viewStateHash = 'monaco.' + md5(this.apiFileUrl)
-
-      const viewState = restoreViewStateStorage.getItem(this.viewStateHash)
-
-      if (viewState) {
-        this.editor.restoreViewState(JSON.parse(viewState) as Monaco.editor.ICodeEditorViewState | null)
-      }
-    }
-
-    // Focus the editor.
-    this.$nextTick(() => {
-      focus()
-    })
-
-    this.$emit('ready')
-
-    this.editor.onDidChangeModelContent(() => {
-      const value = this.editor?.getValue()
-
-      this.$emit('input', value)
+    editor.value.addAction({
+      id: 'action-save-file-as',
+      label: tc('app.general.btn.save_as'),
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS],
+      run: () => { emit('save-as') }
     })
   }
 
-  focus () {
-    this.editor?.focus()
+  if (props.canSaveAndRestart) {
+    editor.value.addAction({
+      id: 'action-save-file-restart',
+      label: tc('app.general.btn.save_restart'),
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyS],
+      run: () => { emit('save-and-restart') }
+    })
   }
 
-  showCommandPalette () {
-    if (this.editor) {
-      this.editor.focus()
-      this.editor.trigger(null, 'editor.action.quickCommand', null)
+  editor.value.addAction({
+    id: 'action-emergency-stop',
+    label: tc('app.general.tooltip.estop'),
+    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
+    run: () => { emit('emergency-stop') }
+  })
+
+  const model = monaco.editor.createModel(
+    props.value,
+    undefined,
+    monaco.Uri.file(pathFilename.value)
+  )
+  editor.value.setModel(model)
+
+  const storage = restoreViewStateStorage.value
+
+  if (storage) {
+    viewStateHash.value = 'monaco.' + md5(apiFileUrl.value)
+
+    const viewState = storage.getItem(viewStateHash.value)
+
+    if (viewState) {
+      editor.value.restoreViewState(JSON.parse(viewState) as Monaco.editor.ICodeEditorViewState | null)
     }
   }
 
-  saveViewState (): boolean {
-    const restoreViewStateStorage = this.restoreViewStateStorage
+  nextTick(() => { focus() })
 
-    if (this.editor && restoreViewStateStorage && this.viewStateHash) {
-      const viewState = this.editor.saveViewState()
+  emit('ready')
 
-      try {
-        restoreViewStateStorage.setItem(this.viewStateHash, JSON.stringify(viewState))
+  editor.value.onDidChangeModelContent(() => {
+    const value = editor.value?.getValue()
+    emit('input', value)
+  })
+}
 
-        return true
-      } catch (e) {
-        consola.error('[Storage] setItem', e)
-      }
-    }
+function focus () {
+  editor.value?.focus()
+}
 
-    return false
-  }
-
-  // Ensure we dispose of our models and editor.
-  destroyed () {
-    this.saveViewState()
-
-    monaco?.editor.getModels().forEach(model => model.dispose())
-
-    this.editor?.dispose()
+function showCommandPalette () {
+  if (editor.value) {
+    editor.value.focus()
+    editor.value.trigger(null, 'editor.action.quickCommand', null)
   }
 }
+
+function saveViewState (): boolean {
+  const storage = restoreViewStateStorage.value
+
+  if (editor.value && storage && viewStateHash.value) {
+    const viewState = editor.value.saveViewState()
+
+    try {
+      storage.setItem(viewStateHash.value, JSON.stringify(viewState))
+      return true
+    } catch (e) {
+      consola.error('[Storage] setItem', e)
+    }
+  }
+
+  return false
+}
+
+onMounted(async () => {
+  await initEditor()
+})
+
+onUnmounted(() => {
+  saveViewState()
+  monaco?.editor.getModels().forEach(model => model.dispose())
+  editor.value?.dispose()
+})
+
+defineExpose({ focus, showCommandPalette })
 </script>
 
 <style lang="scss" scoped>

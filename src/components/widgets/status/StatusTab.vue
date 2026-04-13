@@ -235,169 +235,126 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import StatusLabel from './StatusLabel.vue'
-import StateMixin from '@/mixins/state'
-import FilesMixin from '@/mixins/files'
-import ToolheadMixin from '@/mixins/toolhead'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { useVuetify } from '@/composables/useVuetify'
 import FilePreviewDialog from '../filesystem/FilePreviewDialog.vue'
 import type { TimeEstimates } from '@/store/printer/types'
 import type { PrintInProgressLayout } from '@/store/config/types'
 import type { AppFileWithMeta } from '@/store/files/types'
 
-@Component({
-  components: {
-    StatusLabel,
-    FilePreviewDialog
-  }
+const { printerPrinting } = useStateMixin()
+const { getThumbUrl, getThumb } = useFilesMixin()
+const { filamentDiameter } = useToolheadMixin()
+const { typedState, typedGetters } = useStore()
+const vuetify = useVuetify()
+
+const filePreviewState = ref<any>({
+  open: false,
+  filename: '',
+  src: ''
 })
-export default class StatusTab extends Mixins(StateMixin, FilesMixin, ToolheadMixin) {
-  filePreviewState: any = {
-    open: false,
-    filename: '',
-    src: ''
-  }
 
-  get visible () {
-    // Content is visible if;
-    // We are printing or,
-    // We have a message or,
-    // We have a current filename or,
-    // We have a thumbnail and are lgAndUp or,
-    // Progress is visible and we're mdAndDown
-    return (
-      this.printerPrinting ||
-      this.message ||
-      this.printerFile != null ||
-      this.thumbVisible ||
-      (
-        this.progressVisible &&
-        this.$vuetify.breakpoint.mdAndDown
-      )
+const visible = computed(() => {
+  return (
+    printerPrinting.value ||
+    message.value ||
+    printerFile.value != null ||
+    thumbVisible.value ||
+    (
+      progressVisible.value &&
+      vuetify.breakpoint.mdAndDown
     )
+  )
+})
+
+const progressVisible = computed((): boolean => {
+  return (
+    printerPrinting.value ||
+    filename.value !== ''
+  )
+})
+
+const overviewVisible = computed((): boolean => {
+  return (
+    !printerPrinting.value &&
+    printerFile.value != null
+  )
+})
+
+const thumbVisible = computed((): boolean => {
+  return (
+    printerFile.value != null &&
+    thumbnail.value != null &&
+    vuetify.breakpoint.lgAndUp
+  )
+})
+
+const printInProgressLayout = computed((): PrintInProgressLayout =>
+  typedState.config.uiSettings.general.printInProgressLayout
+)
+
+const printerFile = computed((): AppFileWithMeta | undefined => typedGetters['printer/getPrinterFile'])
+
+const filename = computed((): string =>
+  typedState.printer.printer.print_stats?.filename ?? ''
+)
+
+const message = computed((): string =>
+  typedState.printer.printer.display_status?.message ?? ''
+)
+
+const thumbnail = computed(() => {
+  if (printerFile.value?.thumbnails) {
+    return getThumbUrl(printerFile.value, 'gcodes', printerFile.value.path, true, printerFile.value.modified)
   }
+  return ''
+})
 
-  get progressVisible (): boolean {
-    // Progress is visible if;
-    // We are printing or,
-    // We have a current filename
-    return (
-      this.printerPrinting ||
-      this.filename !== ''
-    )
-  }
+const liveVelocity = computed((): number =>
+  typedState.printer.printer.motion_report?.live_velocity ?? 0
+)
 
-  get overviewVisible (): boolean {
-    // Overview is visible if;
-    // We are not printing and,
-    // We have a current filename
-    return (
-      !this.printerPrinting &&
-      this.printerFile != null
-    )
-  }
+const liveExtruderVelocity = computed((): number =>
+  typedState.printer.printer.motion_report?.live_extruder_velocity ?? 0
+)
 
-  get thumbVisible (): boolean {
-    return (
-      this.printerFile != null &&
-      this.thumbnail != null &&
-      this.$vuetify.breakpoint.lgAndUp
-    )
-  }
+const liveFlow = computed((): number =>
+  Math.PI / 4 * filamentDiameter.value ** 2 * liveExtruderVelocity.value
+)
 
-  get printInProgressLayout (): PrintInProgressLayout {
-    return this.$typedState.config.uiSettings.general.printInProgressLayout
-  }
+const estimates = computed((): TimeEstimates => typedGetters['printer/getTimeEstimates'])
 
-  get printerFile (): AppFileWithMeta | undefined {
-    return this.$typedGetters['printer/getPrinterFile']
-  }
+const layers = computed((): number => typedGetters['printer/getPrintLayers'])
+const layer = computed((): number => typedGetters['printer/getPrintLayer'])
 
-  /**
-   * Active filename in print_stats
-   */
-  get filename (): string {
-    return this.$typedState.printer.printer.print_stats?.filename ?? ''
-  }
+const currentToolChange = computed((): number =>
+  typedState.printer.printer?.AFC?.current_toolchange ?? 0
+)
 
-  /**
-   * M117 messaging
-   */
-  get message (): string {
-    return this.$typedState.printer.printer.display_status?.message ?? ''
-  }
+const totalToolChangeCount = computed((): number =>
+  typedState.printer.printer?.AFC?.number_of_toolchanges ?? 0
+)
 
-  /**
-   * Active thumbnail.
-   */
-  get thumbnail () {
-    if (this.printerFile?.thumbnails) {
-      const url = this.getThumbUrl(this.printerFile, 'gcodes', this.printerFile.path, true, this.printerFile.modified)
+const filamentUsed = computed((): number =>
+  typedState.printer.printer.print_stats?.filament_used ?? 0
+)
 
-      return url
-    }
-  }
+async function handleViewThumbnail () {
+  const pf = printerFile.value
+  const thumb = pf && getThumb(pf, 'gcodes', pf.path, true, pf.modified)
 
-  get liveVelocity (): number {
-    return this.$typedState.printer.printer.motion_report?.live_velocity ?? 0
-  }
-
-  get liveExtruderVelocity (): number {
-    return this.$typedState.printer.printer.motion_report?.live_extruder_velocity ?? 0
-  }
-
-  get liveFlow (): number {
-    return Math.PI / 4 * this.filamentDiameter ** 2 * this.liveExtruderVelocity
-  }
-
-  /**
-   * Actual estimates for during a print.
-   */
-  get estimates (): TimeEstimates {
-    return this.$typedGetters['printer/getTimeEstimates']
-  }
-
-  /**
-   * The total estimated layer count.
-   */
-  get layers (): number {
-    return this.$typedGetters['printer/getPrintLayers']
-  }
-
-  /**
-   * Current estimated layer based on current z pos.
-   */
-  get layer (): number {
-    return this.$typedGetters['printer/getPrintLayer']
-  }
-
-  get currentToolChange (): number {
-    return this.$typedState.printer.printer?.AFC?.current_toolchange ?? 0
-  }
-
-  get totalToolChangeCount (): number {
-    return this.$typedState.printer.printer?.AFC?.number_of_toolchanges ?? 0
-  }
-
-  /**
-   * Filament used according to print stats.
-   */
-  get filamentUsed (): number {
-    return this.$typedState.printer.printer.print_stats?.filament_used ?? 0
-  }
-
-  async handleViewThumbnail () {
-    const printerFile = this.printerFile
-    const thumb = printerFile && this.getThumb(printerFile, 'gcodes', printerFile.path, true, printerFile.modified)
-
-    if (thumb) {
-      this.filePreviewState = {
-        open: true,
-        filename: printerFile.filename,
-        src: thumb.url,
-        width: thumb.width
-      }
+  if (thumb) {
+    filePreviewState.value = {
+      open: true,
+      filename: pf.filename,
+      src: thumb.url,
+      width: thumb.width
     }
   }
 }

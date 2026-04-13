@@ -52,7 +52,7 @@ const emit = defineEmits<{
 
 const open = computed({
   get: () => props.value,
-  set: (value: boolean) => emit('input', value)
+  set: (value: boolean | undefined) => emit('input', value ?? false)
 })
 
 const name = ref('default')

@@ -6,9 +6,7 @@
       :value="value"
       :reset-value="0"
       :label="(rpm) ? `${fan.prettyName} <small>${rpm}</small>` : fan.prettyName"
-      :rules="[
-        customRules.minFan
-      ]"
+      :rules="[[customRules.minFan]]"
       :disabled="!klippyReady || fan.disconnected"
       :locked="isMobileUserAgent"
       :loading="hasWait(`${$waits.onSetFanSpeed}${fan.name}`)"
@@ -38,60 +36,62 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
+<script setup lang="ts">
+import { computed } from 'vue'
 import type { Fan } from '@/store/printer/types'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({})
-export default class OutputFan extends Mixins(StateMixin, BrowserMixin) {
-  @Prop({ type: Object, required: true })
-  readonly fan!: Fan
+const props = defineProps<{
+  fan: Fan
+}>()
 
-  get prettyValue () {
-    return (this.value === 0)
-      ? this.$t('app.general.label.off')
-      : `${this.value} %`
+const { klippyReady, hasWait, sendGcode } = useStateMixin()
+const { isMobileUserAgent } = useBrowserMixin()
+const { t } = useI18n()
+
+const prettyValue = computed(() => {
+  return (value.value === 0)
+    ? t('app.general.label.off')
+    : `${value.value} %`
+})
+
+const value = computed(() => {
+  if (!props.fan.speed) return 0
+  const speed = props.fan.speed / (props.fan.config?.max_power || 1)
+  return Math.round(speed * 100)
+})
+
+function handleChange (target: number) {
+  // If this is a controllable fan, it's either the part fan [fan] or a generic fan [fan_generic].
+  if (props.fan.type === 'fan') {
+    target = Math.ceil(target * 2.55)
+    sendGcode(`M106 S${target}`, `${Waits.onSetFanSpeed}${props.fan.name}`)
   }
-
-  get value () {
-    if (!this.fan.speed) return 0
-    const speed = this.fan.speed / (this.fan.config?.max_power || 1)
-    return Math.round(speed * 100)
-  }
-
-  handleChange (target: number) {
-    // If this is a controllable fan, it's either the part fan [fan] or a generic fan [fan_generic].
-    if (this.fan.type === 'fan') {
-      target = Math.ceil(target * 2.55)
-      this.sendGcode(`M106 S${target}`, `${this.$waits.onSetFanSpeed}${this.fan.name}`)
-    }
-    if (this.fan.type === 'fan_generic') {
-      target = target / 100
-      this.sendGcode(`SET_FAN_SPEED FAN=${encodeGcodeParamValue(this.fan.name)} SPEED=${target}`, `${this.$waits.onSetFanSpeed}${this.fan.name}`)
-    }
-  }
-
-  get rpm () {
-    return (this.fan.rpm)
-      ? this.fan.rpm.toFixed() + ' rpm'
-      : undefined
-  }
-
-  get customRules () {
-    return {
-      minFan: (v: string | number) => {
-        const off_below = (this.fan.config?.off_below || 0) * 100
-
-        if (!off_below) return true
-
-        v = +v
-
-        return (v >= off_below || v === 0) || this.$t('app.general.simple_form.error.min_or_0', { min: off_below })
-      }
-    }
+  if (props.fan.type === 'fan_generic') {
+    target = target / 100
+    sendGcode(`SET_FAN_SPEED FAN=${encodeGcodeParamValue(props.fan.name)} SPEED=${target}`, `${Waits.onSetFanSpeed}${props.fan.name}`)
   }
 }
+
+const rpm = computed(() => {
+  return (props.fan.rpm)
+    ? props.fan.rpm.toFixed() + ' rpm'
+    : undefined
+})
+
+const customRules = computed(() => ({
+  minFan: (v: any): string | boolean => {
+    const off_below = (props.fan.config?.off_below || 0) * 100
+
+    if (!off_below) return true
+
+    const num = +v
+
+    return (num >= off_below || num === 0) || t('app.general.simple_form.error.min_or_0', { min: off_below })
+  }
+}))
 </script>

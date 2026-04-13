@@ -25,7 +25,7 @@
           :disabled="!klippyReady || (!xHomed && !xForceMove)"
           :readonly="printerPrinting"
           :value="(useGcodeCoords) ? gcodePosition[0].toFixed(2) : toolheadPosition[0].toFixed(2)"
-          @submit="moveAxisTo('X', +$event)"
+          @submit="moveAxisTo('X', Number($event))"
         />
       </v-col>
       <v-col
@@ -48,7 +48,7 @@
           :disabled="!klippyReady || (!yHomed && !yForceMove)"
           :readonly="printerPrinting"
           :value="(useGcodeCoords) ? gcodePosition[1].toFixed(2) : toolheadPosition[1].toFixed(2)"
-          @submit="moveAxisTo('Y', +$event)"
+          @submit="moveAxisTo('Y', Number($event))"
         />
       </v-col>
       <v-col
@@ -71,7 +71,7 @@
           :disabled="!klippyReady || (!zHomed && !zForceMove)"
           :readonly="printerPrinting"
           :value="(useGcodeCoords) ? gcodePosition[2].toFixed(3) : toolheadPosition[2].toFixed(3)"
-          @submit="moveAxisTo('Z', +$event)"
+          @submit="moveAxisTo('Z', Number($event))"
         />
       </v-col>
       <v-col
@@ -121,10 +121,11 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
 
 type Axis = 'X' | 'Y' | 'Z'
 
@@ -134,76 +135,70 @@ const axisIndexMap: Record<Axis, number> = {
   Z: 2
 }
 
-@Component({})
-export default class ToolheadPosition extends Mixins(StateMixin, ToolheadMixin) {
-  get gcodePosition (): [number, number, number, ...number[]] {
-    return this.$typedState.printer.printer.gcode_move.gcode_position
+const { klippyReady, printerPrinting, sendGcode, sendMoveGcode } = useStateMixin()
+const {
+  xHomed, yHomed, zHomed,
+  xHasMultipleSteppers, yHasMultipleSteppers, zHasMultipleSteppers,
+  forceMoveEnabled
+} = useToolheadMixin()
+const { typedState, typedGetters } = useStore()
+
+const gcodePosition = computed((): [number, number, number, ...number[]] =>
+  typedState.printer.printer.gcode_move.gcode_position
+)
+
+const toolheadPosition = computed((): [number, number, number, ...number[]] =>
+  typedState.printer.printer.toolhead.position
+)
+
+const livePosition = computed((): [number, number, number, ...number[]] =>
+  typedState.printer.printer.motion_report?.live_position ?? [0, 0, 0]
+)
+
+const useGcodeCoords = computed((): boolean =>
+  typedState.config.uiSettings.general.useGcodeCoords
+)
+
+const xForceMove = computed((): boolean => forceMoveEnabled.value && !xHasMultipleSteppers.value)
+const yForceMove = computed((): boolean => forceMoveEnabled.value && !yHasMultipleSteppers.value)
+const zForceMove = computed((): boolean => forceMoveEnabled.value && !zHasMultipleSteppers.value)
+
+const usesAbsolutePositioning = computed((): boolean =>
+  typedState.printer.printer.gcode_move.absolute_coordinates
+)
+
+const positioning = computed({
+  get: () => usesAbsolutePositioning.value ? 0 : 1,
+  set: (value: number) => {
+    sendGcode(`G9${value}`)
   }
+})
 
-  get toolheadPosition (): [number, number, number, ...number[]] {
-    return this.$typedState.printer.printer.toolhead.position
-  }
+const printerSettings = computed((): Klipper.SettingsState => typedGetters['printer/getPrinterSettings'])
 
-  get livePosition (): [number, number, number, ...number[]] {
-    return this.$typedState.printer.printer.motion_report?.live_position ?? [0, 0, 0]
-  }
+function moveAxisTo (axis: Axis, pos: number) {
+  const axisIndex = axisIndexMap[axis]
+  const currentPos = useGcodeCoords.value
+    ? gcodePosition.value[axisIndex]
+    : toolheadPosition.value[axisIndex]
 
-  get useGcodeCoords (): boolean {
-    return this.$typedState.config.uiSettings.general.useGcodeCoords
-  }
+  if (currentPos !== pos) {
+    const rate: number = axis === 'Z'
+      ? typedState.config.uiSettings.general.defaultToolheadZSpeed
+      : typedState.config.uiSettings.general.defaultToolheadXYSpeed
 
-  get xForceMove (): boolean {
-    return this.forceMoveEnabled && !this.xHasMultipleSteppers
-  }
-
-  get yForceMove (): boolean {
-    return this.forceMoveEnabled && !this.yHasMultipleSteppers
-  }
-
-  get zForceMove (): boolean {
-    return this.forceMoveEnabled && !this.zHasMultipleSteppers
-  }
-
-  get usesAbsolutePositioning (): boolean {
-    return this.$typedState.printer.printer.gcode_move.absolute_coordinates
-  }
-
-  get positioning () {
-    return this.usesAbsolutePositioning ? 0 : 1
-  }
-
-  set positioning (value: number) {
-    this.sendGcode(`G9${value}`)
-  }
-
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
-  }
-
-  moveAxisTo (axis: Axis, pos: number) {
-    const axisIndex = axisIndexMap[axis]
-    const currentPos = this.useGcodeCoords
-      ? this.gcodePosition[axisIndex]
-      : this.toolheadPosition[axisIndex]
-
-    if (currentPos !== pos) {
-      const rate: number = axis === 'Z'
-        ? this.$typedState.config.uiSettings.general.defaultToolheadZSpeed
-        : this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
-
-      if (this.forceMoveEnabled) {
-        const accel: number = axis === 'Z'
-          ? this.printerSettings.printer?.max_z_accel ?? 100
-          : this.$typedState.printer.printer.toolhead.max_accel
-        this.sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${pos} VELOCITY=${rate} ACCEL=${accel}`)
-      } else {
-        this.sendMoveGcode(
-          {
-            [axis]: pos
-          },
-          rate,
-          true)
-      }
+    if (forceMoveEnabled.value) {
+      const accel: number = axis === 'Z'
+        ? printerSettings.value.printer?.max_z_accel ?? 100
+        : typedState.printer.printer.toolhead.max_accel
+      sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${pos} VELOCITY=${rate} ACCEL=${accel}`)
+    } else {
+      sendMoveGcode(
+        {
+          [axis]: pos
+        },
+        rate,
+        true)
     }
   }
 }

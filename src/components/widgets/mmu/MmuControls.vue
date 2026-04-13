@@ -191,80 +191,73 @@
   </v-container>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref, Watch } from 'vue-property-decorator'
-import { Debounce } from 'vue-debounce-decorator'
+<script setup lang="ts">
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import type { VBtn } from 'vuetify/lib'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useMmuMixin, TOOL_GATE_BYPASS, FILAMENT_POS_UNLOADED, GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER, GATE_EMPTY } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 
-@Component({})
-export default class MmuControls extends Mixins(StateMixin, MmuMixin) {
-  private btnSize: number = 2
+const { klippyReady, sendGcode, hasWait } = useStateMixin()
+const { gate, filamentPos, canSend, isMmuPausedAndLocked } = useMmuMixin()
+const { typedState } = useStore()
+const { t } = useI18n()
 
-  @Ref('refBtn')
-  readonly refBtn?: VBtn
+const btnSize = ref(2)
+const refBtn = ref<VBtn | null>(null)
 
-  get unloadButtonText () {
-    if (this.gate === this.TOOL_GATE_BYPASS) return this.$t('app.mmu.btn.unload_ext')
-    return this.$t('app.mmu.btn.unload')
-  }
+const unloadButtonText = computed(() =>
+  gate.value === TOOL_GATE_BYPASS ? t('app.mmu.btn.unload_ext') : t('app.mmu.btn.unload')
+)
 
-  get loadButtonText () {
-    if (this.gate === this.TOOL_GATE_BYPASS) return this.$t('app.mmu.btn.load_ext')
-    return this.$t('app.mmu.btn.load')
-  }
+const loadButtonText = computed(() =>
+  gate.value === TOOL_GATE_BYPASS ? t('app.mmu.btn.load_ext') : t('app.mmu.btn.load')
+)
 
-  @Debounce(500)
-  checkButtonWidth () {
-    this.$nextTick(() => {
-      if (this.refBtn) {
-        const width = this.refBtn.$el.offsetWidth ?? 0
-        if (width === 0) {
-          this.btnSize = 2
-        } else if (width < 95) {
-          this.btnSize = 0
-        } else if (width < 120) {
-          this.btnSize = 1
-        } else {
-          this.btnSize = 2
-        }
+const btnClass = computed(() => {
+  const classes = ['base-btn']
+  if (btnSize.value === 0) classes.push('btn-no-text')
+  else if (btnSize.value === 1) classes.push('btn-small-text')
+  return classes
+})
+
+const showTooltip = computed(() => btnSize.value === 0)
+
+const currentGateStatus = computed(() =>
+  typedState.printer.printer.mmu?.gate_status?.[gate.value] ?? -1
+)
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function checkButtonWidth () {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    nextTick(() => {
+      if (refBtn.value) {
+        const width = (refBtn.value.$el as HTMLElement).offsetWidth ?? 0
+        if (width === 0) btnSize.value = 2
+        else if (width < 95) btnSize.value = 0
+        else if (width < 120) btnSize.value = 1
+        else btnSize.value = 2
       }
     })
-  }
-
-  get btnClass (): string[] {
-    const classes = ['base-btn']
-    if (this.btnSize === 0) {
-      classes.push('btn-no-text')
-    } else if (this.btnSize === 1) {
-      classes.push('btn-small-text')
-    }
-    return classes
-  }
-
-  get showTooltip (): boolean {
-    return this.btnSize === 0
-  }
-
-  get currentGateStatus (): number {
-    return this.$typedState.printer.printer.mmu?.gate_status?.[this.gate] ?? -1
-  }
-
-  @Watch('$typedState.gui.view.mmu.largeFilamentStatus')
-  onFilamentStatusSizeChange (): void {
-    this.checkButtonWidth()
-  }
-
-  mounted () {
-    this.checkButtonWidth()
-    window.addEventListener('resize', this.checkButtonWidth)
-  }
-
-  beforeDestroy () {
-    window.removeEventListener('resize', this.checkButtonWidth)
-  }
+  }, 500)
 }
+
+watch(() => typedState.config.uiSettings.mmu.largeFilamentStatus, () => {
+  checkButtonWidth()
+})
+
+onMounted(() => {
+  checkButtonWidth()
+  window.addEventListener('resize', checkButtonWidth)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkButtonWidth)
+  if (debounceTimer) clearTimeout(debounceTimer)
+})
 </script>
 
 <style scoped>

@@ -14,8 +14,8 @@
         :hidden="true"
       />
       <CameraItem
-        :camera="camera"
-        :embedded="true"
+        v-if="cameraEntry"
+        :camera="cameraEntry"
         crossorigin="anonymous"
         @frame="handlePrinterCameraFrame"
       />
@@ -23,145 +23,160 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Ref, VModel } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useI18n } from '@/composables/useI18n'
 import QrScanner from 'qr-scanner'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
 import type { Spool } from '@/store/spoolman/types'
-import BrowserMixin from '@/mixins/browser'
 
 const spoomanDataPatterns = [
   /web\+spoolman:s-(\d+)/,
   /\/spool\/show\/(\d+)\/?/
 ]
 
-@Component({
-  components: { CameraItem }
+const props = defineProps<{
+  value?: string | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: string | null): void
+  (e: 'detected', id: number): void
+}>()
+
+const { typedGetters } = useStore()
+const { isMobileViewport } = useBrowserMixin()
+const { t } = useI18n()
+
+const statusMessage = ref('info.howto')
+const lastScanTimestamp = ref(Date.now())
+const processing = ref(false)
+const context = ref<CanvasRenderingContext2D | null>(null)
+const canvas = ref<HTMLCanvasElement>()
+
+const source = computed({
+  get: () => props.value ?? null,
+  set: (v) => emit('input', v)
 })
-export default class QRReader extends Mixins(StateMixin, BrowserMixin) {
-  statusMessage = 'info.howto'
-  lastScanTimestamp = Date.now()
-  processing = false
-  context: CanvasRenderingContext2D | null = null
 
-  @VModel({ type: String, default: null })
-  source!: null | string
+// Typed as Webcam.Entry for CameraItem — the v-if="open && camera" in template guards device service
+const cameraEntry = computed<Moonraker.Webcam.Entry | undefined>(() =>
+  typeof camera.value === 'object' && camera.value !== null && 'uid' in camera.value
+    ? camera.value as Moonraker.Webcam.Entry
+    : undefined
+)
 
-  @Ref('canvas')
-  canvas!: HTMLCanvasElement
-
-  get camera (): Moonraker.Webcam.Entry | { name: string, service: 'device' } | undefined {
-    if (this.source === 'device') {
-      return {
-        name: this.$t('app.spoolman.label.device_camera').toString(),
-        service: 'device'
-      }
-    }
-
-    if (this.source !== null) {
-      return this.$typedGetters['webcams/getWebcamById'](this.source)
+const camera = computed((): Moonraker.Webcam.Entry | { name: string, service: 'device' } | undefined => {
+  if (source.value === 'device') {
+    return {
+      name: t('app.spoolman.label.device_camera'),
+      service: 'device'
     }
   }
 
-  get open () {
-    return this.source !== null
+  if (source.value !== null) {
+    return typedGetters['webcams/getWebcamById'](source.value)
   }
+  return undefined
+})
 
-  set open (state) {
+const open = computed({
+  get: () => source.value !== null,
+  set: (state: boolean) => {
     if (!state) {
-      this.source = null
+      source.value = null
     }
   }
+})
 
-  async mounted () {
-    this.processing = true
-    this.context = this.canvas.getContext('2d', { willReadFrequently: true })
-    if (this.context === null) {
-      this.statusMessage = 'error.no_image_data'
-    }
-    this.processing = false
+onMounted(async () => {
+  processing.value = true
+  context.value = canvas.value!.getContext('2d', { willReadFrequently: true })
+  if (context.value === null) {
+    statusMessage.value = 'error.no_image_data'
+  }
+  processing.value = false
+})
+
+async function handlePrinterCameraFrame (image: unknown) {
+  if (!(image instanceof HTMLVideoElement) && !(image instanceof HTMLImageElement)) return
+  // if broken canvas or still processing
+  if (processing.value) {
+    return
   }
 
-  async handlePrinterCameraFrame (image: HTMLVideoElement | HTMLImageElement) {
-    // if broken canvas or still processing
-    if (this.processing) {
-      return
+  // limit to 10 scan attempts per second
+  if (Date.now() - lastScanTimestamp.value < 100) {
+    return
+  }
+
+  processing.value = true
+  lastScanTimestamp.value = Date.now()
+
+  if (image instanceof HTMLVideoElement) {
+    canvas.value!.width = image.videoWidth
+    canvas.value!.height = image.videoHeight
+  } else {
+    canvas.value!.width = image.naturalWidth
+    canvas.value!.height = image.naturalHeight
+  }
+
+  if (!canvas.value!.width || !canvas.value!.height) {
+    // no image drawn yet
+    processing.value = false
+    return
+  }
+
+  try {
+    if (context.value) {
+      context.value.drawImage(image, 0, 0, canvas.value!.width, canvas.value!.height)
+      const result = await QrScanner.scanImage(canvas.value!, { returnDetailedScanResult: true })
+      if (result.data) { handleCodeFound(result.data) }
     }
-
-    // limit to 10 scan attempts per second
-    if (Date.now() - this.lastScanTimestamp < 100) {
-      return
-    }
-
-    this.processing = true
-    this.lastScanTimestamp = Date.now()
-
-    if (image instanceof HTMLVideoElement) {
-      this.canvas.width = image.videoWidth
-      this.canvas.height = image.videoHeight
-    } else {
-      this.canvas.width = image.naturalWidth
-      this.canvas.height = image.naturalHeight
-    }
-
-    if (!this.canvas.width || !this.canvas.height) {
-      // no image drawn yet
-      this.processing = false
-      return
-    }
-
-    try {
-      if (this.context) {
-        this.context.drawImage(image, 0, 0, this.canvas.width, this.canvas.height)
-        const result = await QrScanner.scanImage(this.canvas, { returnDetailedScanResult: true })
-        if (result.data) { this.handleCodeFound(result.data) }
+  } catch (err) {
+    if (err instanceof DOMException) {
+      if (err.name === 'SecurityError') {
+        statusMessage.value = 'error.cors'
+      } else {
+        statusMessage.value = 'error.no_image_data'
       }
-    } catch (err) {
-      if (err instanceof DOMException) {
-        if (err.name === 'SecurityError') {
-          this.statusMessage = 'error.cors'
+    }
+
+    // no QR code found
+  }
+  processing.value = false
+}
+
+const availableSpools = computed((): Spool[] => typedGetters['spoolman/getAvailableSpools'])
+
+function handleCodeFound (code: string) {
+  for (const pattern of spoomanDataPatterns) {
+    const match = pattern.exec(code)
+
+    if (match) {
+      // code matches one of known patterns
+      const spoolId = match[1]
+      if (spoolId && !Number.isNaN(+spoolId)) {
+        // valid spool ID
+        const id = parseInt(spoolId)
+
+        if (availableSpools.value.some(spool => spool.id === id)) {
+          // spool exists in spoolman
+          emit('detected', id)
         } else {
-          this.statusMessage = 'error.no_image_data'
+          // spool doesn't exist
+          statusMessage.value = 'error.spool_not_existant'
         }
+      } else {
+        statusMessage.value = 'warning.invalid_spool_id'
       }
 
-      // no QR code found
+      return
     }
-    this.processing = false
   }
 
-  get availableSpools (): Spool[] {
-    return this.$typedGetters['spoolman/getAvailableSpools']
-  }
-
-  handleCodeFound (code: string) {
-    for (const pattern of spoomanDataPatterns) {
-      const match = pattern.exec(code)
-
-      if (match) {
-        // code matches one of known patterns
-        const spoolId = match[1]
-        if (spoolId && !Number.isNaN(+spoolId)) {
-          // valid spool ID
-          const id = parseInt(spoolId)
-
-          if (this.availableSpools.some(spool => spool.id === id)) {
-            // spool exists in spoolman
-            this.$emit('detected', id)
-          } else {
-            // spool doesn't exist
-            this.statusMessage = 'error.spool_not_existant'
-          }
-        } else {
-          this.statusMessage = 'warning.invalid_spool_id'
-        }
-
-        return
-      }
-    }
-
-    this.statusMessage = 'warning.code_not_recognized'
-  }
+  statusMessage.value = 'warning.code_not_recognized'
 }
 </script>

@@ -344,352 +344,328 @@
   </div>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, VModel, Prop, Watch } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useMmuMixin, GATE_UNKNOWN, GATE_EMPTY, GATE_AVAILABLE, NO_FILAMENT_COLOR, SPOOLMAN_OFF, SPOOLMAN_PULL } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
+import { useConfirm } from '@/composables/useConfirm'
 import type { MmuGateDetails } from '@/types'
-import type { Spool, SpoolSelectionDialogState } from '@/store/spoolman/types'
+import type { Spool } from '@/store/spoolman/types'
+import { Waits } from '@/globals'
 import MmuMachine from '@/components/widgets/mmu/MmuMachine.vue'
 
-@Component({
-  components: { MmuMachine }
+const props = defineProps<{
+  value?: boolean
+  initialGate?: number | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+  (e: 'close'): void
+}>()
+
+const open = computed({
+  get: () => props.value ?? false,
+  set: (v) => emit('input', v),
 })
-export default class MmuEditGateMapDialog extends Mixins(BrowserMixin, StateMixin, MmuMixin) {
-  @VModel({ required: true })
-  open!: boolean
 
-  @Prop({ required: false, default: null })
-  readonly initialGate!: number | null
+const { isMobileViewport } = useBrowserMixin()
+const { sendGcode, hasWait } = useStateMixin()
+const { gateMap, spoolmanSupport, fromColorString, spoolmanSpool } = useMmuMixin()
+const { typedGetters, typedCommit, typedState } = useStore()
+const { t, tc } = useI18n()
+const confirm = useConfirm()
 
-  private editGateMap: MmuGateDetails[] = []
-  private editGateSelected: number = -1
+const editGateMap = ref<MmuGateDetails[]>([])
+const editGateSelected = ref(-1)
 
-  @Watch('open')
-  onOpenChanged () {
-    this.initialize()
-  }
-
-  @Watch('gateMap')
-  onGateMapChanged () {
-    this.initialize()
-  }
-
-  private initialize () {
-    if (this.open) {
-      this.editGateMap = Array.from(this.gateMap)
-
-      if (typeof this.initialGate === 'number' && this.initialGate >= 0 && this.initialGate < this.editGateMap.length) {
-        this.editGateSelected = this.initialGate
-      } else {
-        this.editGateSelected = -1
-      }
+function initialize () {
+  if (open.value) {
+    editGateMap.value = Array.from(gateMap.value)
+    const ig = props.initialGate
+    if (typeof ig === 'number' && ig >= 0 && ig < editGateMap.value.length) {
+      editGateSelected.value = ig
     } else {
-      this.editGateMap = []
-      this.editGateSelected = -1
+      editGateSelected.value = -1
     }
-  }
-
-  private selectGate (gate: number) {
-    if (this.editGateSelected !== -1) this.adjustSpoolId() // Get rid of null possibility
-    if (this.editGateSelected === gate) {
-      this.editGateSelected = -1
-    } else {
-      this.editGateSelected = gate
-
-      // Clean up stale spool_id's
-      if (this.spoolmanSupport === this.SPOOLMAN_OFF) {
-        this.editGateMap[this.editGateSelected].spoolId = -1
-      }
-    }
-  }
-
-  private handleEscapePress (event: KeyboardEvent) {
-    if (event.key === 'Escape' || event.keyCode === 27) {
-      this.editGateSelected = -1
-    }
-  }
-
-  private adjustName () {
-    const filamentName = this.editGateMap[this.editGateSelected].filamentName ?? ''
-    this.editGateMap[this.editGateSelected].filamentName = filamentName.trim().replace(/[#'"]/g, '')
-  }
-
-  private adjustMaterial () {
-    const material = this.editGateMap[this.editGateSelected].material ?? ''
-    this.editGateMap[this.editGateSelected].material = material.trim().replace(/[#'"]/g, '')
-  }
-
-  get spoolId (): number | null {
-    if (!this.editGateMap || !this.editGateMap[this.editGateSelected]) {
-      return null
-    }
-    return this.editGateMap[this.editGateSelected].spoolId
-  }
-
-  set spoolId (newSpoolIdStr: string | null) {
-    const newSpoolId = newSpoolIdStr ? parseInt(newSpoolIdStr) : null
-    this.editGateMap[this.editGateSelected].spoolId = newSpoolId !== null && !Number.isNaN(newSpoolId) ? newSpoolId : null
-  }
-
-  @Watch('spoolId')
-  onSpoolIdChanged (newSpoolId: number | null) {
-    if (newSpoolId !== null && newSpoolId > 0) {
-      const spool = this.spoolmanSpool(newSpoolId)
-      this.editGateMap[this.editGateSelected].filamentName =
-                spool?.filament?.name ?? this.$t('app.mmu.label.unknown').toString()
-      this.editGateMap[this.editGateSelected].material =
-                spool?.filament?.material ?? this.$t('app.mmu.label.unknown').toString()
-      const color = this.fromColorString(spool?.filament?.color_hex ?? '')
-      this.editGateMap[this.editGateSelected].color = color
-      this.editGateMap[this.editGateSelected].temperature = spool?.filament?.settings_extruder_temp ?? -1
-    }
-  }
-
-  private spoolIdRules () {
-    const spools: Spool[] = this.$typedGetters['spoolman/getAvailableSpools']
-    return [
-      (v: number) => {
-        if (!v || v <= 0) return true
-        const spoolExists = spools.some((spool) => spool.id === v) ?? null
-        return spoolExists ? true : this.$t('app.mmu.msg.no_matching_spool')
-      }
-    ]
-  }
-
-  private adjustSpoolId () {
-    const spoolId = this.editGateMap[this.editGateSelected].spoolId ?? -1
-    this.editGateMap[this.editGateSelected].spoolId = spoolId
-  }
-
-  get spoolIdExists (): boolean {
-    const spools: Spool[] = this.$typedGetters['spoolman/getAvailableSpools']
-    return spools.some((spool) => spool.id === this.spoolId)
-  }
-
-  get temperature (): number {
-    return this.editGateMap[this.editGateSelected].temperature
-  }
-
-  set temperature (newTemperatureStr: string) {
-    const newTemperature = newTemperatureStr ? parseInt(newTemperatureStr) : -1
-    this.editGateMap[this.editGateSelected].temperature = Number.isNaN(newTemperature) ? -1 : newTemperature
-  }
-
-  private temperatureRules () {
-    return [
-      (v: string | number) => {
-        const num = parseFloat(String(v))
-        return !Number.isNaN(num) && num >= 100 && num <= 290
-          ? true
-          : this.$t('app.mmu.msg.bad_temperature')
-      }
-    ]
-  }
-
-  private adjustTemperature () {
-    const temp = this.editGateMap[this.editGateSelected].temperature
-    if (temp < 100) {
-      this.editGateMap[this.editGateSelected].temperature = 100
-    } else if (temp > 290) {
-      this.editGateMap[this.editGateSelected].temperature = 290
-    }
-  }
-
-  get useSpoolman (): boolean {
-    const spoolId = this.editGateMap[this.editGateSelected].spoolId
-    return spoolId === null || spoolId > 0
-  }
-
-  set useSpoolman (newValue) {
-    if (!newValue) {
-      this.editGateMap[this.editGateSelected].spoolId = -1
-    } else {
-      this.editGateMap[this.editGateSelected].spoolId = null
-    }
-  }
-
-  get selectedGateStatus (): boolean {
-    return (
-      this.editGateMap[this.editGateSelected].status === 1 || this.editGateMap[this.editGateSelected].status === 2
-    )
-  }
-
-  set selectedGateStatus (value: boolean) {
-    this.editGateMap[this.editGateSelected].status = value ? this.GATE_AVAILABLE : this.GATE_EMPTY
-  }
-
-  get selectedGateStatusLabel (): string {
-    const status = this.editGateMap[this.editGateSelected].status
-    if (status === this.GATE_UNKNOWN) {
-      return this.$t('app.mmu.msg.filament_unknown').toString()
-    } else if (status === this.GATE_EMPTY) {
-      return this.$t('app.mmu.msg.filament_empty').toString()
-    }
-    return this.$t('app.mmu.msg.filament_available').toString()
-  }
-
-  handleSelectSpool () {
-    this.$typedCommit('spoolman/setDialogState', {
-      show: true,
-      spoolSelectionOnly: true
-    })
-  }
-
-  @Watch('$typedState.spoolman.dialog')
-  onSpoolmanChanged (newDialog: SpoolSelectionDialogState) {
-    if (newDialog.selectedSpoolId != null) {
-      this.editGateMap[this.editGateSelected].spoolId = newDialog.selectedSpoolId
-    }
-  }
-
-  get spoolmanColor (): string {
-    const spoolId = this.editGateMap[this.editGateSelected].spoolId ?? -1
-    const spool = this.spoolmanSpool(spoolId)
-    return spool?.filament.color_hex ?? '#000'
-  }
-
-  get spoolmanRemainingWeight () {
-    const spoolId = this.editGateMap[this.editGateSelected].spoolId ?? -1
-    const spool = this.spoolmanSpool(spoolId)
-    if (spool) {
-      const remaining = spool.remaining_weight ?? 0
-      return `${remaining.toFixed(0)}g`
-    }
-    return '-'
-  }
-
-  get spoolmanTotalWeight () {
-    const spoolId = this.editGateMap[this.editGateSelected].spoolId ?? -1
-    const spool = this.spoolmanSpool(spoolId)
-    if (spool) {
-      // Technically this is what spoolman implements but not available in Fluidd:
-      //   let total = spool.initial_weight ?? spool.filament?.weight ?? 0
-      const total = spool.filament?.weight ?? 0
-      if (total < 1000) {
-        return `${total.toFixed(0)}g`
-      }
-
-      let totalRound = Math.round(total / 1000)
-      if (totalRound !== total / 1000) {
-        totalRound = Math.round(total / 100) / 10
-      }
-      return `${totalRound}kg`
-    }
-    return '-'
-  }
-
-  get spoolmanLastUsed () {
-    const spoolId = this.editGateMap[this.editGateSelected].spoolId ?? -1
-    const spool = this.spoolmanSpool(spoolId)
-    let usedStr = '-'
-
-    if (spool) {
-      const lastUsed = spool.last_used
-      if (!lastUsed) {
-        usedStr = this.$t('app.mmu.label.spoolman_never').toString()
-      } else {
-        const date = new Date(lastUsed)
-        const now = new Date()
-        const diff = now.getTime() - date.getTime()
-
-        if (diff <= 1000 * 60 * 60 * 24) return this.$t('app.mmu.label.spoolman_today')
-        if (diff <= 1000 * 60 * 60 * 24 * 2) return this.$t('app.mmu.label.spoolman_yesterday')
-        if (diff <= 1000 * 60 * 60 * 24 * 14) {
-          const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-          usedStr = this.$t('app.mmu.label.spoolman_days_ago', { days }).toString()
-        }
-        usedStr = date.toLocaleDateString()
-      }
-    }
-    return `${this.$t('app.mmu.label.spoolman_last_used')}: ${usedStr}`
-  }
-
-  decrementSpeed (): void {
-    let value = this.editGateMap[this.editGateSelected].speedOverride
-    value = value > 10 ? Math.round(value - 10) : 10
-    this.editGateMap[this.editGateSelected].speedOverride = value
-  }
-
-  incrementSpeed (): void {
-    let value = this.editGateMap[this.editGateSelected].speedOverride
-    value = value < 150 ? Math.round(value + 10) : 150
-    this.editGateMap[this.editGateSelected].speedOverride = value
-  }
-
-  private resetSpeed (): void {
-    this.editGateMap[this.editGateSelected].speedOverride = 100
-  }
-
-  // Actions...
-
-  async resetGateMap () {
-    const result = await this.$confirm(
-      this.$tc('app.mmu.msg.reset_gate_map_confirmation', 1),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) this.executeResetGateMap()
-  }
-
-  executeResetGateMap () {
-    this.initialize()
-    this.sendGcode('MMU_GATE_MAP RESET=1', this.$waits.onMmuGateMap)
-  }
-
-  close () {
-    this.$emit('close')
-    this.editGateMap = []
-    this.editGateSelected = -1
-    this.open = false
-  }
-
-  commit () {
-    if (this.editGateSelected !== -1) this.adjustSpoolId() // Get rid of null possibility
-    const mapStr = this.generateMapString(this.editGateMap)
-    const cmd = `MMU_GATE_MAP MAP="${mapStr}" QUIET=1`
-    this.sendGcode(cmd)
-    this.close()
-  }
-
-  private generateMapString (gateMap: MmuGateDetails[]) {
-        type GateDetails = {
-          status: number
-          spool_id: number | null
-          material: string
-          color: string
-          name: string
-          temp: number
-          speed_override: number
-        }
-        const mapObject: Record<number, GateDetails> = {}
-        gateMap.forEach((gate) => {
-          mapObject[gate.index] = {
-            status: gate.status ?? this.GATE_UNKNOWN,
-            spool_id: gate.spoolId ?? -1,
-            material: gate.material ?? '',
-            color: gate.color.replace(this.NO_FILAMENT_COLOR, '').replace('#', ''),
-            name: gate.filamentName ?? '',
-            temp: gate.temperature ?? -1,
-            speed_override: gate.speedOverride ?? 100,
-          }
-        })
-        const jsonString = JSON.stringify(mapObject)
-          .replace(/"(\d+)":/g, '$1: ')
-          .replace(/"/g, "'")
-        return jsonString
-  }
-
-  mounted () {
-    document.addEventListener('keydown', this.handleEscapePress)
-  }
-
-  beforeDestroy () {
-    document.removeEventListener('keydown', this.handleEscapePress)
+  } else {
+    editGateMap.value = []
+    editGateSelected.value = -1
   }
 }
+
+watch(open, () => initialize())
+watch(gateMap, () => initialize())
+
+function selectGate (gate: number) {
+  if (editGateSelected.value !== -1) adjustSpoolId()
+  if (editGateSelected.value === gate) {
+    editGateSelected.value = -1
+  } else {
+    editGateSelected.value = gate
+    if (spoolmanSupport.value === SPOOLMAN_OFF) {
+      editGateMap.value[editGateSelected.value].spoolId = -1
+    }
+  }
+}
+
+function handleEscapePress (event: KeyboardEvent) {
+  if (event.key === 'Escape' || event.keyCode === 27) {
+    editGateSelected.value = -1
+  }
+}
+
+function adjustName () {
+  const filamentName = editGateMap.value[editGateSelected.value].filamentName ?? ''
+  editGateMap.value[editGateSelected.value].filamentName = filamentName.trim().replace(/[#'"]/g, '')
+}
+
+function adjustMaterial () {
+  const material = editGateMap.value[editGateSelected.value].material ?? ''
+  editGateMap.value[editGateSelected.value].material = material.trim().replace(/[#'"]/g, '')
+}
+
+const spoolIdRaw = computed<number | null>({
+  get: () => {
+    if (!editGateMap.value || !editGateMap.value[editGateSelected.value]) return null
+    return editGateMap.value[editGateSelected.value].spoolId
+  },
+  set: (newValue) => {
+    const newSpoolId = newValue !== null ? newValue : null
+    editGateMap.value[editGateSelected.value].spoolId = newSpoolId
+  },
+})
+
+const spoolId = computed<string | null>({
+  get: () => spoolIdRaw.value != null ? String(spoolIdRaw.value) : null,
+  set: (newSpoolIdStr: string | null) => {
+    const newSpoolId = newSpoolIdStr ? parseInt(newSpoolIdStr) : null
+    spoolIdRaw.value = (newSpoolId !== null && !Number.isNaN(newSpoolId)) ? newSpoolId : null
+  },
+})
+
+watch(spoolIdRaw, (newSpoolId) => {
+  if (newSpoolId !== null && newSpoolId > 0) {
+    const spool = spoolmanSpool(newSpoolId)
+    editGateMap.value[editGateSelected.value].filamentName =
+      spool?.filament?.name ?? t('app.mmu.label.unknown').toString()
+    editGateMap.value[editGateSelected.value].material =
+      spool?.filament?.material ?? t('app.mmu.label.unknown').toString()
+    editGateMap.value[editGateSelected.value].color = fromColorString(spool?.filament?.color_hex ?? '')
+    editGateMap.value[editGateSelected.value].temperature = spool?.filament?.settings_extruder_temp ?? -1
+  }
+})
+
+function spoolIdRules () {
+  const spools: Spool[] = typedGetters['spoolman/getAvailableSpools']
+  return [
+    (v: number) => {
+      if (!v || v <= 0) return true
+      const spoolExists = spools.some((spool) => spool.id === v) ?? null
+      return spoolExists ? true : t('app.mmu.msg.no_matching_spool')
+    }
+  ]
+}
+
+function adjustSpoolId () {
+  const sid = editGateMap.value[editGateSelected.value].spoolId ?? -1
+  editGateMap.value[editGateSelected.value].spoolId = sid
+}
+
+const spoolIdExists = computed(() => {
+  const spools: Spool[] = typedGetters['spoolman/getAvailableSpools']
+  return spools.some((spool) => spool.id === spoolIdRaw.value)
+})
+
+function temperatureRules () {
+  return [
+    (v: string | number) => {
+      const num = parseFloat(String(v))
+      return !Number.isNaN(num) && num >= 100 && num <= 290
+        ? true
+        : t('app.mmu.msg.bad_temperature')
+    }
+  ]
+}
+
+function adjustTemperature () {
+  const temp = editGateMap.value[editGateSelected.value].temperature
+  if (temp < 100) editGateMap.value[editGateSelected.value].temperature = 100
+  else if (temp > 290) editGateMap.value[editGateSelected.value].temperature = 290
+}
+
+const useSpoolman = computed({
+  get: () => {
+    const sid = editGateMap.value[editGateSelected.value]?.spoolId
+    return sid === null || sid > 0
+  },
+  set: (newValue: boolean) => {
+    editGateMap.value[editGateSelected.value].spoolId = newValue ? null : -1
+  },
+})
+
+const selectedGateStatus = computed({
+  get: () => {
+    const s = editGateMap.value[editGateSelected.value]?.status
+    return s === 1 || s === 2
+  },
+  set: (value: boolean) => {
+    editGateMap.value[editGateSelected.value].status = value ? GATE_AVAILABLE : GATE_EMPTY
+  },
+})
+
+const selectedGateStatusLabel = computed(() => {
+  const status = editGateMap.value[editGateSelected.value]?.status
+  if (status === GATE_UNKNOWN) return t('app.mmu.msg.filament_unknown').toString()
+  if (status === GATE_EMPTY) return t('app.mmu.msg.filament_empty').toString()
+  return t('app.mmu.msg.filament_available').toString()
+})
+
+function handleSelectSpool () {
+  typedCommit('spoolman/setDialogState', { show: true, spoolSelectionOnly: true })
+}
+
+watch(() => typedState.spoolman.dialog, (newDialog) => {
+  if (newDialog.selectedSpoolId != null) {
+    editGateMap.value[editGateSelected.value].spoolId = newDialog.selectedSpoolId
+  }
+})
+
+const spoolmanColor = computed(() => {
+  const sid = editGateMap.value[editGateSelected.value]?.spoolId ?? -1
+  const spool = spoolmanSpool(sid)
+  return spool?.filament.color_hex ?? '#000'
+})
+
+const spoolmanRemainingWeight = computed(() => {
+  const sid = editGateMap.value[editGateSelected.value]?.spoolId ?? -1
+  const spool = spoolmanSpool(sid)
+  if (spool) {
+    const remaining = spool.remaining_weight ?? 0
+    return `${remaining.toFixed(0)}g`
+  }
+  return '-'
+})
+
+const spoolmanTotalWeight = computed(() => {
+  const sid = editGateMap.value[editGateSelected.value]?.spoolId ?? -1
+  const spool = spoolmanSpool(sid)
+  if (spool) {
+    const total = spool.filament?.weight ?? 0
+    if (total < 1000) return `${total.toFixed(0)}g`
+    let totalRound = Math.round(total / 1000)
+    if (totalRound !== total / 1000) totalRound = Math.round(total / 100) / 10
+    return `${totalRound}kg`
+  }
+  return '-'
+})
+
+const spoolmanLastUsed = computed(() => {
+  const sid = editGateMap.value[editGateSelected.value]?.spoolId ?? -1
+  const spool = spoolmanSpool(sid)
+  let usedStr = '-'
+  if (spool) {
+    const lastUsed = spool.last_used
+    if (!lastUsed) {
+      usedStr = t('app.mmu.label.spoolman_never').toString()
+    } else {
+      const date = new Date(lastUsed)
+      const now = new Date()
+      const diff = now.getTime() - date.getTime()
+      if (diff <= 1000 * 60 * 60 * 24) return t('app.mmu.label.spoolman_today')
+      if (diff <= 1000 * 60 * 60 * 24 * 2) return t('app.mmu.label.spoolman_yesterday')
+      if (diff <= 1000 * 60 * 60 * 24 * 14) {
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+        usedStr = t('app.mmu.label.spoolman_days_ago', { days }).toString()
+      }
+      usedStr = date.toLocaleDateString()
+    }
+  }
+  return `${t('app.mmu.label.spoolman_last_used')}: ${usedStr}`
+})
+
+function decrementSpeed () {
+  let value = editGateMap.value[editGateSelected.value].speedOverride
+  value = value > 10 ? Math.round(value - 10) : 10
+  editGateMap.value[editGateSelected.value].speedOverride = value
+}
+
+function incrementSpeed () {
+  let value = editGateMap.value[editGateSelected.value].speedOverride
+  value = value < 150 ? Math.round(value + 10) : 150
+  editGateMap.value[editGateSelected.value].speedOverride = value
+}
+
+function resetSpeed () {
+  editGateMap.value[editGateSelected.value].speedOverride = 100
+}
+
+async function resetGateMap () {
+  const result = await confirm(
+    tc('app.mmu.msg.reset_gate_map_confirmation', 1),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+  if (result) executeResetGateMap()
+}
+
+function executeResetGateMap () {
+  initialize()
+  sendGcode('MMU_GATE_MAP RESET=1', Waits.onMmuGateMap)
+}
+
+function close () {
+  emit('close')
+  editGateMap.value = []
+  editGateSelected.value = -1
+  open.value = false
+}
+
+function commit () {
+  if (editGateSelected.value !== -1) adjustSpoolId()
+  const mapStr = generateMapString(editGateMap.value)
+  const cmd = `MMU_GATE_MAP MAP="${mapStr}" QUIET=1`
+  sendGcode(cmd)
+  close()
+}
+
+function generateMapString (gateMapArr: MmuGateDetails[]) {
+  type GateDetails = {
+    status: number
+    spool_id: number | null
+    material: string
+    color: string
+    name: string
+    temp: number
+    speed_override: number
+  }
+  const mapObject: Record<number, GateDetails> = {}
+  gateMapArr.forEach((g) => {
+    mapObject[g.index] = {
+      status: g.status ?? GATE_UNKNOWN,
+      spool_id: g.spoolId ?? -1,
+      material: g.material ?? '',
+      color: g.color.replace(NO_FILAMENT_COLOR, '').replace('#', ''),
+      name: g.filamentName ?? '',
+      temp: g.temperature ?? -1,
+      speed_override: g.speedOverride ?? 100,
+    }
+  })
+  const jsonString = JSON.stringify(mapObject)
+    .replace(/"(\d+)":/g, '$1: ')
+    .replace(/"/g, "'")
+  return jsonString
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleEscapePress)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleEscapePress)
+})
 </script>
 
 <style scoped>

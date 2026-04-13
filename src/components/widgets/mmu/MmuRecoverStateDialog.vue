@@ -85,185 +85,144 @@
   </app-dialog>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, VModel, Watch } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useMmuMixin, TOOL_GATE_UNKNOWN, TOOL_GATE_BYPASS, FILAMENT_POS_UNKNOWN, FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED } from '@/composables/useMmuMixin'
+import { useStore } from '@/composables/useStore'
+import { useI18n } from '@/composables/useI18n'
 import isKeyOf from '@/util/is-key-of'
 
-@Component({})
-export default class MmuRecoverStateDialog extends Mixins(BrowserMixin, StateMixin, MmuMixin) {
-  @VModel({ required: true })
-  open!: boolean
+const props = defineProps<{
+  value?: boolean
+}>()
 
-  private localGate: number = -1
-  private localTool: number = -1
-  private localFilamentPos: number = -1
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  @Watch('open')
-  onShowDialogChanged (newValue: boolean): void {
-    if (newValue) {
-      this.localGate = this.gate
-      this.localTool = this.tool
-      this.localFilamentPos = this.filamentPos
-    }
+const open = computed({
+  get: () => props.value ?? false,
+  set: (v) => emit('input', v),
+})
+
+const { isMobileViewport } = useBrowserMixin()
+const { sendGcode } = useStateMixin()
+const { gate, tool, filamentPos, numGates, hasBypass, ttgMap } = useMmuMixin()
+const { typedState } = useStore()
+const { t } = useI18n()
+
+const localGate = ref(-1)
+const localTool = ref(-1)
+const localFilamentPos = ref(-1)
+
+watch(open, (newValue) => {
+  if (newValue) {
+    localGate.value = gate.value
+    localTool.value = tool.value
+    localFilamentPos.value = filamentPos.value
   }
+})
 
-  get selectedTool (): string {
-    if (this.localTool === this.TOOL_GATE_UNKNOWN) {
-      return 'Unknown'
-    } else if (this.localTool === this.TOOL_GATE_BYPASS) {
-      return 'Bypass'
-    }
-    return `T${this.localTool}`
-  }
-
-  set selectedTool (newTool: string) {
-    const index = this.toolsList.findIndex((item) => item === newTool)
-    if (index === this.numGates) {
-      this.localTool = this.TOOL_GATE_BYPASS
-    } else {
-      this.localTool = index
-    }
-  }
-
-  get toolsList (): string[] {
-    const tools: string[] = []
-    for (let i = 0; i < this.numGates; i++) {
-      tools.push(`T${i}`)
-    }
-    if (this.hasBypass) tools.push('Bypass')
-    return tools
-  }
-
-  get toolErrorMessage () {
-    if (this.localTool === this.TOOL_GATE_UNKNOWN) {
-      return this.$t('app.mmu.msg.no_tool')
-    } else if (this.localGate === this.TOOL_GATE_BYPASS && this.localTool !== this.TOOL_GATE_BYPASS) {
-      return this.$t('app.mmu.msg.gate_bypass')
-    }
-    return ''
-  }
-
-  get selectedGate (): string {
-    if (this.localGate === this.TOOL_GATE_UNKNOWN) {
-      return 'Unknown'
-    } else if (this.localGate === this.TOOL_GATE_BYPASS) {
-      return 'Bypass'
-    }
-    return `${this.gateIndexText(this.localGate)}`
-  }
-
-  set selectedGate (newGate: string) {
-    const index = this.gatesList.findIndex((item) => item === newGate)
-    if (index === this.numGates) {
-      this.localGate = this.TOOL_GATE_BYPASS
-    } else {
-      this.localGate = index
-    }
-  }
-
-  get gatesList (): string[] {
-    const gates: string[] = []
-    for (let gate = 0; gate < this.numGates; gate++) {
-      gates.push(this.gateIndexText(gate))
-    }
-    if (this.hasBypass) gates.push('Bypass')
-    return gates
-  }
-
-  get gateErrorMessage () {
-    if (this.localGate === this.TOOL_GATE_UNKNOWN) {
-      return this.$t('app.mmu.msg.no_gate')
-    } else if (this.localTool === this.TOOL_GATE_BYPASS && this.localGate !== this.TOOL_GATE_BYPASS) {
-      return this.$t('app.mmu.msg.tool_bypass')
-    } else if (this.localGate >= 0 && this.ttgMap[this.localGate] !== this.localTool) {
-      const msg = this.$t('app.mmu.msg.remap', { tool: `T${this.localTool}` })
-      return `${this.$t('app.mmu.msg.warning_prefix')} ${msg}`
-    }
-    return ''
-  }
-
-  private gateIndexText (gateIndex: number): string {
-    const mmuMachine = this.$typedState.printer.printer?.mmu_machine
-
-    if (mmuMachine != null && mmuMachine.num_units > 1) {
-      for (let i = 0; i < mmuMachine.num_units; i++) {
-        const unitRef = `unit_${i}` as Klipper.MmuUnitKey
-
-        if (isKeyOf(unitRef, mmuMachine)) {
-          const unit = mmuMachine[unitRef]
-
-          if (
-            i > 0 &&
-            unit != null &&
-            gateIndex >= unit.first_gate &&
-            gateIndex < unit.first_gate + unit.num_gates
-          ) {
-            return `${gateIndex} (unit #${i + 1})`
-          }
+function gateIndexText (gateIndex: number): string {
+  const mmuMachine = typedState.printer.printer?.mmu_machine
+  if (mmuMachine != null && mmuMachine.num_units > 1) {
+    for (let i = 0; i < mmuMachine.num_units; i++) {
+      const unitRef = `unit_${i}` as Klipper.MmuUnitKey
+      if (isKeyOf(unitRef, mmuMachine)) {
+        const unitObj = mmuMachine[unitRef]
+        if (i > 0 && unitObj != null && gateIndex >= unitObj.first_gate && gateIndex < unitObj.first_gate + unitObj.num_gates) {
+          return `${gateIndex} (unit #${i + 1})`
         }
       }
     }
-
-    return `${gateIndex}`
   }
+  return `${gateIndex}`
+}
 
-  get selectedPos (): string {
-    if (this.localFilamentPos === this.FILAMENT_POS_UNLOADED) {
-      return 'UNLOADED'
-    } else if (this.localFilamentPos === this.FILAMENT_POS_LOADED) {
-      return 'LOADED'
-    }
+const toolsList = computed(() => {
+  const tools: string[] = []
+  for (let i = 0; i < numGates.value; i++) tools.push(`T${i}`)
+  if (hasBypass.value) tools.push('Bypass')
+  return tools
+})
+
+const selectedTool = computed({
+  get: () => {
+    if (localTool.value === TOOL_GATE_UNKNOWN) return 'Unknown'
+    if (localTool.value === TOOL_GATE_BYPASS) return 'Bypass'
+    return `T${localTool.value}`
+  },
+  set: (newTool: string) => {
+    const index = toolsList.value.findIndex((item) => item === newTool)
+    localTool.value = index === numGates.value ? TOOL_GATE_BYPASS : index
+  },
+})
+
+const toolErrorMessage = computed(() => {
+  if (localTool.value === TOOL_GATE_UNKNOWN) return t('app.mmu.msg.no_tool')
+  if (localGate.value === TOOL_GATE_BYPASS && localTool.value !== TOOL_GATE_BYPASS) return t('app.mmu.msg.gate_bypass')
+  return ''
+})
+
+const gatesList = computed(() => {
+  const gates: string[] = []
+  for (let g = 0; g < numGates.value; g++) gates.push(gateIndexText(g))
+  if (hasBypass.value) gates.push('Bypass')
+  return gates
+})
+
+const selectedGate = computed({
+  get: () => {
+    if (localGate.value === TOOL_GATE_UNKNOWN) return 'Unknown'
+    if (localGate.value === TOOL_GATE_BYPASS) return 'Bypass'
+    return `${gateIndexText(localGate.value)}`
+  },
+  set: (newGate: string) => {
+    const index = gatesList.value.findIndex((item) => item === newGate)
+    localGate.value = index === numGates.value ? TOOL_GATE_BYPASS : index
+  },
+})
+
+const gateErrorMessage = computed(() => {
+  if (localGate.value === TOOL_GATE_UNKNOWN) return t('app.mmu.msg.no_gate')
+  if (localTool.value === TOOL_GATE_BYPASS && localGate.value !== TOOL_GATE_BYPASS) return t('app.mmu.msg.tool_bypass')
+  if (localGate.value >= 0 && ttgMap.value[localGate.value] !== localTool.value) {
+    const msg = t('app.mmu.msg.remap', { tool: `T${localTool.value}` })
+    return `${t('app.mmu.msg.warning_prefix')} ${msg}`
+  }
+  return ''
+})
+
+const posList = ['UNKNOWN', 'UNLOADED', 'LOADED']
+
+const selectedPos = computed({
+  get: () => {
+    if (localFilamentPos.value === FILAMENT_POS_UNLOADED) return 'UNLOADED'
+    if (localFilamentPos.value === FILAMENT_POS_LOADED) return 'LOADED'
     return 'UNKNOWN'
-  }
+  },
+  set: (newPos: string) => {
+    if (newPos === 'UNLOADED') localFilamentPos.value = FILAMENT_POS_UNLOADED
+    else if (newPos === 'LOADED') localFilamentPos.value = FILAMENT_POS_LOADED
+    else localFilamentPos.value = FILAMENT_POS_UNKNOWN
+  },
+})
 
-  set selectedPos (newPos: string) {
-    if (newPos === 'UNLOADED') {
-      this.localFilamentPos = this.FILAMENT_POS_UNLOADED
-    } else if (newPos === 'LOADED') {
-      this.localFilamentPos = this.FILAMENT_POS_LOADED
-    } else {
-      this.localFilamentPos = this.FILAMENT_POS_UNKNOWN
-    }
+const posErrorMessage = computed(() => {
+  if (localFilamentPos.value === FILAMENT_POS_UNKNOWN) {
+    return `${t('app.mmu.msg.warning_prefix')} ${t('app.mmu.msg.no_position')}`
   }
+  return ''
+})
 
-  get posList (): string[] {
-    return ['UNKNOWN', 'UNLOADED', 'LOADED']
-  }
-
-  get posErrorMessage () {
-    if (this.localFilamentPos === this.FILAMENT_POS_UNKNOWN) {
-      return `${this.$t('app.mmu.msg.warning_prefix')} ${this.$t('app.mmu.msg.no_position')}`
-    }
-    return ''
-  }
-
-  get okDisabled (): boolean {
-    const tError =
-            this.toolErrorMessage !== '' &&
-            !this.toolErrorMessage.toString().startsWith(this.$t('app.mmu.msg.warning_prefix').toString())
-    const gError =
-            this.gateErrorMessage !== '' &&
-            !this.gateErrorMessage.toString().startsWith(this.$t('app.mmu.msg.warning_prefix').toString())
-    const pError =
-            this.posErrorMessage !== '' &&
-            !this.posErrorMessage.toString().startsWith(this.$t('app.mmu.msg.warning_prefix').toString())
-    return tError || gError || pError
-  }
-
-  commit () {
-    let cmd = `MMU_RECOVER TOOL=${this.localTool} GATE=${this.localGate}`
-    if (this.localFilamentPos === this.FILAMENT_POS_UNLOADED) {
-      cmd += ' LOADED=0'
-    } else if (this.localFilamentPos === this.FILAMENT_POS_LOADED) {
-      cmd += ' LOADED=1'
-    }
-    this.sendGcode(cmd)
-    this.open = false
-  }
+function commit () {
+  let cmd = `MMU_RECOVER TOOL=${localTool.value} GATE=${localGate.value}`
+  if (localFilamentPos.value === FILAMENT_POS_UNLOADED) cmd += ' LOADED=0'
+  else if (localFilamentPos.value === FILAMENT_POS_LOADED) cmd += ' LOADED=1'
+  sendGcode(cmd)
+  open.value = false
 }
 </script>
 

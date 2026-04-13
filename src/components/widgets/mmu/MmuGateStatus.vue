@@ -41,54 +41,42 @@
   </svg>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useMmuMixin, TOOL_GATE_BYPASS } from '@/composables/useMmuMixin'
+import { useVuetify } from '@/composables/useVuetify'
 import type { MmuGateDetails } from '@/types'
 
-@Component({})
-export default class MmuGateStatus extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ required: true })
-  readonly gateIndex!: number
+const props = withDefaults(defineProps<{
+  gateIndex: number
+  editGateMap?: MmuGateDetails[] | null
+  editGateSelected?: number
+}>(), {
+  editGateMap: null,
+  editGateSelected: -1,
+})
 
-  @Prop({ required: false, default: null })
-  readonly editGateMap!: MmuGateDetails[] | null
+const { gate, gateStatus } = useMmuMixin()
+const vuetify = useVuetify()
 
-  @Prop({ required: false, default: -1 })
-  readonly editGateSelected!: number
+const statusColor = computed(() => {
+  if (props.gateIndex < 0) return 'none'
+  let status = gateStatus.value[props.gateIndex]
+  if (props.editGateMap) status = props.editGateMap[props.gateIndex].status
+  if (status >= 1) return 'green'
+  if (status === 0) return '#808080'
+  return 'orange'
+})
 
-  get statusColor (): string {
-    if (this.gateIndex < 0) return 'none'
+const selectedColor = computed(() => {
+  if (props.editGateMap) return 'none'
+  return gate.value === props.gateIndex ? 'limegreen' : 'none'
+})
 
-    let status = this.gateStatus[this.gateIndex]
-    if (this.editGateMap) status = this.editGateMap[this.gateIndex].status
-
-    if (status >= 1) {
-      return 'green'
-    } else if (status === 0) {
-      return '#808080'
-    }
-    return 'orange' // Unknown
-  }
-
-  get selectedColor (): string {
-    if (this.editGateMap) return 'none'
-
-    if (this.gate === this.gateIndex) {
-      return 'limegreen'
-    } else {
-      return 'none'
-    }
-  }
-
-  get fontColor (): string {
-    if (!this.editGateMap && this.gateIndex === this.gate) return '#000000'
-    if (this.$vuetify.theme.dark) return '#c0c0c0'
-    return '#808080'
-  }
-}
+const fontColor = computed(() => {
+  if (!props.editGateMap && props.gateIndex === gate.value) return '#000000'
+  return vuetify.theme.dark ? '#c0c0c0' : '#808080'
+})
 </script>
 
 <style scoped>

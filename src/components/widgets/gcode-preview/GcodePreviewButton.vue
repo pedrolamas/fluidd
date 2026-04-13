@@ -19,22 +19,25 @@
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { Component, Prop, Mixins, VModel } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
 
-@Component({})
-export default class GcodePreviewButton extends Mixins(BrowserMixin) {
-  @VModel({ type: Boolean })
-  inputValue?: boolean
+const props = defineProps<{
+  modelValue?: boolean
+  icon: string
+  tooltip: string
+  disabled?: boolean
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly icon!: string
+const emit = defineEmits<{
+  (e: 'input', value: boolean): void
+}>()
 
-  @Prop({ type: String, required: true })
-  readonly tooltip!: string
+const { isMobileViewport } = useBrowserMixin()
 
-  @Prop({ type: Boolean })
-  readonly disabled?: boolean
-}
+const inputValue = computed({
+  get: () => props.modelValue ?? false,
+  set: (v) => emit('input', v)
+})
 </script>

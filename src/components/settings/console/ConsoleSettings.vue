@@ -59,7 +59,7 @@
       <console-filter-dialog
         v-if="dialogState.open"
         v-model="dialogState.open"
-        :filter="dialogState.filter"
+        :filter="dialogFilter"
         @save="handleSaveFilter"
       />
     </v-card>
@@ -82,6 +82,8 @@ const dialogState = reactive<{ open: boolean; filter: ConsoleFilter | null }>({
   open: false,
   filter: null
 })
+
+const dialogFilter = computed<ConsoleFilter>(() => dialogState.filter as ConsoleFilter)
 
 const filters = computed((): ConsoleFilter[] => typedState.console.consoleFilters)
 

@@ -517,266 +517,157 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import type { BedSize, KlippyApp } from '@/store/printer/types'
 
 type Axis = 'X' | 'Y' | 'Z'
 
-@Component({})
-export default class ToolheadControlCircle extends Mixins(StateMixin, ToolheadMixin) {
-  get enableXYHoming (): boolean {
-    return this.$typedState.config.uiSettings.general.toolheadCircleXYHomingEnabled
+const { typedState, typedGetters } = useStore()
+const { klippyReady, printerPrinting, hasWait, sendGcode, sendMoveGcode, homeAll } = useStateMixin()
+const {
+  allHomed,
+  xyHomed,
+  xHomed,
+  yHomed,
+  zHomed,
+  forceMoveEnabled,
+} = useToolheadMixin()
+
+const enableXYHoming = computed(() => typedState.config.uiSettings.general.toolheadCircleXYHomingEnabled)
+const stepsXY = computed(() => typedState.config.uiSettings.general.toolheadCircleXYMoveDistances)
+const stepsZ = computed(() => typedState.config.uiSettings.general.toolheadCircleZMoveDistances)
+const hasSteppersEnabled = computed(() => typedGetters['printer/getHasSteppersEnabled'])
+const klippyApp = computed((): KlippyApp => typedGetters['printer/getKlippyApp'])
+const printerSettings = computed((): Klipper.SettingsState => typedGetters['printer/getPrinterSettings'])
+
+const printerSupportsQuadGantryLevel = computed(() => 'quad_gantry_level' in printerSettings.value)
+
+const printerSupportsZTiltAdjust = computed(() =>
+  'z_tilt' in printerSettings.value ||
+  (klippyApp.value.isKalico && 'z_tilt_ng' in printerSettings.value)
+)
+
+const printerSupportsLeveling = computed(() =>
+  printerSupportsQuadGantryLevel.value || printerSupportsZTiltAdjust.value
+)
+
+const xStepClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || !xHomed.value
+}))
+
+const yStepClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || !yHomed.value
+}))
+
+const zStepClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || !zHomed.value
+}))
+
+const xyStepClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || !(xHomed.value || yHomed.value)
+}))
+
+const xHomeClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || hasWait([Waits.onHomeX, Waits.onHomeXY, Waits.onHomeAll]),
+  primary: !xHomed.value
+}))
+
+const yHomeClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || hasWait([Waits.onHomeY, Waits.onHomeXY, Waits.onHomeAll]),
+  primary: !yHomed.value
+}))
+
+const zHomeClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || hasWait([Waits.onHomeZ, Waits.onHomeAll]),
+  primary: !zHomed.value
+}))
+
+const xyHomeClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || hasWait([Waits.onHomeX, Waits.onHomeY, Waits.onHomeXY, Waits.onHomeAll]),
+  primary: !xyHomed.value
+}))
+
+const xyzHomeClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || hasWait([Waits.onHomeX, Waits.onHomeY, Waits.onHomeZ, Waits.onHomeXY, Waits.onHomeAll]),
+  primary: !allHomed.value
+}))
+
+const bedSize = computed((): BedSize => typedGetters['printer/getBedSize'])
+
+const bedCenter = computed(() => ({
+  x: (bedSize.value.maxX - bedSize.value.minX) / 2,
+  y: (bedSize.value.maxY - bedSize.value.minY) / 2
+}))
+
+const centerToolheadClasses = computed(() => {
+  const toolPos = typedState.printer.printer.toolhead.position
+  const center = bedCenter.value
+  return {
+    disabled: !klippyReady.value || printerPrinting.value || !xyHomed.value,
+    primary: !(toolPos[0] === center.x && toolPos[1] === center.y)
   }
+})
 
-  get stepsXY (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadCircleXYMoveDistances
-  }
-
-  get stepsZ (): number[] {
-    return this.$typedState.config.uiSettings.general.toolheadCircleZMoveDistances
-  }
-
-  get hasSteppersEnabled (): boolean {
-    return this.$typedGetters['printer/getHasSteppersEnabled']
-  }
-
-  get klippyApp (): KlippyApp {
-    return this.$typedGetters['printer/getKlippyApp']
-  }
-
-  get printerSettings (): Klipper.SettingsState {
-    return this.$typedGetters['printer/getPrinterSettings']
-  }
-
-  get printerSupportsQuadGantryLevel (): boolean {
-    return 'quad_gantry_level' in this.printerSettings
-  }
-
-  get printerSupportsZTiltAdjust (): boolean {
-    return (
-      'z_tilt' in this.printerSettings ||
-      (
-        this.klippyApp.isKalico &&
-        'z_tilt_ng' in this.printerSettings
-      )
-    )
-  }
-
-  get printerSupportsLeveling (): boolean {
-    return (
-      this.printerSupportsQuadGantryLevel ||
-      this.printerSupportsZTiltAdjust
-    )
-  }
-
-  get xStepClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !this.xHomed
-      )
-    }
-  }
-
-  get yStepClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !this.yHomed
-      )
-    }
-  }
-
-  get zStepClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !this.zHomed
-      )
-    }
-  }
-
-  get xyStepClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !(this.xHomed || this.yHomed)
-      )
-    }
-  }
-
-  get xHomeClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        this.hasWait([this.$waits.onHomeX, this.$waits.onHomeXY, this.$waits.onHomeAll])
-      ),
-      primary: !this.xHomed
-    }
-  }
-
-  get yHomeClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        this.hasWait([this.$waits.onHomeY, this.$waits.onHomeXY, this.$waits.onHomeAll])
-      ),
-      primary: !this.yHomed
-    }
-  }
-
-  get zHomeClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        this.hasWait([this.$waits.onHomeZ, this.$waits.onHomeAll])
-      ),
-      primary: !this.zHomed
-    }
-  }
-
-  get xyHomeClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        this.hasWait([this.$waits.onHomeX, this.$waits.onHomeY, this.$waits.onHomeXY, this.$waits.onHomeAll])
-      ),
-      primary: !this.xyHomed
-    }
-  }
-
-  get xyzHomeClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        this.hasWait([this.$waits.onHomeX, this.$waits.onHomeY, this.$waits.onHomeZ, this.$waits.onHomeXY, this.$waits.onHomeAll])
-      ),
-      primary: !this.allHomed
-    }
-  }
-
-  get centerToolheadClasses () {
-    const tool_pos = this.$typedState.printer.printer.toolhead.position
-    const bedCenter = this.bedCenter
-
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !this.xyHomed
-      ),
-      primary: !(
-        tool_pos[0] === bedCenter.x &&
-        tool_pos[1] === bedCenter.y
-      )
-    }
-  }
-
-  get levelingClasses () {
-    const [primary, disabled] = this.printerSupportsQuadGantryLevel
+const levelingClasses = computed(() => {
+  const [primary, disabled] = printerSupportsQuadGantryLevel.value
+    ? [
+        !typedState.printer.printer.quad_gantry_level?.applied,
+        hasWait(Waits.onQGL)
+      ]
+    : printerSupportsZTiltAdjust.value
       ? [
-          !this.$typedState.printer.printer.quad_gantry_level?.applied,
-          this.hasWait(this.$waits.onQGL)
+          !(
+            typedState.printer.printer.z_tilt?.applied ||
+            typedState.printer.printer.z_tilt_ng?.applied
+          ),
+          hasWait(Waits.onZTilt)
         ]
-      : this.printerSupportsZTiltAdjust
-        ? [
-            !(
-              this.$typedState.printer.printer.z_tilt?.applied ||
-              this.$typedState.printer.printer.z_tilt_ng?.applied
-            ),
-            this.hasWait(this.$waits.onZTilt)
-          ]
-        : []
+      : []
 
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !this.allHomed ||
-        disabled
-      ),
-      primary
-    }
+  return {
+    disabled: !klippyReady.value || printerPrinting.value || !allHomed.value || disabled,
+    primary
   }
+})
 
-  get motorsOffClasses () {
-    return {
-      disabled: (
-        !this.klippyReady ||
-        this.printerPrinting ||
-        !this.hasSteppersEnabled
-      )
-    }
+const motorsOffClasses = computed(() => ({
+  disabled: !klippyReady.value || printerPrinting.value || !hasSteppersEnabled.value
+}))
+
+function sendLevelingGcode () {
+  if (printerSupportsQuadGantryLevel.value) {
+    sendGcode('QUAD_GANTRY_LEVEL', Waits.onQGL)
+  } else if (printerSupportsZTiltAdjust.value) {
+    sendGcode('Z_TILT_ADJUST', Waits.onZTilt)
   }
+}
 
-  sendLevelingGcode () {
-    if (this.printerSupportsQuadGantryLevel) {
-      this.sendGcode('QUAD_GANTRY_LEVEL', this.$waits.onQGL)
-    } else if (this.printerSupportsZTiltAdjust) {
-      this.sendGcode('Z_TILT_ADJUST', this.$waits.onZTilt)
-    }
+function moveAxisBy (axis: Axis, distance: number, negative = false) {
+  const rate: number = axis === 'Z'
+    ? typedState.config.uiSettings.general.defaultToolheadZSpeed
+    : typedState.config.uiSettings.general.defaultToolheadXYSpeed
+  const inverted: boolean = typedState.config.uiSettings.general.axis[axis.toLowerCase()].inverted || false
+  distance = negative !== inverted ? -distance : distance
+
+  if (forceMoveEnabled.value) {
+    const accel: number = axis === 'Z'
+      ? printerSettings.value.printer?.max_z_accel ?? 100
+      : typedState.printer.printer.toolhead.max_accel
+    sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${distance} VELOCITY=${rate} ACCEL=${accel}`)
+  } else {
+    sendMoveGcode({ [axis]: distance }, rate)
   }
+}
 
-  moveAxisBy (axis: Axis, distance: number, negative = false) {
-    const rate: number = axis === 'Z'
-      ? this.$typedState.config.uiSettings.general.defaultToolheadZSpeed
-      : this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
-    const inverted: boolean = this.$typedState.config.uiSettings.general.axis[axis.toLowerCase()].inverted || false
-    distance = negative !== inverted
-      ? -distance
-      : distance
-
-    if (this.forceMoveEnabled) {
-      const accel: number = axis === 'Z'
-        ? this.printerSettings.printer?.max_z_accel ?? 100
-        : this.$typedState.printer.printer.toolhead.max_accel
-      this.sendGcode(`FORCE_MOVE STEPPER=stepper_${axis.toLowerCase()} DISTANCE=${distance} VELOCITY=${rate} ACCEL=${accel}`)
-    } else {
-      this.sendMoveGcode(
-        {
-          [axis]: distance
-        },
-        rate)
-    }
-  }
-
-  get bedSize (): BedSize {
-    return this.$typedGetters['printer/getBedSize']
-  }
-
-  get bedCenter () {
-    const bedSize = this.bedSize
-
-    return {
-      x: (bedSize.maxX - bedSize.minX) / 2,
-      y: (bedSize.maxY - bedSize.minY) / 2
-    }
-  }
-
-  sendMoveCenterGcode () {
-    const bedCenter = this.bedCenter
-    const rate: number = this.$typedState.config.uiSettings.general.defaultToolheadXYSpeed
-
-    this.sendMoveGcode(
-      {
-        X: bedCenter.x,
-        Y: bedCenter.y
-      },
-      rate,
-      true)
-  }
+function sendMoveCenterGcode () {
+  const center = bedCenter.value
+  const rate: number = typedState.config.uiSettings.general.defaultToolheadXYSpeed
+  sendMoveGcode({ X: center.x, Y: center.y }, rate, true)
 }
 </script>
 

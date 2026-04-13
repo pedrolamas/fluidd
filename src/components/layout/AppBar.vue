@@ -406,7 +406,7 @@ const currentLayoutName = computed(() => typedGetters['layout/getSpecificLayoutN
 
 const currentUser = computed<AppUser | null>(() => typedState.auth.currentUser)
 
-const currentBreakpoint = computed(() => vuetify.framework.breakpoint.name)
+const currentBreakpoint = computed(() => vuetify.breakpoint.name)
 
 function handleSetDefaultLayout () {
   typedDispatch('layout/onLayoutChange', {

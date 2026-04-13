@@ -106,118 +106,92 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useMmuMixin } from '@/composables/useMmuMixin'
 import { defaultState } from '@/store/config/state'
 
-@Component({
-  components: {}
+const { typedState, typedDispatch } = useStore()
+const { hasEncoder } = useMmuMixin()
+
+const showClogDetection = computed({
+  get: () => typedState.config.uiSettings.mmu.showClogDetection,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showClogDetection',
+    value,
+    server: true
+  })
 })
-export default class MmuSettings extends Mixins(StateMixin, MmuMixin) {
-  get showClogDetection (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showClogDetection
-  }
 
-  set showClogDetection (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showClogDetection',
-      value,
-      server: true
-    })
-  }
+const showTtgMap = computed({
+  get: () => typedState.config.uiSettings.mmu.showTtgMap,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showTtgMap',
+    value,
+    server: true
+  })
+})
 
-  get showTtgMap (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showTtgMap
-  }
+const showDetails = computed({
+  get: () => typedState.config.uiSettings.mmu.showDetails,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showDetails',
+    value,
+    server: true
+  })
+})
 
-  set showTtgMap (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showTtgMap',
-      value,
-      server: true
-    })
-  }
+const largeFilamentStatus = computed({
+  get: () => typedState.config.uiSettings.mmu.largeFilamentStatus,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.largeFilamentStatus',
+    value,
+    server: true
+  })
+})
 
-  get showDetails (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showDetails
-  }
+const showUnavailableSpoolColor = computed({
+  get: () => typedState.config.uiSettings.mmu.showUnavailableSpoolColor,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showUnavailableSpoolColor',
+    value,
+    server: true
+  })
+})
 
-  set showDetails (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showDetails',
-      value,
-      server: true
-    })
-  }
+const showLogos = computed({
+  get: () => typedState.config.uiSettings.mmu.showLogos,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showLogos',
+    value,
+    server: true
+  })
+})
 
-  get largeFilamentStatus (): boolean {
-    return this.$typedState.config.uiSettings.mmu.largeFilamentStatus
-  }
+const showName = computed({
+  get: () => typedState.config.uiSettings.mmu.showName,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showName',
+    value,
+    server: true
+  })
+})
 
-  set largeFilamentStatus (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.largeFilamentStatus',
-      value,
-      server: true
-    })
-  }
+const showClimate = computed({
+  get: () => typedState.config.uiSettings.mmu.showClimate,
+  set: (value: boolean) => typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu.showClimate',
+    value,
+    server: true
+  })
+})
 
-  get showUnavailableSpoolColor (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showUnavailableSpoolColor
-  }
-
-  set showUnavailableSpoolColor (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showUnavailableSpoolColor',
-      value,
-      server: true
-    })
-  }
-
-  get showLogos (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showLogos
-  }
-
-  set showLogos (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showLogos',
-      value,
-      server: true
-    })
-  }
-
-  get showName (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showName
-  }
-
-  set showName (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showName',
-      value,
-      server: true
-    })
-  }
-
-  get showClimate (): boolean {
-    return this.$typedState.config.uiSettings.mmu.showClimate
-  }
-
-  set showClimate (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu.showClimate',
-      value,
-      server: true
-    })
-  }
-
-  handleReset () {
-    this.$typedDispatch('config/saveByPath', {
-      path: 'uiSettings.mmu',
-      value: defaultState().uiSettings.mmu,
-      server: true
-    })
-  }
+function handleReset () {
+  typedDispatch('config/saveByPath', {
+    path: 'uiSettings.mmu',
+    value: defaultState().uiSettings.mmu,
+    server: true
+  })
 }
 </script>

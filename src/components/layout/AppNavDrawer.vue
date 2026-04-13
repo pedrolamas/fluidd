@@ -158,12 +158,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'input', value: boolean): void
+  (e: 'input', value: boolean | undefined): void
 }>()
 
 const open = computed({
   get: () => props.value,
-  set: (value: boolean) => emit('input', value)
+  set: (value: boolean | undefined) => emit('input', value)
 })
 
 const { socketConnected, authenticated } = useStateMixin()

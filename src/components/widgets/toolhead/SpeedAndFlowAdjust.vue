@@ -11,7 +11,7 @@
         overridable
         :reset-value="100"
         :disabled="!klippyReady"
-        :loading="hasWait($waits.onSetSpeed)"
+        :loading="hasWait(Waits.onSetSpeed)"
         :locked="isMobileUserAgent"
         :min="1"
         :max="200"
@@ -29,7 +29,7 @@
         overridable
         :reset-value="100"
         :disabled="!klippyReady"
-        :loading="hasWait($waits.onSetFlow)"
+        :loading="hasWait(Waits.onSetFlow)"
         :locked="isMobileUserAgent"
         :min="1"
         :max="200"
@@ -39,27 +39,26 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { Waits } from '@/globals'
 
-@Component({})
-export default class SpeedAndFlowAdjust extends Mixins(StateMixin, BrowserMixin) {
-  get flow () {
-    return Math.round(this.$typedState.printer.printer.gcode_move.extrude_factor * 100) || 100
-  }
+const { typedState } = useStore()
+const { klippyReady, hasWait, sendGcode } = useStateMixin()
+const { isMobileUserAgent } = useBrowserMixin()
 
-  handleSetFlow (val: number) {
-    this.sendGcode(`M221 S${val}`, this.$waits.onSetFlow)
-  }
+const flow = computed(() => Math.round(typedState.printer.printer.gcode_move.extrude_factor * 100) || 100)
 
-  get speed () {
-    return Math.round(this.$typedState.printer.printer.gcode_move.speed_factor * 100) || 100
-  }
+function handleSetFlow (val: number) {
+  sendGcode(`M221 S${val}`, Waits.onSetFlow)
+}
 
-  handleSetSpeed (val: number) {
-    this.sendGcode(`M220 S${val}`, this.$waits.onSetSpeed)
-  }
+const speed = computed(() => Math.round(typedState.printer.printer.gcode_move.speed_factor * 100) || 100)
+
+function handleSetSpeed (val: number) {
+  sendGcode(`M220 S${val}`, Waits.onSetSpeed)
 }
 </script>

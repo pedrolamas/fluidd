@@ -63,52 +63,50 @@
   </v-expansion-panels>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import ToolheadMixin from '@/mixins/toolhead'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStore } from '@/composables/useStore'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useToolheadMixin } from '@/composables/useToolheadMixin'
 
-@Component({})
-export default class ExtruderMoves extends Mixins(StateMixin, ToolheadMixin) {
-  get extrudeFactor (): number {
-    return this.$typedState.printer.printer.gcode_move.extrude_factor || 1
-  }
+const { typedState } = useStore()
+const { klippyReady } = useStateMixin()
+const { filamentDiameter, nozzleDiameter } = useToolheadMixin()
 
-  get layerHeight (): number {
-    return 0.2
-  }
+const extrudeFactor = computed(() => typedState.printer.printer.gcode_move.extrude_factor || 1)
 
-  get extrudeLength (): number {
-    const extrudeLength = this.$typedState.config.uiSettings.toolhead.extrudeLength
+const layerHeight = computed(() => 0.2)
 
-    if (Number.isNaN(+extrudeLength)) return 0
+const extrudeLength = computed(() => {
+  const value = typedState.config.uiSettings.toolhead.extrudeLength
 
-    return extrudeLength === -1
-      ? this.$typedState.config.uiSettings.general.defaultExtrudeLength
-      : extrudeLength
-  }
+  if (Number.isNaN(+value)) return 0
 
-  get extrudeSpeed (): number {
-    const extrudeSpeed = this.$typedState.config.uiSettings.toolhead.extrudeSpeed
+  return value === -1
+    ? typedState.config.uiSettings.general.defaultExtrudeLength
+    : value
+})
 
-    if (Number.isNaN(+extrudeSpeed)) return 0
+const extrudeSpeed = computed(() => {
+  const value = typedState.config.uiSettings.toolhead.extrudeSpeed
 
-    return extrudeSpeed === -1
-      ? this.$typedState.config.uiSettings.general.defaultExtrudeSpeed
-      : extrudeSpeed
-  }
+  if (Number.isNaN(+value)) return 0
 
-  get estimatedExtrudedLength (): number {
-    return Math.round(this.extrudeLength * this.extrudeFactor * (this.filamentDiameter ** 2 / this.nozzleDiameter ** 2) * 10) / 10
-  }
+  return value === -1
+    ? typedState.config.uiSettings.general.defaultExtrudeSpeed
+    : value
+})
 
-  get estimatedVolumetricFlow (): number {
-    return Math.round(Math.PI / 4 * this.filamentDiameter ** 2 * this.extrudeSpeed * 10) / 10
-  }
+const estimatedExtrudedLength = computed(() =>
+  Math.round(extrudeLength.value * extrudeFactor.value * (filamentDiameter.value ** 2 / nozzleDiameter.value ** 2) * 10) / 10
+)
 
-  get estimatedMaxSpeed (): number {
-    const stadiumArea = this.layerHeight * (this.nozzleDiameter + this.layerHeight * (Math.PI / 4 - 1))
-    return Math.round(this.estimatedVolumetricFlow / stadiumArea * 10) / 10
-  }
-}
+const estimatedVolumetricFlow = computed(() =>
+  Math.round(Math.PI / 4 * filamentDiameter.value ** 2 * extrudeSpeed.value * 10) / 10
+)
+
+const estimatedMaxSpeed = computed(() => {
+  const stadiumArea = layerHeight.value * (nozzleDiameter.value + layerHeight.value * (Math.PI / 4 - 1))
+  return Math.round(estimatedVolumetricFlow.value / stadiumArea * 10) / 10
+})
 </script>

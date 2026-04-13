@@ -39,10 +39,10 @@
       sort-desc
       fixed-header
     >
-      <template #item="{ headers, item }">
+      <template #item="{ headers: rowHeaders, item }">
         <app-data-table-row
           :key="item.job_id"
-          :headers="headers"
+          :headers="rowHeaders"
           :item="item"
           :class="{
             'v-data-table__inactive': !item.exists
@@ -128,413 +128,405 @@
   </div>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
 import JobHistoryItemStatus from './JobHistoryItemStatus.vue'
-import FilesMixin from '@/mixins/files'
-import getFilePaths from '@/util/get-file-paths'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
+import { Filters } from '@/plugins/filters'
+import getFilePathsUtil from '@/util/get-file-paths'
 import type { HistoryItem } from '@/store/history/types'
 import { SocketActions } from '@/api/socketActions'
 import type { AppDataTableHeader } from '@/types'
 import type { DataTableHeader } from 'vuetify'
 import type { DefaultGetterFunction } from '@/components/ui/AppDataTableRow.vue'
 
-@Component({
-  components: {
-    JobHistoryItemStatus
+const { getThumbUrl } = useFilesMixin()
+const { typedState, typedGetters, typedDispatch } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
+
+const search = ref('')
+
+const sensors = computed((): Moonraker.Sensor.Entry[] => typedGetters['sensors/getSensors'])
+const history = computed((): HistoryItem[] => typedGetters['history/getHistory'])
+
+const auxiliaryDataHeaders = computed((): AppDataTableHeader[] => {
+  const auxiliaryDataHeaders = history.value
+    .reduce<Record<string, string>>((headers, item) => {
+      if (item.auxiliary_data) {
+        for (const auxiliaryDataItem of item.auxiliary_data) {
+          headers[auxiliaryDataItem.name] = auxiliaryDataItem.description
+        }
+      }
+
+      return headers
+    }, {})
+
+  for (const sensor of sensors.value) {
+    if (sensor.history_fields) {
+      for (const historyField of sensor.history_fields) {
+        auxiliaryDataHeaders[historyField.field] = historyField.description
+      }
+    }
   }
+
+  return Object.entries(auxiliaryDataHeaders)
+    .map(([name, description]): AppDataTableHeader => ({
+      text: Filters.prettyCase(description),
+      value: `auxiliary_data.${name}`,
+      cellClass: 'text-no-wrap'
+    }))
 })
-export default class JobHistory extends Mixins(FilesMixin) {
-  search = ''
 
-  get auxiliaryDataHeaders (): AppDataTableHeader[] {
-    const auxiliaryDataHeaders = this.history
-      .reduce<Record<string, string>>((headers, item) => {
-        if (item.auxiliary_data) {
-          for (const auxiliaryDataItem of item.auxiliary_data) {
-            headers[auxiliaryDataItem.name] = auxiliaryDataItem.description
-          }
-        }
+const configurableHeaders = computed((): AppDataTableHeader[] => {
+  const headers: AppDataTableHeader[] = [
+    {
+      text: tc('app.general.table.header.status'),
+      value: 'status',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.start_time'),
+      value: 'start_time',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.end_time'),
+      value: 'end_time',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.print_duration'),
+      value: 'print_duration',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.total_duration'),
+      value: 'total_duration',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_used'),
+      value: 'filament_used',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.user'),
+      value: 'user',
+      visible: false,
+      cellClass: 'text-no-wrap',
+    },
+    {
+      text: tc('app.general.table.header.height'),
+      value: 'metadata.object_height',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.first_layer_height'),
+      value: 'metadata.first_layer_height',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.layer_height'),
+      value: 'metadata.layer_height',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_name'),
+      value: 'metadata.filament_name',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_colors'),
+      value: 'metadata.filament_colors',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.extruder_colors'),
+      value: 'metadata.extruder_colors',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_temps'),
+      value: 'metadata.filament_temps',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_type'),
+      value: 'metadata.filament_type',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament'),
+      value: 'metadata.filament_total',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_change_count'),
+      value: 'metadata.filament_change_count',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_weight_total'),
+      value: 'metadata.filament_weight_total',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.filament_weights'),
+      value: 'metadata.filament_weights',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.mmu_print'),
+      value: 'metadata.mmu_print',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.referenced_tools'),
+      value: 'metadata.referenced_tools',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.nozzle_diameter'),
+      value: 'metadata.nozzle_diameter',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.slicer'),
+      value: 'metadata.slicer',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.slicer_version'),
+      value: 'metadata.slicer_version',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.printer_vendor'),
+      value: 'metadata.printer_vendor',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.printer_model'),
+      value: 'metadata.printer_model',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.printer_variant'),
+      value: 'metadata.printer_variant',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.profile_version'),
+      value: 'metadata.profile_version',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.estimated_time'),
+      value: 'metadata.estimated_time',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.first_layer_bed_temp'),
+      value: 'metadata.first_layer_bed_temp',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.first_layer_extr_temp'),
+      value: 'metadata.first_layer_extr_temp',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.chamber_temp'),
+      value: 'metadata.chamber_temp',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('app.general.table.header.file_processors'),
+      value: 'metadata.file_processors',
+      visible: false,
+      cellClass: 'text-no-wrap'
+    },
+    ...auxiliaryDataHeaders.value,
+    {
+      text: tc('app.general.table.header.modified'),
+      value: 'metadata.modified',
+      cellClass: 'text-no-wrap',
+      width: '1%'
+    },
+    {
+      text: tc('app.general.table.header.size'),
+      value: 'metadata.size',
+      cellClass: 'text-no-wrap',
+      width: '1%'
+    },
+  ]
 
-        return headers
-      }, {})
+  const mergedTableHeaders: AppDataTableHeader[] = typedGetters['config/getMergedTableHeaders'](headers, 'history')
 
-    for (const sensor of this.sensors) {
-      if (sensor.history_fields) {
-        for (const historyField of sensor.history_fields) {
-          auxiliaryDataHeaders[historyField.field] = historyField.description
-        }
-      }
+  return mergedTableHeaders
+})
+
+const headers = computed((): DataTableHeader[] => [
+  {
+    text: '',
+    value: 'data-table-icons',
+    sortable: false,
+    width: 24
+  },
+  {
+    text: tc('app.general.table.header.name'),
+    value: 'filename'
+  },
+  ...configurableHeaders.value
+    .filter(header => header.visible !== false),
+  {
+    text: tc('app.general.table.header.actions'),
+    value: 'actions',
+    sortable: false,
+    align: 'end'
+  }
+])
+
+const thumbnailSize = computed({
+  get: () => typedState.config.uiSettings.thumbnailSizes.history ?? 32,
+  set: (value: number) => typedDispatch('config/updateThumbnailSizes', { name: 'history', size: value })
+})
+
+function getFilePaths (filename: string) {
+  return getFilePathsUtil(filename, 'gcodes')
+}
+
+async function handleRemoveJob (job: HistoryItem) {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_delete', 1),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
+
+  if (result) {
+    SocketActions.serverHistoryDeleteJob(job.job_id)
+  }
+}
+
+function handleJobThumbnailError (job: HistoryItem) {
+  typedDispatch('history/clearHistoryThumbnails', job.job_id)
+}
+
+function formatValueWithUnits (value: unknown, units?: string | null) {
+  if (typeof value === 'number') {
+    const roundedValue = Math.round(value * 100) / 100
+
+    return units
+      ? `${roundedValue} ${units}`
+      : roundedValue.toString()
+  }
+
+  if (typeof value === 'string' && units) {
+    return `${value} ${units}`
+  }
+
+  return value
+}
+
+function getItemValue (item: HistoryItem, header: DataTableHeader, defaultGetter: DefaultGetterFunction) {
+  if (header.value.startsWith('auxiliary_data.')) {
+    const auxiliaryDataItemName = header.value.substring(15)
+
+    const { value, units } = item.auxiliary_data?.find(x => x.name === auxiliaryDataItemName) ?? {}
+
+    if (
+      Array.isArray(value) &&
+      value.length > 0
+    ) {
+      return value
+        .map(x => formatValueWithUnits(x, units))
     }
 
-    return Object.entries(auxiliaryDataHeaders)
-      .map(([name, description]): AppDataTableHeader => ({
-        text: this.$filters.prettyCase(description),
-        value: `auxiliary_data.${name}`,
-        cellClass: 'text-no-wrap'
-      }))
+    return formatValueWithUnits(value, units)
   }
 
-  get configurableHeaders (): AppDataTableHeader[] {
-    const headers: AppDataTableHeader[] = [
-      {
-        text: this.$tc('app.general.table.header.status'),
-        value: 'status',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.start_time'),
-        value: 'start_time',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.end_time'),
-        value: 'end_time',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.print_duration'),
-        value: 'print_duration',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.total_duration'),
-        value: 'total_duration',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_used'),
-        value: 'filament_used',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.user'),
-        value: 'user',
-        visible: false,
-        cellClass: 'text-no-wrap',
-      },
-      {
-        text: this.$tc('app.general.table.header.height'),
-        value: 'metadata.object_height',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.first_layer_height'),
-        value: 'metadata.first_layer_height',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.layer_height'),
-        value: 'metadata.layer_height',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_name'),
-        value: 'metadata.filament_name',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_colors'),
-        value: 'metadata.filament_colors',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.extruder_colors'),
-        value: 'metadata.extruder_colors',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_temps'),
-        value: 'metadata.filament_temps',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_type'),
-        value: 'metadata.filament_type',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament'),
-        value: 'metadata.filament_total',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_change_count'),
-        value: 'metadata.filament_change_count',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_weight_total'),
-        value: 'metadata.filament_weight_total',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.filament_weights'),
-        value: 'metadata.filament_weights',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.mmu_print'),
-        value: 'metadata.mmu_print',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.referenced_tools'),
-        value: 'metadata.referenced_tools',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.nozzle_diameter'),
-        value: 'metadata.nozzle_diameter',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.slicer'),
-        value: 'metadata.slicer',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.slicer_version'),
-        value: 'metadata.slicer_version',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.printer_vendor'),
-        value: 'metadata.printer_vendor',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.printer_model'),
-        value: 'metadata.printer_model',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.printer_variant'),
-        value: 'metadata.printer_variant',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.profile_version'),
-        value: 'metadata.profile_version',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.estimated_time'),
-        value: 'metadata.estimated_time',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.first_layer_bed_temp'),
-        value: 'metadata.first_layer_bed_temp',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.first_layer_extr_temp'),
-        value: 'metadata.first_layer_extr_temp',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.chamber_temp'),
-        value: 'metadata.chamber_temp',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: this.$tc('app.general.table.header.file_processors'),
-        value: 'metadata.file_processors',
-        visible: false,
-        cellClass: 'text-no-wrap'
-      },
-      ...this.auxiliaryDataHeaders,
-      {
-        text: this.$tc('app.general.table.header.modified'),
-        value: 'metadata.modified',
-        cellClass: 'text-no-wrap',
-        width: '1%'
-      },
-      {
-        text: this.$tc('app.general.table.header.size'),
-        value: 'metadata.size',
-        cellClass: 'text-no-wrap',
-        width: '1%'
-      },
-    ]
+  const value = defaultGetter(item, header)
 
-    const mergedTableHeaders: AppDataTableHeader[] = this.$typedGetters['config/getMergedTableHeaders'](headers, 'history')
-
-    return mergedTableHeaders
-  }
-
-  get headers (): DataTableHeader[] {
-    return [
-      {
-        text: '',
-        value: 'data-table-icons',
-        sortable: false,
-        width: 24
-      },
-      {
-        text: this.$tc('app.general.table.header.name'),
-        value: 'filename'
-      },
-      ...this.configurableHeaders
-        .filter(header => header.visible !== false),
-      {
-        text: this.$tc('app.general.table.header.actions'),
-        value: 'actions',
-        sortable: false,
-        align: 'end'
+  if (typeof value === 'number') {
+    switch (header.value) {
+      case 'start_time':
+      case 'end_time':
+      case 'metadata.modified': {
+        return Filters.formatDateTime(value * 1000)
       }
-    ]
-  }
 
-  get thumbnailSize (): number {
-    return this.$typedState.config.uiSettings.thumbnailSizes.history ?? 32
-  }
+      case 'metadata.size':
+        return Filters.getReadableFileSizeString(value)
 
-  set thumbnailSize (value: number) {
-    this.$typedDispatch('config/updateThumbnailSizes', { name: 'history', size: value })
-  }
+      case 'print_duration':
+      case 'total_duration':
+      case 'metadata.estimated_time':
+        return Filters.formatCounterSeconds(value)
 
-  get sensors (): Moonraker.Sensor.Entry[] {
-    return this.$typedGetters['sensors/getSensors']
-  }
+      case 'filament_used':
+      case 'metadata.filament_total':
+      case 'metadata.object_height':
+        return Filters.getReadableLengthString(value)
 
-  get history (): HistoryItem[] {
-    return this.$typedGetters['history/getHistory']
-  }
+      case 'metadata.filament_weight_total':
+        return Filters.getReadableWeightString(value)
 
-  getFilePaths (filename: string) {
-    return getFilePaths(filename, 'gcodes')
-  }
-
-  async handleRemoveJob (job: HistoryItem) {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_delete', 1),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
-
-    if (result) {
-      SocketActions.serverHistoryDeleteJob(job.job_id)
+      case 'metadata.first_layer_height':
+      case 'metadata.layer_height':
+      case 'metadata.nozzle_diameter':
+        return `${value} mm`
     }
   }
 
-  handleJobThumbnailError (job: HistoryItem) {
-    this.$typedDispatch('history/clearHistoryThumbnails', job.job_id)
-  }
-
-  getItemValue (item: HistoryItem, header: DataTableHeader, defaultGetter: DefaultGetterFunction) {
-    if (header.value.startsWith('auxiliary_data.')) {
-      const auxiliaryDataItemName = header.value.substring(15)
-
-      const { value, units } = item.auxiliary_data?.find(x => x.name === auxiliaryDataItemName) ?? {}
-
-      if (
-        Array.isArray(value) &&
-        value.length > 0
-      ) {
+  if (Array.isArray(value) && value.length > 0) {
+    switch (header.value) {
+      case 'metadata.filament_weights':
         return value
-          .map(x => this.formatValueWithUnits(x, units))
-      }
+          .map(x => typeof x === 'number'
+            ? Filters.getReadableWeightString(x)
+            : x
+          )
 
-      return this.formatValueWithUnits(value, units)
+      case 'metadata.file_processors':
+      case 'metadata.referenced_tools':
+        return value
+          .map(x => typeof x === 'string'
+            ? Filters.prettyCase(x)
+            : x
+          )
     }
-
-    const value = defaultGetter(item, header)
-
-    if (typeof value === 'number') {
-      switch (header.value) {
-        case 'start_time':
-        case 'end_time':
-        case 'metadata.modified': {
-          return this.$filters.formatDateTime(value * 1000)
-        }
-
-        case 'metadata.size':
-          return this.$filters.getReadableFileSizeString(value)
-
-        case 'print_duration':
-        case 'total_duration':
-        case 'metadata.estimated_time':
-          return this.$filters.formatCounterSeconds(value)
-
-        case 'filament_used':
-        case 'metadata.filament_total':
-        case 'metadata.object_height':
-          return this.$filters.getReadableLengthString(value)
-
-        case 'metadata.filament_weight_total':
-          return this.$filters.getReadableWeightString(value)
-
-        case 'metadata.first_layer_height':
-        case 'metadata.layer_height':
-        case 'metadata.nozzle_diameter':
-          return `${value} mm`
-      }
-    }
-
-    if (Array.isArray(value) && value.length > 0) {
-      switch (header.value) {
-        case 'metadata.filament_weights':
-          return value
-            .map(x => typeof x === 'number'
-              ? this.$filters.getReadableWeightString(x)
-              : x
-            )
-
-        case 'metadata.file_processors':
-        case 'metadata.referenced_tools':
-          return value
-            .map(x => typeof x === 'string'
-              ? this.$filters.prettyCase(x)
-              : x
-            )
-      }
-    }
-
-    return value
   }
 
-  formatValueWithUnits (value: unknown, units?: string | null) {
-    if (typeof value === 'number') {
-      const roundedValue = Math.round(value * 100) / 100
-
-      return units
-        ? `${roundedValue} ${units}`
-        : roundedValue.toString()
-    }
-
-    if (typeof value === 'string' && units) {
-      return `${value} ${units}`
-    }
-
-    return value
-  }
+  return value
 }
 </script>

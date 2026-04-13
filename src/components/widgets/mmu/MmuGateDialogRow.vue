@@ -38,35 +38,32 @@
   </tr>
 </template>
 
-<script lang="ts">
-import Component from 'vue-class-component'
-import { Mixins, Prop } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { GATE_EMPTY } from '@/composables/useMmuMixin'
 import type { MmuGateDetails } from '@/types'
 import MmuSpool from '@/components/widgets/mmu/MmuSpool.vue'
 import MmuGateSummary from '@/components/widgets/mmu/MmuGateSummary.vue'
 
-@Component({
-  components: { MmuSpool, MmuGateSummary },
+const props = defineProps<{
+  details: MmuGateDetails
+  selectedGate: number | null
+  selectedEsGroup: number | null
+}>()
+
+defineEmits<{
+  (e: 'select-gate', gate: number): void
+  (e: 'select-es', gate: number): void
+  (e: 'mouseover', gate: number): void
+  (e: 'mouseleave', gate: number): void
+}>()
+
+const rowClass = computed(() => {
+  const classes = ['cursor-pointer']
+  if (props.details.index === props.selectedGate) classes.push('selected-row')
+  if (props.details.status === GATE_EMPTY) classes.push('disabled-row')
+  return classes
 })
-export default class MmuGateDialogRow extends Mixins(StateMixin, MmuMixin) {
-  @Prop({ required: true })
-  readonly details!: MmuGateDetails
-
-  @Prop({ required: true })
-  readonly selectedGate!: number | null
-
-  @Prop({ required: true })
-  readonly selectedEsGroup!: number | null
-
-  get rowClass (): string[] {
-    const classes = ['cursor-pointer']
-    if (this.details.index === this.selectedGate) classes.push('selected-row')
-    if (this.details.status === this.GATE_EMPTY) classes.push('disabled-row')
-    return classes
-  }
-}
 </script>
 
 <style scoped>

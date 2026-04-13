@@ -116,111 +116,79 @@
   </v-card-text>
 </template>
 
-<script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { Waits } from '@/globals'
 import type { KlippyApp } from '@/store/printer/types'
 
-@Component({})
-export default class Retract extends Mixins(StateMixin, BrowserMixin) {
-  get firmwareRetraction () {
-    const printerSettings: Klipper.SettingsState = this.$typedGetters['printer/getPrinterSettings']
+const { klippyReady, hasWait, sendGcode } = useStateMixin()
+const { isMobileUserAgent } = useBrowserMixin()
+const { typedState, typedGetters } = useStore()
 
-    return printerSettings.firmware_retraction
-  }
+const firmwareRetraction = computed(() => {
+  const printerSettings: Klipper.SettingsState = typedGetters['printer/getPrinterSettings']
 
-  get defaultRetractLength (): number {
-    return this.firmwareRetraction?.retract_length ?? 0
-  }
+  return printerSettings.firmware_retraction
+})
 
-  get retractLength (): number {
-    return this.$typedState.printer.printer.firmware_retraction?.retract_length ?? 0
-  }
+const defaultRetractLength = computed(() => firmwareRetraction.value?.retract_length ?? 0)
+const retractLength = computed(() => typedState.printer.printer.firmware_retraction?.retract_length ?? 0)
+const maxRetractLength = computed(() => {
+  if (defaultRetractLength.value <= 0) return 15
+  return Math.round(defaultRetractLength.value * 2 * 100) / 100
+})
 
-  get maxRetractLength (): number {
-    if (this.defaultRetractLength <= 0) return 15
-    return Math.round(this.defaultRetractLength * 2 * 100) / 100
-  }
+const defaultRetractSpeed = computed(() => firmwareRetraction.value?.retract_speed ?? 0)
+const retractSpeed = computed(() => typedState.printer.printer.firmware_retraction?.retract_speed ?? 0)
+const maxRetractSpeed = computed(() => {
+  if (defaultRetractSpeed.value <= 0) return 100
+  return Math.round(defaultRetractSpeed.value * 2)
+})
 
-  get defaultRetractSpeed (): number {
-    return this.firmwareRetraction?.retract_speed ?? 0
-  }
+const defaultUnretractSpeed = computed(() => firmwareRetraction.value?.unretract_speed ?? 0)
+const unretractSpeed = computed(() => typedState.printer.printer.firmware_retraction?.unretract_speed ?? 0)
+const maxUnretractSpeed = computed(() => {
+  if (defaultUnretractSpeed.value <= 0) return 100
+  return Math.round(defaultUnretractSpeed.value * 2)
+})
 
-  get retractSpeed (): number {
-    return this.$typedState.printer.printer.firmware_retraction?.retract_speed ?? 0
-  }
+const defaultUnretractExtraLength = computed(() => firmwareRetraction.value?.unretract_extra_length ?? 0)
+const unretractExtraLength = computed(() => typedState.printer.printer.firmware_retraction?.unretract_extra_length ?? 0)
+const maxUnretractExtraLength = computed(() => {
+  if (defaultUnretractExtraLength.value <= 0) return 15
+  return Math.round(defaultUnretractExtraLength.value * 2 * 100) / 100
+})
 
-  get maxRetractSpeed (): number {
-    if (this.defaultRetractSpeed <= 0) return 100
-    return Math.round(this.defaultRetractSpeed * 2)
-  }
+const defaultZHopHeight = computed(() => firmwareRetraction.value?.z_hop_height ?? 0)
+const zHopHeight = computed(() => typedState.printer.printer.firmware_retraction?.z_hop_height ?? 0)
+const maxZHopHeight = computed(() => {
+  if (defaultZHopHeight.value <= 0) return 2
+  return Math.round(defaultZHopHeight.value * 2 * 100) / 100
+})
 
-  get defaultUnretractSpeed (): number {
-    return this.firmwareRetraction?.unretract_speed ?? 0
-  }
+const klippyApp = computed((): KlippyApp => typedGetters['printer/getKlippyApp'])
+const supportsZHopHeight = computed(() => klippyApp.value.isKalicoOrDangerKlipper)
 
-  get unretractSpeed (): number {
-    return this.$typedState.printer.printer.firmware_retraction?.unretract_speed ?? 0
-  }
+function setRetractLength (val: number) {
+  sendGcode(`SET_RETRACTION RETRACT_LENGTH=${val}`, Waits.onSetRetractLength)
+}
 
-  get maxUnretractSpeed (): number {
-    if (this.defaultUnretractSpeed <= 0) return 100
-    return Math.round(this.defaultUnretractSpeed * 2)
-  }
+function setRetractSpeed (val: number) {
+  sendGcode(`SET_RETRACTION RETRACT_SPEED=${val}`, Waits.onSetRetractSpeed)
+}
 
-  get defaultUnretractExtraLength (): number {
-    return this.firmwareRetraction?.unretract_extra_length ?? 0
-  }
+function setUnretractSpeed (val: number) {
+  sendGcode(`SET_RETRACTION UNRETRACT_SPEED=${val}`, Waits.onSetUnretractSpeed)
+}
 
-  get unretractExtraLength (): number {
-    return this.$typedState.printer.printer.firmware_retraction?.unretract_extra_length ?? 0
-  }
+function setUnRetractExtraLength (val: number) {
+  sendGcode(`SET_RETRACTION UNRETRACT_EXTRA_LENGTH=${val}`, Waits.onSetUnretractExtraLength)
+}
 
-  get maxUnretractExtraLength (): number {
-    if (this.defaultUnretractExtraLength <= 0) return 15
-    return Math.round(this.defaultUnretractExtraLength * 2 * 100) / 100
-  }
-
-  get defaultZHopHeight (): number {
-    return this.firmwareRetraction?.z_hop_height ?? 0
-  }
-
-  get zHopHeight (): number {
-    return this.$typedState.printer.printer.firmware_retraction?.z_hop_height ?? 0
-  }
-
-  get maxZHopHeight (): number {
-    if (this.defaultZHopHeight <= 0) return 2
-    return Math.round(this.defaultZHopHeight * 2 * 100) / 100
-  }
-
-  get klippyApp (): KlippyApp {
-    return this.$typedGetters['printer/getKlippyApp']
-  }
-
-  get supportsZHopHeight () {
-    return this.klippyApp.isKalicoOrDangerKlipper
-  }
-
-  setRetractLength (val: number) {
-    this.sendGcode(`SET_RETRACTION RETRACT_LENGTH=${val}`, this.$waits.onSetRetractLength)
-  }
-
-  setRetractSpeed (val: number) {
-    this.sendGcode(`SET_RETRACTION RETRACT_SPEED=${val}`, this.$waits.onSetRetractSpeed)
-  }
-
-  setUnretractSpeed (val: number) {
-    this.sendGcode(`SET_RETRACTION UNRETRACT_SPEED=${val}`, this.$waits.onSetUnretractSpeed)
-  }
-
-  setUnRetractExtraLength (val: number) {
-    this.sendGcode(`SET_RETRACTION UNRETRACT_EXTRA_LENGTH=${val}`, this.$waits.onSetUnretractExtraLength)
-  }
-
-  setZHopHeight (val: number) {
-    this.sendGcode(`SET_RETRACTION Z_HOP_HEIGHT=${val}`, this.$waits.onSetZHopHeight)
-  }
+function setZHopHeight (val: number) {
+  sendGcode(`SET_RETRACTION Z_HOP_HEIGHT=${val}`, Waits.onSetZHopHeight)
 }
 </script>

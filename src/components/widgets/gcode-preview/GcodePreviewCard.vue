@@ -43,7 +43,7 @@
         v-if="showParserProgressDialog"
         :value="showParserProgressDialog"
         :progress="parserProgress"
-        :file="file"
+        :file="parserFile"
         @cancel="abortParser"
       />
 
@@ -139,11 +139,14 @@
   </collapsable-card>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop, Ref, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
-import FilesMixin from '@/mixins/files'
-import BrowserMixin from '@/mixins/browser'
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useFilesMixin } from '@/composables/useFilesMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useStore } from '@/composables/useStore'
+import { useConfirm } from '@/composables/useConfirm'
+import { useI18n } from '@/composables/useI18n'
 import GcodePreview from './GcodePreview.vue'
 import GcodePreviewParserProgressDialog from './GcodePreviewParserProgressDialog.vue'
 import type { AppFile, AppFileWithMeta } from '@/store/files/types'
@@ -152,312 +155,260 @@ import { getFileDataTransferDataFromDataTransfer, hasFileDataTransferTypeInDataT
 import { consola } from 'consola'
 import { encodeGcodeParamValue } from '@/util/gcode-helpers'
 
-@Component({
-  components: {
-    GcodePreviewParserProgressDialog,
-    GcodePreview
-  }
-})
-export default class GcodePreviewCard extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
-  @Prop({ type: Boolean })
-  readonly narrow?: boolean
+defineProps<{
+  narrow?: boolean
+  fullscreen?: boolean
+}>()
 
-  @Prop({ type: Boolean })
-  readonly fullscreen?: boolean
+const { printerState, sendGcode } = useStateMixin()
+const { getGcode } = useFilesMixin()
+const { isMobileViewport } = useBrowserMixin()
+const { typedState, typedGetters, typedDispatch } = useStore()
+const confirm = useConfirm()
+const { tc } = useI18n()
 
-  @Ref('preview')
-  readonly preview!: GcodePreview
+const preview = ref<InstanceType<typeof GcodePreview>>()
+const currentLayer = ref(0)
+const moveProgress = ref(0)
+const overlay = ref(false)
 
-  currentLayer = 0
-  moveProgress = 0
-  overlay = false
+const file = computed((): AppFile | AppFileWithMeta | null => typedState.gcodePreview.file)
+// Non-null version used for dialog (only rendered when file != null via v-if guard)
+const parserFile = computed<AppFile>(() => file.value as AppFile)
+const moves = computed((): readonly Move[] => typedState.gcodePreview.moves)
+const fileLoaded = computed(() => moves.value.length > 0)
+const parserProgress = computed(() => typedState.gcodePreview.parserProgress)
+const showParserProgressDialog = computed(() => file.value != null && parserProgress.value !== file.value.size)
+const filePosition = computed(() => typedState.printer.printer.virtual_sdcard?.file_position ?? 0)
+const fileProgressLayerNr = computed(() => typedGetters['gcodePreview/getLayerNrByFilePosition'](filePosition.value))
+const layerCount = computed(() => typedGetters['gcodePreview/getLayers'].length)
+const currentLayerHeight = computed(() => typedGetters['gcodePreview/getLayers'][currentLayer.value]?.z ?? 0)
 
-  @Watch('layerCount')
-  onLayerCountChanged () {
-    this.currentLayer = 0
-  }
-
-  @Watch('followProgress')
-  onFollowProgressChanged () {
-    if (this.followProgress) {
-      this.currentLayer = this.fileProgressLayerNr
-      this.syncMoveProgress()
-    }
-  }
-
-  @Watch('currentLayer')
-  onCurrentLayerChanged () {
-    if (this.followProgress && this.currentLayer !== this.fileProgressLayerNr) {
-      this.followProgress = false
-    }
-
-    if (!this.followProgress) {
-      this.moveProgress = this.currentLayerMoveRange.max
-    }
-  }
-
-  @Watch('filePosition')
-  onFilePositionChanged () {
-    if (this.followProgress) {
-      const moves = this.moves
-
-      if (moves.length === 0) {
-        return
-      }
-
-      this.syncMoveProgress()
-
-      const {
-        min,
-        max
-      } = this.currentLayerMoveRange
-
-      if (this.filePosition < moves[min].filePosition || this.filePosition > moves[max].filePosition) {
-        this.currentLayer = this.fileProgressLayerNr
-      }
-    }
-  }
-
-  @Watch('moveProgress')
-  onMoveProgressChanged () {
-    if (this.followProgress) {
-      const fileMovePosition: number = this.$typedGetters['gcodePreview/getMoveIndexByFilePosition'](this.filePosition)
-
-      // In some (yet unclear) cases, fileMovePosition can get out of sync with
-      // the component's notion of moveProgress.  This seems to happen during
-      // layer changes, but not every time.  Possibly some gcode command is getting
-      // misinterpreted.
-      // This "fix" simply forces a re-sync of progress if they get out of sync
-      if (fileMovePosition !== this.moveProgress) {
-        this.syncMoveProgress()
-      }
-    }
-  }
-
-  @Watch('printerFile')
-  onPrinterFileChanged (value: AppFileWithMeta | undefined, oldValue: AppFileWithMeta | undefined) {
-    if (this.autoLoadOnPrintStart &&
-      value != null &&
-      (
-        oldValue == null ||
-        value.path !== oldValue.path ||
-        value.filename !== oldValue.filename
-      ) &&
-      ['paused', 'printing'].includes(this.printerState) &&
-      !this.printerFileLoaded
-    ) {
-      this.loadCurrent()
-    }
-  }
-
-  @Watch('fileLoaded')
-  onFileLoaded () {
-    if (
-      this.fileLoaded &&
-      this.$typedState.config.uiSettings.gcodePreview.autoFollowOnFileLoad &&
-      this.printerFileLoaded
-    ) {
-      this.followProgress = true
-    }
-  }
-
-  get file (): AppFile | AppFileWithMeta | null {
-    return this.$typedState.gcodePreview.file
-  }
-
-  get moves (): readonly Move[] {
-    return this.$typedState.gcodePreview.moves
-  }
-
-  get fileLoaded (): boolean {
-    return this.moves.length > 0
-  }
-
-  get parserProgress (): number {
-    return this.$typedState.gcodePreview.parserProgress
-  }
-
-  get showParserProgressDialog (): boolean {
-    return this.file != null && this.parserProgress !== this.file.size
-  }
-
-  get filePosition (): number {
-    return this.$typedState.printer.printer.virtual_sdcard?.file_position ?? 0
-  }
-
-  get fileProgressLayerNr (): number {
-    return this.$typedGetters['gcodePreview/getLayerNrByFilePosition'](this.filePosition)
-  }
-
-  get layerCount (): number {
-    return this.$typedGetters['gcodePreview/getLayers'].length
-  }
-
-  get currentLayerHeight (): number {
-    return this.$typedGetters['gcodePreview/getLayers'][this.currentLayer]?.z ?? 0
-  }
-
-  get followProgress (): boolean {
-    return this.$typedState.config.uiSettings.gcodePreview.followProgress
-  }
-
-  set followProgress (value: boolean) {
-    this.$typedDispatch('config/saveByPath', {
+const followProgress = computed({
+  get: () => typedState.config.uiSettings.gcodePreview.followProgress,
+  set: (value: boolean) => {
+    typedDispatch('config/saveByPath', {
       path: 'uiSettings.gcodePreview.followProgress',
       value,
       server: true
     })
   }
+})
 
-  get currentLayerMoveRange (): MinMax {
-    const moves = this.moves
+const currentLayerMoveRange = computed((): MinMax => {
+  const m = moves.value
 
-    if (moves.length === 0) {
-      return {
-        min: 0,
-        max: 0
-      }
+  if (m.length === 0) {
+    return { min: 0, max: 0 }
+  }
+
+  const layers: readonly Layer[] = typedGetters['gcodePreview/getLayers']
+
+  return {
+    min: layers[currentLayer.value].move,
+    max: layers[currentLayer.value + 1]?.move ?? m.length - 1
+  }
+})
+
+const printerFile = computed((): AppFileWithMeta | undefined => typedGetters['printer/getPrinterFile'])
+
+const printerFileLoaded = computed(() => {
+  const f = file.value
+  const pf = printerFile.value
+
+  return !(
+    f == null ||
+    pf == null ||
+    f.path !== pf.path ||
+    f.filename !== pf.filename
+  )
+})
+
+watch(printerFileLoaded, (loaded) => {
+  if (!loaded && followProgress.value) {
+    followProgress.value = false
+  }
+})
+
+const autoLoadOnPrintStart = computed(() => {
+  if (isMobileViewport.value) {
+    return typedState.config.uiSettings.gcodePreview.autoLoadMobileOnPrintStart
+  }
+
+  return typedState.config.uiSettings.gcodePreview.autoLoadOnPrintStart
+})
+
+watch(layerCount, () => {
+  currentLayer.value = 0
+})
+
+watch(followProgress, (value) => {
+  if (value) {
+    currentLayer.value = fileProgressLayerNr.value
+    syncMoveProgress()
+  }
+})
+
+watch(currentLayer, () => {
+  if (followProgress.value && currentLayer.value !== fileProgressLayerNr.value) {
+    followProgress.value = false
+  }
+
+  if (!followProgress.value) {
+    moveProgress.value = currentLayerMoveRange.value.max
+  }
+})
+
+watch(filePosition, () => {
+  if (followProgress.value) {
+    const m = moves.value
+
+    if (m.length === 0) {
+      return
     }
 
-    const layers: readonly Layer[] = this.$typedGetters['gcodePreview/getLayers']
+    syncMoveProgress()
 
-    return {
-      min: layers[this.currentLayer].move,
-      max: layers[this.currentLayer + 1]?.move ?? moves.length - 1
+    const { min, max } = currentLayerMoveRange.value
+
+    if (filePosition.value < m[min].filePosition || filePosition.value > m[max].filePosition) {
+      currentLayer.value = fileProgressLayerNr.value
     }
   }
+})
 
-  setCurrentLayer (value: number) {
-    if (value >= 0) this.currentLayer = value
-  }
+watch(moveProgress, () => {
+  if (followProgress.value) {
+    const fileMovePosition: number = typedGetters['gcodePreview/getMoveIndexByFilePosition'](filePosition.value)
 
-  setMoveProgress (value: number) {
-    if (value >= 0) this.moveProgress = value
-  }
-
-  syncMoveProgress () {
-    this.moveProgress = this.$typedGetters['gcodePreview/getMoveIndexByFilePosition'](this.filePosition)
-  }
-
-  abortParser () {
-    this.$typedDispatch('gcodePreview/terminateParserWorker')
-  }
-
-  resetFile () {
-    this.$typedDispatch('gcodePreview/reset')
-  }
-
-  async loadCurrent () {
-    const printerFile = this.printerFile
-
-    if (printerFile) {
-      this.loadFile(printerFile)
+    if (fileMovePosition !== moveProgress.value) {
+      syncMoveProgress()
     }
   }
+})
 
-  async loadFile (file: AppFile | AppFileWithMeta) {
-    try {
-      const response = await this.getGcode(file)
-
-      const gcode = response?.data
-
-      if (!gcode) return
-
-      this.$typedDispatch('gcodePreview/loadGcode', {
-        file,
-        gcode
-      })
-    } catch (error: unknown) {
-      consola.error('[GcodePreview] load', error)
-    }
+watch(printerFile, (value, oldValue) => {
+  if (autoLoadOnPrintStart.value &&
+    value != null &&
+    (
+      oldValue == null ||
+      value.path !== oldValue.path ||
+      value.filename !== oldValue.filename
+    ) &&
+    ['paused', 'printing'].includes(printerState.value) &&
+    !printerFileLoaded.value
+  ) {
+    loadCurrent()
   }
+})
 
-  get printerFile (): AppFileWithMeta | undefined {
-    return this.$typedGetters['printer/getPrinterFile']
+watch(fileLoaded, () => {
+  if (
+    fileLoaded.value &&
+    typedState.config.uiSettings.gcodePreview.autoFollowOnFileLoad &&
+    printerFileLoaded.value
+  ) {
+    followProgress.value = true
   }
+})
 
-  get printerFileLoaded () {
-    const file = this.file
-    const printerFile = this.printerFile
+// created equivalent
+if (followProgress.value) {
+  currentLayer.value = fileProgressLayerNr.value
+  syncMoveProgress()
+} else {
+  moveProgress.value = currentLayerMoveRange.value.min
+}
 
-    if (
-      file == null ||
-      printerFile == null ||
-      file.path !== printerFile.path ||
-      file.filename !== printerFile.filename
-    ) {
-      if (this.followProgress) {
-        this.followProgress = false
-      }
+function setCurrentLayer (value: number) {
+  if (value >= 0) currentLayer.value = value
+}
 
-      return false
-    }
+function setMoveProgress (value: number) {
+  if (value >= 0) moveProgress.value = value
+}
 
-    return true
+function syncMoveProgress () {
+  moveProgress.value = typedGetters['gcodePreview/getMoveIndexByFilePosition'](filePosition.value)
+}
+
+function abortParser () {
+  typedDispatch('gcodePreview/terminateParserWorker')
+}
+
+function resetFile () {
+  typedDispatch('gcodePreview/reset')
+}
+
+async function loadCurrent () {
+  const pf = printerFile.value
+
+  if (pf) {
+    loadFile(pf)
   }
+}
 
-  get autoLoadOnPrintStart (): boolean {
-    if (this.isMobileViewport) {
-      return this.$typedState.config.uiSettings.gcodePreview.autoLoadMobileOnPrintStart
-    }
+async function loadFile (f: AppFile | AppFileWithMeta) {
+  try {
+    const response = await getGcode(f)
 
-    return this.$typedState.config.uiSettings.gcodePreview.autoLoadOnPrintStart
+    const gcode = response?.data
+
+    if (!gcode) return
+
+    typedDispatch('gcodePreview/loadGcode', {
+      file: f,
+      gcode
+    })
+  } catch (error: unknown) {
+    consola.error('[GcodePreview] load', error)
   }
+}
 
-  async cancelObject (id: string) {
-    const result = await this.$confirm(
-      this.$tc('app.general.simple_form.msg.confirm_exclude_object'),
-      { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
-    )
+async function cancelObject (id: string) {
+  const result = await confirm(
+    tc('app.general.simple_form.msg.confirm_exclude_object'),
+    { title: tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
+  )
 
-    if (result) {
-      const reqId = id.toUpperCase().replace(/\s/g, '_')
+  if (result) {
+    const reqId = id.toUpperCase().replace(/\s/g, '_')
 
-      this.sendGcode(`EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(reqId)}`)
-    }
+    sendGcode(`EXCLUDE_OBJECT NAME=${encodeGcodeParamValue(reqId)}`)
   }
+}
 
-  handleDragOver (event: DragEvent) {
-    if (
-      event.dataTransfer &&
-      hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
-    ) {
-      event.preventDefault()
+function handleDragOver (event: DragEvent) {
+  if (
+    event.dataTransfer &&
+    hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
+  ) {
+    event.preventDefault()
 
-      event.dataTransfer.dropEffect = 'link'
+    event.dataTransfer.dropEffect = 'link'
 
-      this.overlay = true
-    }
+    overlay.value = true
   }
+}
 
-  handleDragLeave () {
-    this.overlay = false
-  }
+function handleDragLeave () {
+  overlay.value = false
+}
 
-  handleDrop (event: DragEvent) {
-    this.overlay = false
+function handleDrop (event: DragEvent) {
+  overlay.value = false
 
-    if (
-      event.dataTransfer &&
-      hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
-    ) {
-      const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'jobs')
-      const path = files.path ? `gcodes/${files.path}` : 'gcodes'
+  if (
+    event.dataTransfer &&
+    hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'jobs')
+  ) {
+    const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'jobs')
+    const path = files.path ? `gcodes/${files.path}` : 'gcodes'
 
-      const file: AppFile | undefined = this.$typedGetters['files/getFile'](path, files.items[0])
+    const f: AppFile | undefined = typedGetters['files/getFile'](path, files.items[0])
 
-      if (file) {
-        this.loadFile(file)
-      }
-    }
-  }
-
-  created () {
-    if (this.followProgress) {
-      this.currentLayer = this.fileProgressLayerNr
-      this.syncMoveProgress()
-    } else {
-      this.moveProgress = this.currentLayerMoveRange.min
+    if (f) {
+      loadFile(f)
     }
   }
 }

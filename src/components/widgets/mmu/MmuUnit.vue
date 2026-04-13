@@ -152,11 +152,14 @@
   </v-container>
 </template>
 
-<script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
-import BrowserMixin from '@/mixins/browser'
-import StateMixin from '@/mixins/state'
-import MmuMixin from '@/mixins/mmu'
+<script setup lang="ts">
+import { ref, computed, onBeforeUnmount } from 'vue'
+import { useStateMixin } from '@/composables/useStateMixin'
+import { useBrowserMixin } from '@/composables/useBrowserMixin'
+import { useMmuMixin, TOOL_GATE_BYPASS, GATE_EMPTY, FILAMENT_POS_LOADED } from '@/composables/useMmuMixin'
+import { useVuetify } from '@/composables/useVuetify'
+import { useI18n } from '@/composables/useI18n'
+import { Waits } from '@/globals'
 import type { MmuGateDetails } from '@/types'
 import MmuSpool from '@/components/widgets/mmu/MmuSpool.vue'
 import MmuGateStatus from '@/components/widgets/mmu/MmuGateStatus.vue'
@@ -178,252 +181,254 @@ type ContextMenuItem = {
   action: MenuAction
 }
 
-@Component({
-  components: { MmuSpool, MmuGateStatus, MmuUnitFooter },
+const props = withDefaults(defineProps<{
+  unitIndex?: number
+  editGateMap?: MmuGateDetails[] | null
+  editGateSelected?: number
+  showContextMenu?: boolean
+  showDetails?: boolean
+  showFooter?: boolean
+  hideBypass?: boolean
+}>(), {
+  unitIndex: 0,
+  editGateMap: null,
+  editGateSelected: -1,
+  showContextMenu: true,
+  showDetails: true,
+  showFooter: true,
+  hideBypass: false,
 })
-export default class MmuUnit extends Mixins(BrowserMixin, StateMixin, MmuMixin) {
-  @Prop({ required: false, default: 0 })
-  readonly unitIndex!: number
 
-  @Prop({ required: false, default: null })
-  readonly editGateMap!: MmuGateDetails[] | null
+const emit = defineEmits<{
+  (e: 'select-gate', gate: number): void
+  (e: 'edit-filament', gate: number): void
+}>()
 
-  @Prop({ required: false, default: -1 })
-  readonly editGateSelected!: number
+const { t } = useI18n()
+const vuetify = useVuetify()
+const { klippyReady, hasWait, sendGcode } = useStateMixin()
+const { isMobileViewport } = useBrowserMixin()
+const {
+  gate,
+  filamentPos,
+  canSend,
+  isPrinting,
+  spoolWidth,
+  unitDetails,
+  gateDetails,
+} = useMmuMixin()
 
-  @Prop({ required: false, default: true })
-  readonly showContextMenu!: boolean
+const gateMenuVisible = ref<Record<number, boolean>>({})
+const closeTimeout = ref<number | null>(null)
+const menuX = ref(0)
+const menuY = ref(0)
 
-  @Prop({ required: false, default: true })
-  readonly showDetails!: boolean
+const mmuMachineUnit = computed(() => unitDetails(props.unitIndex))
 
-  @Prop({ required: false, default: true })
-  readonly showFooter!: boolean
+const unitGateRange = computed((): number[] => {
+  if (props.unitIndex < 0) return []
+  return Array.from({ length: mmuMachineUnit.value.numGates }, (v, k) => k + mmuMachineUnit.value.firstGate)
+})
 
-  @Prop({ required: false, default: false })
-  readonly hideBypass!: boolean
+const showBypass = computed(() => {
+  if (props.hideBypass) return false
+  if (props.unitIndex < 0) return true
+  return mmuMachineUnit.value.hasBypass
+})
 
-  gateMenuVisible: Record<number, boolean> = {}
+const displayGates = computed((): number[] => {
+  const gates = unitGateRange.value
+  return showBypass.value ? [...gates, TOOL_GATE_BYPASS] : gates
+})
 
-  closeTimeout: number | null = null
-  menuX = 0
-  menuY = 0
+const clipHeight = computed(() => Math.trunc(spoolWidth.value * 1.6))
 
-  get mmuMachineUnit () {
-    return this.unitDetails(this.unitIndex)
+const footerStyle = computed(() => {
+  const numSpools = mmuMachineUnit.value.numGates + (showBypass.value ? 1 : 0)
+  const maxWidth = spoolWidth.value * numSpools + 32
+  return { maxWidth: `${maxWidth}px` }
+})
+
+const allContextMenuItems = computed((): ContextMenuItem[] => {
+  const isLoaded = filamentPos.value === FILAMENT_POS_LOADED
+  const canCrossload = unitDetails(props.unitIndex).canCrossload
+
+  return [
+    {
+      icon: '$mmuSelectGate',
+      label: t('app.mmu.btn.select').toString(),
+      action: { kind: 'call', fn: (g) => selectGate(g) },
+      disabled: (g) => !canSend.value || g === gate.value || isPrinting.value || isLoaded,
+    },
+    {
+      icon: '$mmuEditGateMap',
+      label: t('app.mmu.btn.edit_gate_map').toString(),
+      action: { kind: 'call', fn: (g) => editFilament(g) },
+    },
+    {
+      icon: '$mmuPreload',
+      label: t('app.mmu.btn.preload').toString(),
+      wait: Waits.onMmuPreload,
+      action: { kind: 'gcode', command: 'MMU_PRELOAD' },
+      disabled: (g) =>
+        !canSend.value ||
+          (g === gate.value && !canCrossload) ||
+          (g === gate.value && isLoaded),
+    },
+    {
+      icon: '$mmuEject',
+      label: t('app.mmu.btn.eject').toString(),
+      wait: Waits.onMmuEject,
+      action: { kind: 'gcode', command: 'MMU_EJECT' },
+      disabled: (g) => !canSend.value || (g !== gate.value && !canCrossload),
+    },
+    {
+      icon: '$mmuChangeTool',
+      label: t('app.mmu.btn.change_tool').toString(),
+      wait: Waits.onMmuChangeTool,
+      action: { kind: 'gcode', command: 'MMU_CHANGE_TOOL' },
+      disabled: (g) => !canSend.value || g === gate.value || isPrinting.value,
+    },
+  ]
+})
+
+function isSelectedGate (g: number): boolean {
+  return (props.editGateMap != null && props.editGateSelected === g) || (!props.editGateMap && gate.value === g)
+}
+
+function contextMenuHeader (g: number): string {
+  if (g >= 0) return t('app.mmu.label.gate').toString() + ' ' + g
+  return 'Bypass'
+}
+
+function tooltipTitle (g: number): string | null {
+  const details = gateDetails(g)
+  if (details.status === GATE_EMPTY) return null
+  return details.filamentName
+}
+
+function tooltipText (g: number): string {
+  const details = gateDetails(g)
+  if (details.status === GATE_EMPTY) {
+    return t('app.mmu.tooltip.empty').toString()
+  }
+  const output = []
+
+  const tempStr = details.temperature > 0
+    ? ` | ${details.temperature}°C`
+    : ''
+  output.push(details.material + tempStr)
+
+  if (details.color && details.color !== '#808182E3') {
+    const color = details.color
+    output.push(
+      t('app.mmu.tooltip.color').toString() +
+                ': ' +
+                color.substring(0, 7) +
+                (color.length > 7 && color.substring(7, 9) !== 'FF' ? color.substring(7, 9) : '')
+    )
   }
 
-  get unitGateRange (): number[] {
-    if (this.unitIndex < 0) return []
-    return Array.from({ length: this.mmuMachineUnit.numGates }, (v, k) => k + this.mmuMachineUnit.firstGate)
+  if (details.spoolId && details.spoolId > 0) {
+    output.push(t('app.mmu.tooltip.spoolid').toString() + ': ' + details.spoolId)
   }
 
-  get displayGates (): number[] {
-    const gates = this.unitGateRange
-    return this.showBypass ? [...gates, this.TOOL_GATE_BYPASS] : gates
-  }
+  return output.join('\n')
+}
 
-  isSelectedGate (g: number): boolean {
-    return (this.editGateMap && this.editGateSelected === g) || (!this.editGateMap && this.gate === g)
-  }
+function gateStatusClass (index: number): string[] {
+  const firstGate = (props.unitIndex < 0 || index === 0)
+  const lastGate = index === (displayGates.value.length - 1)
 
-  get clipHeight (): number {
-    return Math.trunc(this.spoolWidth * 1.6)
-  }
+  const classes = ['gate-status-row']
+  if (firstGate) classes.push('first-gate')
+  if (lastGate) classes.push('last-gate')
+  classes.push(vuetify.theme.dark ? 'gate-status-row-dark-theme' : 'gate-status-row-light-theme')
+  return classes
+}
 
-  get showBypass () {
-    if (this.hideBypass) return false
-    if (this.unitIndex < 0) return true
-
-    return this.mmuMachineUnit.hasBypass
-  }
-
-  contextMenuHeader (gate: number): string {
-    if (gate >= 0) return this.$t('app.mmu.label.gate') + ' ' + gate
-    return 'Bypass'
-  }
-
-  tooltipTitle (gate: number): string | null {
-    const details = this.gateDetails(gate)
-    if (details.status === this.GATE_EMPTY) return null
-
-    return details.filamentName
-  }
-
-  tooltipText (gate: number): string {
-    const details = this.gateDetails(gate)
-    if (details.status === this.GATE_EMPTY) {
-      return this.$t('app.mmu.tooltip.empty').toString()
+function spoolClass (g: number): string[] {
+  const classes = []
+  if ((props.editGateMap != null && props.editGateSelected === g) || (!props.editGateMap && gate.value === g)) {
+    classes.push('highlight-spool')
+  } else {
+    if (!isMobileViewport.value) classes.push('hover-effect')
+    if (props.editGateMap) {
+      classes.push('unhighlight-spool')
     }
-    const output = []
-
-    const tempStr = details.temperature > 0
-      ? ` | ${details.temperature}°C`
-      : ''
-    output.push(details.material + tempStr)
-
-    if (details.color && details.color !== '#808182E3') {
-      const color = details.color
-      output.push(
-        this.$t('app.mmu.tooltip.color').toString() +
-                    ': ' +
-                    color.substring(0, 7) +
-                    (color.length > 7 && color.substring(7, 9) !== 'FF' ? color.substring(7, 9) : '')
-      )
-    }
-
-    if (details.spoolId && details.spoolId > 0) {
-      output.push(this.$t('app.mmu.tooltip.spoolid').toString() + ': ' + details.spoolId)
-    }
-
-    return output.join('\n')
   }
+  return classes
+}
 
-  gateStatusClass (index: number): string[] {
-    const firstGate = (this.unitIndex < 0 || index === 0)
-    const lastGate = index === (this.displayGates.length - 1)
+function contextMenuItems (g: number): ContextMenuItem[] {
+  const items = allContextMenuItems.value
+  if (g < 0) return items.slice(0, 1)
+  return items
+}
 
-    const classes = ['gate-status-row']
-    if (firstGate) classes.push('first-gate')
-    if (lastGate) classes.push('last-gate')
-    classes.push(this.$vuetify.theme.dark ? 'gate-status-row-dark-theme' : 'gate-status-row-light-theme')
-    return classes
-  }
+function isItemDisabled (item: ContextMenuItem, g: number): boolean {
+  if (!klippyReady.value) return true
+  if (!item.disabled) return false
+  return typeof item.disabled === 'function' ? item.disabled(g) : item.disabled
+}
 
-  spoolClass (gate: number): string[] {
-    const classes = []
-    if ((this.editGateMap && this.editGateSelected === gate) || (!this.editGateMap && this.gate === gate)) {
-      classes.push('highlight-spool')
-    } else {
-      if (!this.isMobileViewport) classes.push('hover-effect')
-      if (this.editGateMap) {
-        classes.push('unhighlight-spool')
-      }
-    }
-    return classes
-  }
+function runMenuItem (item: ContextMenuItem, g: number) {
+  if (isItemDisabled(item, g)) return
 
-  get footerStyle () {
-    const numSpools = this.mmuMachineUnit.numGates + (this.showBypass ? 1 : 0)
-    const maxWidth = this.spoolWidth * numSpools + 32
-    return { maxWidth: `${maxWidth}px` }
-  }
+  closeContextMenu()
 
-  // Gate context menu handling...
-
-  private isItemDisabled (item: ContextMenuItem, gate: number): boolean {
-    if (!this.klippyReady) return true
-    if (!item.disabled) return false
-    return typeof item.disabled === 'function' ? item.disabled(gate) : item.disabled
-  }
-
-  private runMenuItem (item: ContextMenuItem, gate: number) {
-    if (this.isItemDisabled(item, gate)) return
-
-    this.closeContextMenu()
-
-    if (item.action.kind === 'gcode') {
-      this.sendGcode(`${item.action.command} GATE=${gate}`, item.wait)
-    } else {
-      item.action.fn(gate)
-    }
-  }
-
-  contextMenuItems (gate: number): ContextMenuItem[] {
-    const items = this.allContextMenuItems
-    if (gate < 0) return items.slice(0, 1)
-    return items
-  }
-
-  get allContextMenuItems (): ContextMenuItem[] {
-    const isLoaded = this.filamentPos === this.FILAMENT_POS_LOADED
-    const canCrossload = this.unitDetails(this.unitIndex).canCrossload
-
-    const items: ContextMenuItem[] = [
-      {
-        icon: '$mmuSelectGate',
-        label: this.$t('app.mmu.btn.select').toString(),
-        action: { kind: 'call', fn: (gate) => this.selectGate(gate) },
-        disabled: (gate) => !this.canSend || gate === this.gate || this.isPrinting || isLoaded,
-      },
-      {
-        icon: '$mmuEditGateMap',
-        label: this.$t('app.mmu.btn.edit_gate_map').toString(),
-        action: { kind: 'call', fn: (gate) => this.editFilament(gate) },
-      },
-      {
-        icon: '$mmuPreload',
-        label: this.$t('app.mmu.btn.preload').toString(),
-        wait: this.$waits.onMmuPreload,
-        action: { kind: 'gcode', command: 'MMU_PRELOAD' },
-        disabled: (gate) =>
-          !this.canSend ||
-            (gate === this.gate && !canCrossload) ||
-            (gate === this.gate && isLoaded),
-      },
-      {
-        icon: '$mmuEject',
-        label: this.$t('app.mmu.btn.eject').toString(),
-        wait: this.$waits.onMmuEject,
-        action: { kind: 'gcode', command: 'MMU_EJECT' },
-        disabled: (gate) => !this.canSend || (gate !== this.gate && !canCrossload),
-      },
-      {
-        icon: '$mmuChangeTool',
-        label: this.$t('app.mmu.btn.change_tool').toString(),
-        wait: this.$waits.onMmuChangeTool,
-        action: { kind: 'gcode', command: 'MMU_CHANGE_TOOL' },
-        disabled: (gate) => !this.canSend || gate === this.gate || this.isPrinting,
-      },
-    ]
-
-    return items
-  }
-
-  private selectGate (gate: number) {
-    this.$emit('select-gate', gate)
-  }
-
-  private editFilament (gate: number) {
-    this.$emit('edit-filament', gate)
-  }
-
-  handleClickGate (gate: number, e: MouseEvent) {
-    if (this.showContextMenu) return this.openContextMenu(gate, e)
-    this.selectGate(gate)
-  }
-
-  openContextMenu (gate: number, e: MouseEvent) {
-    e.preventDefault()
-
-    this.menuX = e.clientX - 20
-    this.menuY = e.clientY - 20
-
-    this.closeContextMenu()
-
-    this.$set(this.gateMenuVisible, gate, true)
-    this.closeTimeout = window.setTimeout(() => {
-      this.closeContextMenu()
-    }, 6000)
-  }
-
-  closeContextMenu () {
-    this.clearCloseTimeout()
-    Object.keys(this.gateMenuVisible).forEach(key => {
-      this.$set(this.gateMenuVisible, Number(key), false)
-    })
-  }
-
-  clearCloseTimeout () {
-    if (this.closeTimeout === null) return
-    clearTimeout(this.closeTimeout)
-    this.closeTimeout = null
-  }
-
-  beforeDestroy () {
-    this.clearCloseTimeout()
+  if (item.action.kind === 'gcode') {
+    sendGcode(`${item.action.command} GATE=${g}`, item.wait)
+  } else {
+    item.action.fn(g)
   }
 }
+
+function selectGate (g: number) {
+  emit('select-gate', g)
+}
+
+function editFilament (g: number) {
+  emit('edit-filament', g)
+}
+
+function handleClickGate (g: number, e: MouseEvent) {
+  if (props.showContextMenu) return openContextMenu(g, e)
+  selectGate(g)
+}
+
+function openContextMenu (g: number, e: MouseEvent) {
+  e.preventDefault()
+
+  menuX.value = e.clientX - 20
+  menuY.value = e.clientY - 20
+
+  closeContextMenu()
+
+  gateMenuVisible.value = { ...gateMenuVisible.value, [g]: true }
+  closeTimeout.value = window.setTimeout(() => {
+    closeContextMenu()
+  }, 6000)
+}
+
+function closeContextMenu () {
+  clearCloseTimeout()
+  const updated: Record<number, boolean> = {}
+  for (const key of Object.keys(gateMenuVisible.value)) {
+    updated[Number(key)] = false
+  }
+  gateMenuVisible.value = updated
+}
+
+function clearCloseTimeout () {
+  if (closeTimeout.value === null) return
+  clearTimeout(closeTimeout.value)
+  closeTimeout.value = null
+}
+
+onBeforeUnmount(() => {
+  clearCloseTimeout()
+})
 </script>
 
 <style scoped>
