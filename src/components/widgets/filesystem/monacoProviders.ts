@@ -14,6 +14,18 @@ import MonacoFoldingRangeWorker from '@/workers/monacoFoldingRangesWorker?worker
 import type { MonacoCodeLensWorkerResponseMessage } from '@/workers/monacoCodeLensWorker'
 import MonacoCodeLensWorker from '@/workers/monacoCodeLensWorker?worker'
 
+import {
+  extractPathAtCursor,
+  findEnclosingGcodeMacroSection,
+  gcodeMacroParams
+} from '@/util/klipper-template-context'
+import {
+  klipperStatusSchema,
+  klipperTemplateBuiltins,
+  type FieldType,
+  type ObjectDef
+} from '@/monaco/klipperStatusSchema'
+
 export type CodeLensSupportedService = 'klipper' | 'moonraker' | 'moonraker-telegram-bot' | 'crowsnest'
 
 export type DocsSectionService = CodeLensSupportedService | SupportedKlipperServices
@@ -266,5 +278,271 @@ export class MonacoFoldingRangeProvider extends MonacoProviderBase<monaco.langua
     }
 
     return this._lastResult
+  }
+}
+
+export class MonacoCompletionItemProvider implements monaco.languages.CompletionItemProvider {
+  public readonly triggerCharacters = ['.']
+  private readonly _app: Vue = getVueApp()
+
+  public provideCompletionItems (
+    model: monaco.editor.ITextModel,
+    position: monaco.Position
+  ): monaco.languages.ProviderResult<monaco.languages.CompletionList> {
+    const textUpToCursor = model.getValueInRange({
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: position.lineNumber,
+      endColumn: position.column
+    })
+
+    if (!this._isInsideTemplateBlock(textUpToCursor)) {
+      return null
+    }
+
+    const lineText = model.getLineContent(position.lineNumber)
+    const column = position.column - 1
+
+    const path = extractPathAtCursor(lineText, column)
+    if (!path) return null
+
+    const { segments, partial, replaceFrom } = path
+
+    const range: monaco.IRange = {
+      startLineNumber: position.lineNumber,
+      startColumn: replaceFrom + 1,
+      endLineNumber: position.lineNumber,
+      endColumn: position.column
+    }
+
+    let items: monaco.languages.CompletionItem[]
+
+    if (segments.length === 0) {
+      items = this._getRootCompletions(range)
+    } else if (segments[0] === 'printer' && segments.length === 1) {
+      const printerState: Klipper.PrinterState = this._app.$typedState.printer.printer
+      items = this._getPrinterObjectCompletions(printerState, range)
+    } else if (segments[0] === 'printer' && segments.length >= 2) {
+      const printerState: Klipper.PrinterState = this._app.$typedState.printer.printer
+      const objectKey = segments[1]
+      const liveState = (printerState as Record<string, Record<string, unknown> | undefined>)[objectKey]
+      items = this._getObjectFieldCompletions(objectKey, liveState, range)
+    } else if (segments[0] === 'params') {
+      const modelText = model.getValue()
+      const cursorOffset = model.getOffsetAt(position)
+      items = this._getParamsCompletions(modelText, cursorOffset, range)
+    } else if (segments.length === 1) {
+      // drill into a non-printer root object (e.g. pause_resume.is_paused)
+      const objectKey = segments[0]
+      const schemaDef = this._findSchemaDef(objectKey)
+      items = schemaDef
+        ? schemaDef.fields.map(field => this._makeFieldItem(field.name, field.type, undefined, field.description, range))
+        : []
+    } else {
+      return null
+    }
+
+    if (partial) {
+      const lowerPartial = partial.toLowerCase()
+      items = items.filter(item => {
+        const label = typeof item.label === 'string' ? item.label : (item.label as { label: string }).label
+        return label.toLowerCase().startsWith(lowerPartial)
+      })
+    }
+
+    return { suggestions: items, incomplete: false }
+  }
+
+  private _isInsideTemplateBlock (textUpToCursor: string): boolean {
+    const tokenLines = monaco.editor.tokenize(textUpToCursor, 'klipper-config')
+    if (tokenLines.length === 0) return false
+
+    const lastLineTokens = tokenLines[tokenLines.length - 1]
+    if (lastLineTokens.length === 0) return false
+
+    const lastLine = textUpToCursor.includes('\n')
+      ? textUpToCursor.slice(textUpToCursor.lastIndexOf('\n') + 1)
+      : textUpToCursor
+
+    // Find the rightmost token that starts before the cursor
+    let token = lastLineTokens[0]
+    for (const t of lastLineTokens) {
+      if (t.offset < lastLine.length) {
+        token = t
+      }
+    }
+
+    // The klipper-config Monarch tokenizer produces 'string.unquoted' exclusively
+    // inside { ... } macro blocks (gcodeLine → macroBlock state).
+    // It does NOT apply to config values, comments, or string literals in other contexts.
+    return token.type.includes('string.unquoted')
+  }
+
+  private _getRootCompletions (range: monaco.IRange): monaco.languages.CompletionItem[] {
+    return klipperTemplateBuiltins.map(builtin => ({
+      label: builtin.name,
+      kind: builtin.type === 'object'
+        ? monaco.languages.CompletionItemKind.Module
+        : builtin.type === 'unknown'
+          ? monaco.languages.CompletionItemKind.Function
+          : monaco.languages.CompletionItemKind.Variable,
+      detail: builtin.type === 'unknown' ? 'function' : builtin.type,
+      documentation: builtin.description,
+      insertText: builtin.name,
+      range
+    }))
+  }
+
+  private _getPrinterObjectCompletions (
+    printerState: Klipper.PrinterState,
+    range: monaco.IRange
+  ): monaco.languages.CompletionItem[] {
+    const seen = new Set<string>()
+    const items: monaco.languages.CompletionItem[] = []
+
+    const addItem = (key: string) => {
+      if (seen.has(key) || key === 'objects') return
+      seen.add(key)
+      const hasSpace = key.includes(' ')
+      items.push({
+        label: key,
+        kind: monaco.languages.CompletionItemKind.Module,
+        detail: 'object',
+        insertText: hasSpace ? `["${key}"]` : key,
+        range
+      })
+    }
+
+    // Static schema first (ensures known objects always appear)
+    for (const def of klipperStatusSchema) {
+      if (def.match.kind === 'exact') {
+        addItem(def.match.name)
+      }
+    }
+
+    // Live state for dynamic/parameterized instances
+    if (printerState) {
+      for (const key of Object.keys(printerState)) {
+        addItem(key)
+      }
+    }
+
+    return items
+  }
+
+  private _getObjectFieldCompletions (
+    objectKey: string,
+    liveState: Record<string, unknown> | undefined,
+    range: monaco.IRange
+  ): monaco.languages.CompletionItem[] {
+    const seen = new Set<string>()
+    const items: monaco.languages.CompletionItem[] = []
+
+    const schemaDef = this._findSchemaDef(objectKey)
+
+    if (schemaDef) {
+      for (const field of schemaDef.fields) {
+        seen.add(field.name)
+        const liveValue = liveState?.[field.name]
+        items.push(this._makeFieldItem(field.name, field.type, liveValue, field.description, range))
+      }
+    }
+
+    if (liveState) {
+      for (const [key, value] of Object.entries(liveState)) {
+        if (seen.has(key)) continue
+        const type = this._inferType(value)
+        items.push(this._makeFieldItem(key, type, value, undefined, range))
+      }
+    }
+
+    return items
+  }
+
+  private _getParamsCompletions (
+    modelText: string,
+    cursorOffset: number,
+    range: monaco.IRange
+  ): monaco.languages.CompletionItem[] {
+    const context = findEnclosingGcodeMacroSection(modelText, cursorOffset)
+    if (!context) return []
+
+    const params = gcodeMacroParams(context.gcodeBlock)
+    const seen = new Set<string>()
+
+    return params
+      .filter(param => {
+        if (seen.has(param.name)) return false
+        seen.add(param.name)
+        return true
+      })
+      .map(param => ({
+        label: param.name,
+        kind: monaco.languages.CompletionItemKind.Variable,
+        detail: 'parameter',
+        documentation: param.value ? `default: ${param.value}` : undefined,
+        insertText: param.name,
+        range
+      }))
+  }
+
+  private _findSchemaDef (objectKey: string): ObjectDef | undefined {
+    return klipperStatusSchema.find(def => {
+      if (def.match.kind === 'exact') return def.match.name === objectKey
+      if (def.match.kind === 'prefix') return objectKey.startsWith(def.match.prefix)
+      return false
+    })
+  }
+
+  private _makeFieldItem (
+    name: string,
+    type: FieldType,
+    liveValue: unknown,
+    description: string | undefined,
+    range: monaco.IRange
+  ): monaco.languages.CompletionItem {
+    return {
+      label: name,
+      kind: this._kindForType(type),
+      detail: type,
+      documentation: liveValue !== undefined
+        ? `current: ${this._formatValue(liveValue)}`
+        : description,
+      insertText: name,
+      range
+    }
+  }
+
+  private _kindForType (type: FieldType): monaco.languages.CompletionItemKind {
+    switch (type) {
+      case 'number': return monaco.languages.CompletionItemKind.Value
+      case 'string': return monaco.languages.CompletionItemKind.Text
+      case 'boolean': return monaco.languages.CompletionItemKind.Keyword
+      case 'array': return monaco.languages.CompletionItemKind.Field
+      case 'object': return monaco.languages.CompletionItemKind.Module
+      default: return monaco.languages.CompletionItemKind.Property
+    }
+  }
+
+  private _inferType (value: unknown): FieldType {
+    if (value === null || value === undefined) return 'unknown'
+    if (typeof value === 'number') return 'number'
+    if (typeof value === 'string') return 'string'
+    if (typeof value === 'boolean') return 'boolean'
+    if (Array.isArray(value)) return 'array'
+    if (typeof value === 'object') return 'object'
+    return 'unknown'
+  }
+
+  private _formatValue (value: unknown): string {
+    if (value === null) return 'null'
+    if (typeof value === 'number') return String(value)
+    if (typeof value === 'string') return `"${value}"`
+    if (typeof value === 'boolean') return String(value)
+    if (Array.isArray(value)) {
+      const preview = value.slice(0, 3).join(', ')
+      return `[${preview}${value.length > 3 ? ', …' : ''}]`
+    }
+    return '{…}'
   }
 }

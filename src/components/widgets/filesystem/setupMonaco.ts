@@ -25,7 +25,7 @@ import gcodeMonarchLanguage from '@/monaco/language/gcode.monarch'
 import * as klipperConfigMonarchLanguage from '@/monaco/language/klipper-config.monarch'
 import * as moonrakerConfigMonarchLanguage from '@/monaco/language/moonraker-config.monarch'
 import logMonarchLanguage from '@/monaco/language/log.monarch'
-import { type CodeLensSupportedService, MonacoCodeLensProvider, MonacoDocumentSymbolProvider, MonacoFoldingRangeProvider } from './monacoProviders'
+import { type CodeLensSupportedService, MonacoCodeLensProvider, MonacoCompletionItemProvider, MonacoDocumentSymbolProvider, MonacoFoldingRangeProvider } from './monacoProviders'
 
 self.MonacoEnvironment = {
   getWorker (_: string, label: string) {
@@ -80,6 +80,8 @@ async function setupMonaco () {
   monaco.languages.registerCodeLensProvider(['klipper-config', 'moonraker-config'], new MonacoCodeLensProvider())
 
   monaco.languages.registerFoldingRangeProvider(['klipper-config', 'moonraker-config', 'gcode'], new MonacoFoldingRangeProvider())
+
+  monaco.languages.registerCompletionItemProvider('klipper-config', new MonacoCompletionItemProvider())
 
   monaco.editor.defineTheme('light-converted', {
     base: 'vs',
